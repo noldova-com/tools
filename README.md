@@ -9,6 +9,7 @@ Development tools from Noldova.
 | `@noldova/tools.pipelines` | The steps of a build and release pipeline that work the same on any host: checks of the commit and its version, checks of the packed archives, and publishing them to npm |
 | `@noldova/tools.pipelines.github` | Runs those steps on GitHub Actions: the command line a workflow calls, GitHub's environment, tags and annotations |
 
+[documents/ARCHITECTURE.md](documents/ARCHITECTURE.md) lists what each package owns.
 How to install and use each package comes with its first release.
 
 ## Checks
@@ -18,6 +19,7 @@ Every pull request into `main` must pass its checks before it merges.
 | Check | What it verifies |
 |---|---|
 | Check / Linked issue | `.github/workflows/require-linked-issue.yml`, the "PR" workflow: the PR description has a standalone `Issue: #N`, `Issue #N` or closing reference, such as `Closes #N`, that names an issue in this repository. |
+| Check / Runner / Versions | The shared check's own call of the shared settings, which name the runner "Check / Linked issue" uses. |
 
 ## Contributing
 

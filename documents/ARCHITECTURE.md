@@ -15,13 +15,14 @@ This document holds only what is this repository's own; a rule here that is stri
 - `tools.pipelines.github` depends on `tools.pipelines`, never the reverse.
 - `tools.pipelines` names no pipeline host.
   What a step needs from the host, such as where it runs or how a tag is made, it asks through an interface it declares and the host's package implements.
-- Another host gets its own package beside GitHub's, such as `tools.pipelines.gitlab`, built on the same steps.
+- Another host gets its own package beside GitHub's, built on the same steps.
 - Neither package names a product or a repository that uses it.
   What differs between repositories, such as their packages and where their version is kept, comes in as settings.
 
 ## 2. Running in a pipeline
 
 - The packages have no third-party runtime dependencies, so a pipeline job installs nothing but them.
+  This is stricter than the TypeScript standard's [Dependencies](https://github.com/noldova-com/.github/blob/main/standards/stacks/TYPESCRIPT.md#dependencies), which allows pinned ones.
 - Each step checks before it acts.
   When a check fails, the step stops with a message that says what is wrong and exits with code 1, without a stack trace.
 - No step deletes or overwrites a published version.
