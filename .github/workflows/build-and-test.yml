@@ -1,0 +1,199 @@
+# @license
+# Copyright (c) Noldova.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+name: Build and test
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  versions:
+    name: Versions
+    uses: noldova-com/.github/.github/workflows/versions.yml@6e2ab8efb06aff6f0fdb9c4ac91c623c74359c30 # v1.0.0
+    permissions: {}
+    with:
+      targets: linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64
+
+  build-and-test:
+    name: ${{ matrix.name }}
+    needs: versions
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux x64, target: linux-x64 }
+          - { name: Linux arm64, target: linux-arm64 }
+          - { name: Windows x64, target: windows-x64 }
+          - { name: Windows arm64, target: windows-arm64 }
+          - { name: macOS x64, target: macos-x64 }
+          - { name: macOS arm64, target: macos-arm64 }
+    runs-on: ${{ fromJSON(needs.versions.outputs[format('runs-on-{0}', matrix.target)]) }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out the revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ needs.versions.outputs.node-version }}
+          package-manager-cache: false
+          registry-url: ${{ needs.versions.outputs.install-registry-url }}
+          scope: ${{ needs.versions.outputs.install-scope }}
+
+      - name: Verify the toolchain
+        env:
+          NODE_VERSION: ${{ needs.versions.outputs.node-version }}
+          NPM_VERSION: ${{ needs.versions.outputs.npm-version }}
+        run: |
+          node --version
+          npm --version
+          test "$(node --version)" = "v$NODE_VERSION"
+          if [ -n "$NPM_VERSION" ]; then
+            test "$(npm --version)" = "$NPM_VERSION"
+          fi
+
+      - name: Check .gitattributes and the line endings
+        run: |
+          node --input-type=module <<'SCRIPT'
+          import { spawnSync } from "node:child_process";
+
+          const git = (args, input) => spawnSync("git", args, { input, maxBuffer: 1024 * 1024 * 1024 });
+          const quote = name => /^[\w./@+,:=%-]+$/.test(name) ? name : JSON.stringify(name);
+          const listFiles = args => {
+            const result = git(["ls-files", "-z", ...args]);
+            if (result.error || result.status !== 0) {
+              console.log("::error::Git could not list the tracked files.");
+              process.exit(1);
+            }
+            return result.stdout.toString("utf8").split("\0").filter(entry => entry !== "");
+          };
+          let failed = false;
+
+          const attributes = git(["cat-file", "blob", ":0:.gitattributes"]);
+          const attributeLines = attributes.status === 0 ? attributes.stdout.toString("utf8").split("\n") : [];
+          if (!attributeLines.includes("* text=auto eol=lf")) {
+            console.log(".gitattributes lacks the line: * text=auto eol=lf");
+            failed = true;
+          }
+
+          const objects = new Map();
+          for (const entry of listFiles(["--stage"])) {
+            const tab = entry.indexOf("\t");
+            const [mode, id] = entry.slice(0, tab).split(" ");
+            objects.set(entry.slice(tab + 1), { mode, id });
+          }
+          const entries = listFiles(["--eol"]);
+          if (entries.length === 0) {
+            console.log("::error::Git listed no tracked files to check.");
+            process.exit(1);
+          }
+
+          const blobs = [];
+          for (const entry of entries) {
+            const tab = entry.indexOf("\t");
+            const info = entry.slice(0, tab);
+            const file = entry.slice(tab + 1);
+            const committedEol = info.split(" ")[0];
+            const object = objects.get(file);
+            if (committedEol === "i/-text" || object.mode === "120000")
+              continue;
+            if (info.includes("attr/-text"))
+              continue;
+            if (committedEol === "i/crlf" || committedEol === "i/mixed") {
+              console.log(`Not LF only: ${quote(file)}`);
+              failed = true;
+              continue;
+            }
+            blobs.push({ file, id: object.id });
+          }
+
+          if (blobs.length > 0) {
+            const batch = git(["cat-file", "--batch"], blobs.map(blob => blob.id).join("\n") + "\n");
+            if (batch.error || batch.status !== 0) {
+              console.log("::error::Git could not read the tracked files.");
+              process.exit(1);
+            }
+            const output = batch.stdout;
+            let position = 0;
+            for (const { file } of blobs) {
+              const headerEnd = output.indexOf(10, position);
+              const header = output.toString("utf8", position, headerEnd).split(" ");
+              if (header[1] !== "blob") {
+                console.log(`::error::Git could not read ${quote(file)}.`);
+                process.exit(1);
+              }
+              const start = headerEnd + 1;
+              const end = start + Number(header[2]);
+              const ending = output.subarray(Math.max(start, end - 2), end);
+              position = end + 1;
+              if (ending.length === 2 && ending[0] === 10 && ending[1] === 10) {
+                console.log(`Ends with a blank line: ${quote(file)}`);
+                failed = true;
+              }
+              else if (ending.length === 0 || ending[ending.length - 1] !== 10) {
+                console.log(`Does not end with a newline: ${quote(file)}`);
+                failed = true;
+              }
+            }
+          }
+
+          if (failed) {
+            console.log('::error::.gitattributes must hold "* text=auto eol=lf", and every tracked text file must use LF line endings and end with exactly one newline.');
+            process.exit(1);
+          }
+          console.log('.gitattributes holds "* text=auto eol=lf", and every tracked text file uses LF line endings and ends with exactly one newline.');
+          SCRIPT
+
+      - name: Build the packages
+        run: npm run build
+
+      - name: Test the packages
+        run: npm run test -- --skip-test-details --skip-coverage-details
+
+      - name: Check that tracked files are unchanged
+        run: |
+          changes="$(git status --porcelain)"
+          if [ -n "$changes" ]; then
+            printf '%s\n' "$changes"
+            echo '::error::The build and the tests must change no tracked file and leave no untracked file outside the ignored outputs.'
+            exit 1
+          fi
+          echo 'The build and the tests changed no tracked file.'
+
+  all-targets:
+    name: All targets
+    needs: [versions, build-and-test]
+    if: always()
+    runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every target to pass
+        env:
+          VERSIONS_RESULT: ${{ needs.versions.result }}
+          RESULT: ${{ needs.build-and-test.result }}
+        run: |
+          echo "The versions' result: $VERSIONS_RESULT; the targets' result: $RESULT"
+          test "$VERSIONS_RESULT" = success
+          test "$RESULT" = success
