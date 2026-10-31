@@ -1,0 +1,21 @@
+# @license
+# Copyright (c) Noldova.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  issues: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: Check
+    uses: noldova-com/.github/.github/workflows/linked-issue.yml@6e2ab8efb06aff6f0fdb9c4ac91c623c74359c30 # v1.0.0
