@@ -77,7 +77,7 @@ export class ArchiveStep implements IStep {
     return new ArchiveCheck(StepResult.succeeded(checked.join(Resources.lineSeparator)), archives);
   }
 
-  private async readPackageNamesAsync(commit: string): Promise<readonly string[]> {
+  public async readPackageNamesAsync(commit: string): Promise<readonly string[]> {
     const packageNames: string[] = [];
     for (const filePath of await this.git.listFilesAsync(commit, Resources.packagesFolderPath)) {
       const segments = filePath.split(Resources.pathSeparator);

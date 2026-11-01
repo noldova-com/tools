@@ -16,7 +16,7 @@ import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
 import type { ArchiveStep } from "./archive-step.js";
-import type { Npm } from "./npm.js";
+import { Npm } from "./npm.js";
 
 export class PublishStep implements IStep {
   private readonly archiveStep: ArchiveStep;
@@ -38,7 +38,7 @@ export class PublishStep implements IStep {
     const [folder, version, commit, scope, registry, access, ...rest] = values;
     if (folder === undefined || version === undefined || commit === undefined || scope === undefined || registry === undefined || access === undefined || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
-    if (!PublishStep.isRegistry(registry))
+    if (!Npm.isRegistry(registry))
       return StepResult.failed(Resources.formatRegistryInvalid());
     if (!Resources.accessLevels.includes(access))
       return StepResult.failed(Resources.formatAccessInvalid(access));
@@ -54,7 +54,7 @@ export class PublishStep implements IStep {
     const pending: PackageArchive[] = [];
     for (const archive of check.archives) {
       const specifier = Resources.formatSpecifier(archive.packageName, version);
-      const published = await this.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
+      const published = await this.npm.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
       if (published instanceof StepResult)
         findings.push(published.message);
       else if (published === PublishStep.readIntegrity(archive.filePath))
@@ -109,7 +109,7 @@ export class PublishStep implements IStep {
   }
 
   private async checkNewerThanTagAsync(packageName: string, version: string, tag: string, registry: string): Promise<string | null> {
-    const tagged = await this.readFieldOrEmptyAsync(packageName, Resources.formatDistTagField(tag), registry);
+    const tagged = await this.npm.readFieldOrEmptyAsync(packageName, Resources.formatDistTagField(tag), registry);
     if (tagged instanceof StepResult)
       return tagged.message;
     if (tagged.length === 0)
@@ -122,35 +122,16 @@ export class PublishStep implements IStep {
 
   private async waitUntilServedAsync(archive: PackageArchive, version: string, registry: string, deadline: number): Promise<string | null> {
     const specifier = Resources.formatSpecifier(archive.packageName, version);
-    let served = await this.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
+    let served = await this.npm.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
     while ((served instanceof StepResult || served.length === 0) && performance.now() < deadline) {
       await delayAsync(this.retryMilliseconds);
-      served = await this.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
+      served = await this.npm.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
     }
 
     if (served instanceof StepResult || served.length === 0)
       return Resources.formatNotServed(specifier, this.waitMilliseconds);
 
     return served === PublishStep.readIntegrity(archive.filePath) ? null : Resources.formatPublishedOtherwise(specifier);
-  }
-
-  private async readFieldOrEmptyAsync(specifier: string, field: string, registry: string): Promise<string | StepResult> {
-    const result = await this.npm.viewAsync(specifier, field, registry);
-    if (result.isSuccessful)
-      return result.output.trim();
-    if (result.output.includes(Resources.npmNotFoundCode) || result.errorOutput.includes(Resources.npmNotFoundCode))
-      return "";
-
-    return StepResult.failed(Resources.formatNpmFailed(specifier, Resources.npmViewValues, result.exitCode, result.errorOutput));
-  }
-
-  private static isRegistry(text: string): boolean {
-    if (!URL.canParse(text))
-      return false;
-
-    const url = new URL(text);
-
-    return url.protocol === Resources.registryProtocol && url.username.length === 0 && url.password.length === 0 && url.search.length === 0 && url.hash.length === 0;
   }
 
   private static readIntegrity(archivePath: string): string {

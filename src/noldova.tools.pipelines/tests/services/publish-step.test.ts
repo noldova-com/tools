@@ -13,37 +13,11 @@ import path from "node:path";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { ArchiveStep, Git, Npm, ProcessResult, ProcessRunner, PublishStep, Tar } from "@noldova/tools.pipelines";
 
+import { FakeNpm } from "./fake-npm.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
-
-class FakeNpm extends Npm {
-  public readonly calls: string[] = [];
-  private readonly views: Map<string, ProcessResult[]>;
-  private readonly publishes: ReadonlyMap<string, ProcessResult>;
-
-  public constructor(views: Readonly<Record<string, readonly ProcessResult[]>>, publishes: Readonly<Record<string, ProcessResult>> = {}) {
-    super(new ProcessRunner(), ".");
-
-    this.views = new Map(Object.entries(views).map(([key, results]) => [key, [...results]]));
-    this.publishes = new Map(Object.entries(publishes));
-  }
-
-  public override async viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult> {
-    this.calls.push(`view ${specifier} ${field} ${registry}`);
-    const results = this.views.get(`${specifier} ${field}`) ?? [PublishStepTests.NOT_FOUND];
-
-    return (results.length > 1 ? results.shift() : results[0]) ?? PublishStepTests.NOT_FOUND;
-  }
-
-  public override async publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult> {
-    this.calls.push(`publish ${path.basename(archivePath)} ${tag} ${access} ${registry}`);
-
-    return this.publishes.get(path.basename(archivePath)) ?? new ProcessResult(0, "", "");
-  }
-}
 
 @TestClass
 export class PublishStepTests {
-  public static readonly NOT_FOUND: ProcessResult = new ProcessResult(1, "", "npm error code E404\nnpm error 404 Not Found - GET https://registry.example/@noldova%2fa - Not found\n");
   private static readonly REGISTRY: string = "https://registry.example/";
   private static readonly NIGHTLY: string = "0.0.5-nightly.20261101";
   private static readonly COMMIT: string = "0000000000000000000000000000000000000000";
@@ -121,9 +95,9 @@ export class PublishStepTests {
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository);
     const npm = new FakeNpm({
-      "@noldova/a@0.0.4 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))],
-      "@noldova/b@0.0.4 dist.integrity": [PublishStepTests.found(""), PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.4.tgz"))],
-      "@noldova/b dist-tags.latest": [PublishStepTests.found("0.0.3\n")]
+      "@noldova/a@0.0.4 dist.integrity": [FakeNpm.NOT_FOUND, FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))],
+      "@noldova/b@0.0.4 dist.integrity": [FakeNpm.found(""), FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.4.tgz"))],
+      "@noldova/b dist-tags.latest": [FakeNpm.found("0.0.3\n")]
     });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
@@ -150,8 +124,8 @@ export class PublishStepTests {
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository);
     const npm = new FakeNpm({
-      "@noldova/a@0.0.4 dist.integrity": [PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))],
-      "@noldova/b@0.0.4 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.4.tgz"))],
+      "@noldova/a@0.0.4 dist.integrity": [FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))],
+      "@noldova/b@0.0.4 dist.integrity": [FakeNpm.NOT_FOUND, FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.4.tgz"))],
       "@noldova/b dist-tags.latest": [new ProcessResult(1, "npm error code E404", "")]
     });
 
@@ -171,8 +145,8 @@ export class PublishStepTests {
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository);
     const npm = new FakeNpm({
-      "@noldova/a@0.0.4 dist.integrity": [PublishStepTests.found("sha512-another")],
-      "@noldova/b dist-tags.latest": [PublishStepTests.found(latest)]
+      "@noldova/a@0.0.4 dist.integrity": [FakeNpm.found("sha512-another")],
+      "@noldova/b dist-tags.latest": [FakeNpm.found(latest)]
     });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
@@ -188,10 +162,10 @@ export class PublishStepTests {
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository, PublishStepTests.NIGHTLY);
     const npm = new FakeNpm({
-      "@noldova/a@0.0.5-nightly.20261101 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.5-nightly.20261101.tgz"))],
-      "@noldova/b@0.0.5-nightly.20261101 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.5-nightly.20261101.tgz"))],
-      "@noldova/a dist-tags.latest": [PublishStepTests.found("0.0.4\n")],
-      "@noldova/a dist-tags.nightly": [PublishStepTests.found("0.0.5-nightly.20261031\n")]
+      "@noldova/a@0.0.5-nightly.20261101 dist.integrity": [FakeNpm.NOT_FOUND, FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.5-nightly.20261101.tgz"))],
+      "@noldova/b@0.0.5-nightly.20261101 dist.integrity": [FakeNpm.NOT_FOUND, FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.5-nightly.20261101.tgz"))],
+      "@noldova/a dist-tags.latest": [FakeNpm.found("0.0.4\n")],
+      "@noldova/a dist-tags.nightly": [FakeNpm.found("0.0.5-nightly.20261031\n")]
     });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, PublishStepTests.NIGHTLY, commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
@@ -218,7 +192,7 @@ export class PublishStepTests {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository, PublishStepTests.NIGHTLY);
-    const npm = new FakeNpm({ [`@noldova/b dist-tags.${tag}`]: [PublishStepTests.found(tagged)] });
+    const npm = new FakeNpm({ [`@noldova/b dist-tags.${tag}`]: [FakeNpm.found(tagged)] });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, PublishStepTests.NIGHTLY, commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
 
@@ -253,7 +227,7 @@ export class PublishStepTests {
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository);
     const npm = new FakeNpm(
-      { "@noldova/a@0.0.4 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))] },
+      { "@noldova/a@0.0.4 dist.integrity": [FakeNpm.NOT_FOUND, FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))] },
       { "noldova-b-0.0.4.tgz": new ProcessResult(1, "", "npm error code E403\nnpm error 403 Forbidden - PUT https://registry.example/@noldova%2fb\n") });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
@@ -285,12 +259,12 @@ export class PublishStepTests {
     const folder = PublishStepTests.packArchives(repository);
     const npm = new FakeNpm({
       "@noldova/a@0.0.4 dist.integrity": [
-        PublishStepTests.NOT_FOUND,
-        PublishStepTests.NOT_FOUND,
+        FakeNpm.NOT_FOUND,
+        FakeNpm.NOT_FOUND,
         new ProcessResult(1, "", "npm error code ETIMEDOUT\n"),
-        PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))
+        FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.4.tgz"))
       ],
-      "@noldova/b@0.0.4 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.4.tgz"))]
+      "@noldova/b@0.0.4 dist.integrity": [FakeNpm.NOT_FOUND, FakeNpm.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.4.tgz"))]
     });
 
     const result = await PublishStepTests.createStep(repository.directory, npm, 60_000).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
@@ -304,7 +278,7 @@ export class PublishStepTests {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository);
-    const npm = new FakeNpm({ "@noldova/b@0.0.4 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found("sha512-another")] });
+    const npm = new FakeNpm({ "@noldova/b@0.0.4 dist.integrity": [FakeNpm.NOT_FOUND, FakeNpm.found("sha512-another")] });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
 
@@ -333,9 +307,5 @@ export class PublishStepTests {
 
   private static integrityOf(folder: string, archiveName: string): string {
     return `sha512-${crypto.createHash("sha512").update(fs.readFileSync(path.join(folder, archiveName))).digest("base64")}\n`;
-  }
-
-  private static found(output: string): ProcessResult {
-    return new ProcessResult(0, output, "");
   }
 }

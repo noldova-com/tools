@@ -792,6 +792,31 @@ export declare class Npm {
   public viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult>;
 
   /**
+   * Reads a field of a package or a version from the registry, as
+   * {@link Npm.viewAsync} does, and gives its value.
+   *
+   * @param specifier The package, such as `@noldova/tools.pipelines`, or one
+   * of its versions, such as `@noldova/tools.pipelines@0.0.4`.
+   * @param field The field, such as `gitHead` or `dist-tags.nightly`.
+   * @param registry The registry's URL.
+   * @returns A promise of the field's value without surrounding white space,
+   * empty when the registry has no such package, version or field, or of a
+   * failed {@link StepResult} with one line, such as
+   * `@noldova/tools.pipelines: npm view exited with code 1: …`, when `npm`
+   * fails otherwise. It rejects with {@link ProcessException} if `npm`
+   * cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const npm = new Npm(new ProcessRunner(), process.cwd());
+   * const latest = await npm.readFieldOrEmptyAsync("@noldova/tools.pipelines", "dist-tags.latest", "https://registry.npmjs.org/");
+   * latest; // "0.0.4" once 0.0.4 is the latest version
+   * ```
+   */
+  public readFieldOrEmptyAsync(specifier: string, field: string, registry: string): Promise<string | StepResult>;
+
+  /**
    * Publishes an archive to the registry under a dist-tag.
    *
    * @param archivePath The archive's path, relative to the current folder or
@@ -811,6 +836,22 @@ export declare class Npm {
    * ```
    */
   public publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult>;
+
+  /**
+   * Tells whether a text is a registry the steps take: an `https` URL
+   * without credentials, a query or a fragment.
+   *
+   * @param text The text, such as a step's value.
+   * @returns `true` when the text is such a URL.
+   * @example
+   * ```ts
+   * import { Npm } from "@noldova/tools.pipelines";
+   *
+   * Npm.isRegistry("https://registry.npmjs.org/"); // true
+   * Npm.isRegistry("https://registry.npmjs.org/?token=x"); // false
+   * ```
+   */
+  public static isRegistry(text: string): boolean;
 }
 
 /**
@@ -971,6 +1012,27 @@ export declare class ArchiveStep implements IStep {
    * ```
    */
   public checkAsync(values: readonly string[]): Promise<ArchiveCheck>;
+
+  /**
+   * Reads the names of the packages the step expects at a commit: those of
+   * its `package.json` files under `src/`, outside `tests/` folders, that are
+   * not `"private": true`.
+   *
+   * @param commit The commit's full id.
+   * @returns A promise of the names, sorted, and empty when there is none. It
+   * rejects with `JsonException` and {@link ProcessException} as
+   * {@link ArchiveStep.runAsync} does.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const names = await step.readPackageNamesAsync("225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8");
+   * names; // ["@noldova/tools.pipelines"]
+   * ```
+   */
+  public readPackageNamesAsync(commit: string): Promise<readonly string[]>;
 }
 
 /**
@@ -1048,6 +1110,80 @@ export declare class PublishStep implements IStep {
    * const step = new PublishStep(archiveStep, new Npm(processRunner, process.cwd()));
    * const result = await step.runAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://registry.npmjs.org/", "public"]);
    * result.isSuccessful; // true when every package's 0.0.4 is published and served
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that works out a nightly build's version: `nightly <commit> <registry>`.
+ * It prints the version when `main` has changed since the packages' last
+ * nightly versions, and nothing otherwise, so a pipeline publishes a nightly
+ * build only when there is something new.
+ */
+export declare class NightlyStep implements IStep {
+  /**
+   * The step's name, `"nightly"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<commit> <registry>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param git The reader of the clone that holds the commit.
+   * @param archiveStep The step whose expected packages the step looks up.
+   * @param npm The runner of `npm`, which reads the registry.
+   * @param readNow The clock the step takes the date from; the current time
+   * by default.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, NightlyStep, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const git = new Git(processRunner, process.cwd());
+   * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
+   * step.name; // "nightly"
+   * ```
+   */
+  public constructor(git: Git, archiveStep: ArchiveStep, npm: Npm, readNow?: () => Date);
+
+  /**
+   * Works out the nightly version.
+   *
+   * @param values The commit's full id, 40 lowercase hexadecimal digits, and
+   * the registry, an `https` URL without credentials, a query or a fragment,
+   * such as `https://registry.npmjs.org/`.
+   * @returns A promise of the result. It succeeds with the version alone,
+   * the release in `version.json` at the commit with one more patch and the
+   * UTC date, such as `0.0.5-nightly.20261102` for `0.0.4` on November 2,
+   * 2026. It succeeds with an empty message when the last nightly version of
+   * every package the archive step expects has the commit as its `gitHead`,
+   * or is from the same UTC date. It fails with the first of these that is
+   * wrong: not two values, a commit that is not a full id, a registry that is
+   * not one, a commit the clone does not hold, a clone without `origin/main`,
+   * a commit not on it, a commit without `version.json`, a `version` that is
+   * not a release version, and a commit without a package to publish.
+   * Otherwise it fails with one line for each read of the registry that
+   * fails, with `npm`'s exit code and message, and for each `nightly`
+   * dist-tag that is not a version, or with one line naming the packages
+   * whose last nightly version is from the same UTC date when only some are.
+   * It rejects with `JsonException`, from `@noldova/context.json`, if
+   * `version.json` is not a JSON object with a `version` text, and as
+   * {@link ArchiveStep.readPackageNamesAsync} does.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, NightlyStep, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const git = new Git(processRunner, process.cwd());
+   * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
+   * const result = await step.runAsync(["225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "https://registry.npmjs.org/"]);
+   * result.message; // "0.0.5-nightly.20261102", or "" when nothing changed
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;
