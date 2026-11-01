@@ -13,6 +13,20 @@ import { ArchiveStep, Git, NightlyStep, ProcessResult, ProcessRunner, Tar } from
 import { FakeNpm } from "./fake-npm.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 
+class UtcOnlyDate extends Date {
+  public override getFullYear(): number {
+    throw new Error("The local year was read.");
+  }
+
+  public override getMonth(): number {
+    throw new Error("The local month was read.");
+  }
+
+  public override getDate(): number {
+    throw new Error("The local day was read.");
+  }
+}
+
 @TestClass
 export class NightlyStepTests {
   private static readonly REGISTRY: string = "https://registry.example/";
@@ -118,6 +132,17 @@ export class NightlyStepTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(expected, result.message);
+  }
+
+  @TestMethod
+  public async readsTheDateWithoutTheLocalTimeAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = NightlyStepTests.commitOnMain(repository, NightlyStepTests.FILES);
+
+    const result = await NightlyStepTests.createStep(repository.directory, new FakeNpm({}), new UtcOnlyDate("2026-11-02T23:59:59Z")).runAsync([commit, NightlyStepTests.REGISTRY]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("0.0.5-nightly.20261102", result.message);
   }
 
   @TestMethod
