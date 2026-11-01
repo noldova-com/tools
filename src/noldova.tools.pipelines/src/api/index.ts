@@ -19,6 +19,7 @@ export { Version } from "../models/version.js";
 export { ArchiveStep } from "../services/archive-step.js";
 export { CommandLine } from "../services/command-line.js";
 export { Git } from "../services/git.js";
+export { NightlyStep } from "../services/nightly-step.js";
 export { Npm } from "../services/npm.js";
 export { ProcessRunner } from "../services/process-runner.js";
 export { PublishStep } from "../services/publish-step.js";

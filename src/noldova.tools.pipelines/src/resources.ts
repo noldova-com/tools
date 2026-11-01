@@ -18,6 +18,7 @@ export class Resources {
   public static readonly failureExitCode: number = 1;
   public static readonly gitFileSeparator: string = "\0";
   public static readonly gitFileType: string = "blob";
+  public static readonly gitHeadField: string = "gitHead";
   public static readonly gitHeadRevision: string = "HEAD^{commit}";
   public static readonly gitIsAncestorValues: readonly string[] = ["merge-base", "--is-ancestor", "--end-of-options"];
   public static readonly gitListFilesValues: readonly string[] = ["ls-tree", "-r", "-z", "--name-only", "--full-tree", "--end-of-options"];
@@ -38,10 +39,11 @@ export class Resources {
   public static readonly manifestFileName: string = "package.json";
   public static readonly messagePartSeparator: string = "; ";
   public static readonly minorPartName: string = "minor";
-  public static readonly gitHeadField: string = "gitHead";
   public static readonly nameField: string = "name";
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
   public static readonly nightlySeparator: string = "-nightly.";
+  public static readonly nightlyStepName: string = "nightly";
+  public static readonly nightlyStepUsage: string = "<commit> <registry>";
   public static readonly nightlyTag: string = "nightly";
   public static readonly npmAccessValues: readonly string[] = ["--access"];
   public static readonly npmIntegrityField: string = "dist.integrity";
@@ -126,6 +128,10 @@ export class Resources {
 
   public static formatVersionDiffers(commit: string, filePath: string, found: string, expected: string): string {
     return `${filePath} at commit ${commit} holds ${found}, not ${expected}.`;
+  }
+
+  public static formatVersionNotRelease(commit: string, filePath: string, found: string): string {
+    return `${filePath} at commit ${commit} holds ${found}, not a release version.`;
   }
 
   public static formatSourceChecked(commit: string, branch: string, filePath: string, version: string): string {
@@ -242,6 +248,14 @@ export class Resources {
 
   public static formatPublished(specifier: string): string {
     return `${specifier} published.`;
+  }
+
+  public static formatNightlyDate(date: Date): string {
+    return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  public static formatNightlyPartlyPublished(specifiers: readonly string[], date: string): string {
+    return `Only some packages' last nightly is from ${date}, UTC, so the publish step would refuse a new one for them: ${specifiers.join(", ")}.`;
   }
 
   public static formatGitCommitRevision(revision: string): string {
