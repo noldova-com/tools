@@ -17,6 +17,7 @@
     "@noldova/context.json": "0.0.3",
     "@noldova/context.testing": "0.0.3",
     "@types/node": "24.19.2",
+    "tools.pipelines.published": "npm:@noldova/tools.pipelines@0.0.1",
     "typescript": "7.0.2"
   }
 }

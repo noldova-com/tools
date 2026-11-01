@@ -163,6 +163,20 @@ jobs:
       - name: Build the packages
         run: npm run build
 
+      - name: Check that the build refuses a version that isn't one
+        run: |
+          if output="$(npm run build -- --version 01.0.0 2>&1)"; then
+            printf '%s\n' "$output"
+            echo '::error::npm run build -- --version 01.0.0 must fail.'
+            exit 1
+          fi
+          printf '%s\n' "$output"
+          if [[ "$output" != *'"01.0.0" is not a version'* ]]; then
+            echo "::error::npm run build -- --version 01.0.0 must fail with the published Version's message."
+            exit 1
+          fi
+          echo "The build refused --version 01.0.0 with the published Version's message."
+
       - name: Test the packages
         run: npm run test -- --skip-test-details --skip-coverage-details
 
