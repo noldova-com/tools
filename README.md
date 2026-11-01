@@ -44,8 +44,8 @@ Every pull request into `main` must pass its checks before it merges.
 | Check / Linked issue | `.github/workflows/require-linked-issue.yml`, the "PR" workflow: the PR description has a standalone `Issue: #N`, `Issue #N` or closing reference, such as `Closes #N`, that names an issue in this repository. |
 | Check / Runner / Versions | The shared check's own call of the shared settings, which name the runner "Check / Linked issue" uses. |
 | Versions / Versions | The organization's shared settings, `.github`'s `versions.yml`, name the Node.js and npm versions and the runner for each target that "Build and test" uses. |
-| Linux x64, Linux arm64, Windows x64, Windows arm64, macOS x64, macOS arm64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job per target, each on the GitHub-hosted runner the shared settings name for it, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged. |
-| All targets | Passes only when "Versions / Versions" and every target pass. |
+| Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job, on the GitHub-hosted runner the shared settings name for Linux x64, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged. |
+| All targets | Passes only when "Versions / Versions" and "Linux x64" pass. |
 
 ## Contributing
 

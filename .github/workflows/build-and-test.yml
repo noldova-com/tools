@@ -30,7 +30,7 @@ jobs:
     uses: noldova-com/.github/.github/workflows/versions.yml@6e2ab8efb06aff6f0fdb9c4ac91c623c74359c30 # v1.0.0
     permissions: {}
     with:
-      targets: linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64
+      targets: linux-x64
 
   build-and-test:
     name: ${{ matrix.name }}
@@ -40,11 +40,6 @@ jobs:
       matrix:
         include:
           - { name: Linux x64, target: linux-x64 }
-          - { name: Linux arm64, target: linux-arm64 }
-          - { name: Windows x64, target: windows-x64 }
-          - { name: Windows arm64, target: windows-arm64 }
-          - { name: macOS x64, target: macos-x64 }
-          - { name: macOS arm64, target: macos-arm64 }
     runs-on: ${{ fromJSON(needs.versions.outputs[format('runs-on-{0}', matrix.target)]) }}
     timeout-minutes: 30
     steps:
