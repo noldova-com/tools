@@ -1,0 +1,21 @@
+{
+  "name": "@noldova/tools.pipelines",
+  "version": "__VERSION__",
+  "type": "module",
+  "main": "api/index.js",
+  "types": "api/index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noldova-com/tools.git",
+    "directory": "src/noldova.tools.pipelines"
+  },
+  "homepage": "https://github.com/noldova-com/tools#readme",
+  "bugs": {
+    "url": "https://github.com/noldova-com/tools/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
