@@ -51,19 +51,27 @@ Every pull request into `main` must pass its checks before it merges.
 | Check / Linked issue | `.github/workflows/require-linked-issue.yml`, the "PR" workflow: the PR description has a standalone `Issue: #N`, `Issue #N` or closing reference, such as `Closes #N`, that names an issue in this repository. |
 | Check / Runner / Versions | The shared check's own call of the shared settings, which name the runner "Check / Linked issue" uses. |
 | Versions / Versions | The organization's shared settings, `.github`'s `versions.yml`, name the Node.js and npm versions and the runner for each target that "Build and test" uses. |
-| Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job, on the GitHub-hosted runner the shared settings name for Linux x64, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged. |
+| Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job, on the GitHub-hosted runner the shared settings name for Linux x64, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged; a second build of the same commit, in another folder, packs byte-identical archives. |
 | All targets | Passes only when "Versions / Versions" and "Linux x64" pass. |
 
 ## Releases
 
-A maintainer releases both packages with the "Release" workflow, `.github/workflows/release.yml`, started by hand from `main` with the version, which `version.json` holds at the commit, and the full id of the commit on `main`.
-It runs only from `main`, on GitHub-hosted runners, with the tool built from the commit itself:
+A maintainer releases both packages with the "Release" workflow, `.github/workflows/release.yml`, started from `main` with the version, which `version.json` holds at the commit, and the full id of the commit on `main`: in the repository's Actions tab, choose "Release", then "Run workflow" on `main`, or run
+
+```bash
+gh workflow run release.yml --ref main -f version=<version> -f commit=<full commit id>
+```
+
+It runs only from `main`, on GitHub-hosted runners, with the tool built from the commit itself, and takes the registry, the scope and the access from the shared versions workflow:
 
 | Job | What it does |
 |---|---|
 | Check and build | With read access only: checks that the commit is on `main`, builds the packages, checks the source with `pipelines source` and the archives with `pipelines archive`, and keeps the archives for the next jobs. |
-| Publish to npm | Waits in the `release` environment, which npm's trusted publishing names, for a reviewer's approval; then installs the tool from the checked archives and publishes them with `pipelines publish` to `https://registry.npmjs.org/`, public, with provenance; a version the registry already holds from the same archive is skipped, so rerunning the failed jobs publishes nothing twice. |
+| Publish to npm | Waits in the `release` environment, which npm's trusted publishing names, for a reviewer's approval; then installs the tool from the checked archives and publishes them with `pipelines publish` to npm's registry, public, with provenance. |
 | Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag`, and passes when the tag is already there. |
+
+A rerun never publishes a version twice: the publish step skips a version the registry already holds from the same archive, and fails when it holds a different one.
+"Re-run failed jobs" publishes the archives the first attempt checked. "Re-run all jobs" builds and packs the commit again, and the "Build and test" workflow checks that a second build of a commit packs byte-identical archives, so a rerun of a release that was published passes without publishing anything.
 
 ## Contributing
 
