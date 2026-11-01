@@ -6,7 +6,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import type { BinaryToTextEncoding } from "node:crypto";
+
 export class Resources {
+  public static readonly accessLevels: readonly string[] = ["public", "restricted"];
   public static readonly archiveManifestPath: string = "package/package.json";
   public static readonly archiveStepName: string = "archive";
   public static readonly archiveStepUsage: string = "<folder> <version> <commit> <scope>";
@@ -24,6 +27,8 @@ export class Resources {
   public static readonly gitReadHeadValues: readonly string[] = ["rev-parse", "--verify", "--end-of-options"];
   public static readonly gitReadTypeValues: readonly string[] = ["cat-file", "-t", "--end-of-options"];
   public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet", "--end-of-options"];
+  public static readonly integrityAlgorithm: string = "sha512";
+  public static readonly integrityEncoding: BinaryToTextEncoding = "base64";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly lineSeparator: string = "\n";
   public static readonly mainBranch: string = "origin/main";
@@ -35,11 +40,25 @@ export class Resources {
   public static readonly nameField: string = "name";
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
   public static readonly nightlySeparator: string = "-nightly.";
+  public static readonly npmAccessValues: readonly string[] = ["--access"];
+  public static readonly npmIntegrityField: string = "dist.integrity";
+  public static readonly npmLatestField: string = "dist-tags.latest";
+  public static readonly npmNotFoundCode: string = "E404";
+  public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
+  public static readonly npmProgram: string = "npm";
+  public static readonly npmPublishValues: readonly string[] = ["publish"];
+  public static readonly npmRegistryValues: readonly string[] = ["--registry"];
+  public static readonly npmViewValues: readonly string[] = ["view"];
   public static readonly packagesFolderPath: string = "src";
   public static readonly patchPartName: string = "patch";
   public static readonly pathSeparator: string = "/";
   public static readonly privateField: string = "private";
   public static readonly processReleaseDelayMilliseconds: number = 0;
+  public static readonly publishRetryMilliseconds: number = 10_000;
+  public static readonly publishStepName: string = "publish";
+  public static readonly publishStepUsage: string = "<folder> <version> <commit> <scope> <registry> <access>";
+  public static readonly publishWaitMilliseconds: number = 600_000;
+  public static readonly registryProtocol: string = "https:";
   public static readonly scopePattern: RegExp = /^@[a-z0-9][a-z0-9._~-]*$/;
   public static readonly sourceStepName: string = "source";
   public static readonly sourceStepUsage: string = "<version> <commit>";
@@ -48,6 +67,7 @@ export class Resources {
   public static readonly tarReadFileValues: readonly string[] = ["-xzOf"];
   public static readonly testsFolderName: string = "tests";
   public static readonly textEncoding: BufferEncoding = "utf8";
+  public static readonly urlCredentialsPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
   public static readonly usageSeparator: string = " | ";
   public static readonly valueSeparator: string = " ";
   public static readonly versionField: string = "version";
@@ -141,10 +161,7 @@ export class Resources {
   }
 
   public static formatArchiveUnreadable(archiveName: string, filePath: string, exitCode: number | null, errorOutput: string): string {
-    const detail = errorOutput.split(Resources.lineBreakPattern).map(t => t.trim()).filter(t => t.length > 0).join(Resources.messagePartSeparator);
-    const failure = `${archiveName}: ${Resources.tarProgram} could not read its ${filePath} and exited with code ${exitCode}`;
-
-    return detail.length === 0 ? `${failure}.` : `${failure}: ${detail}`;
+    return Resources.formatFailureLine(`${archiveName}: ${Resources.tarProgram} could not read its ${filePath} and exited with code ${exitCode}`, errorOutput);
   }
 
   public static formatFieldDiffers(archiveName: string, field: string, found: string, expected: string): string {
@@ -171,6 +188,50 @@ export class Resources {
     return `${scope}/`;
   }
 
+  public static formatRegistryInvalid(text: string): string {
+    return `"${Resources.removeCredentials(text)}" is not a registry: a registry is an https URL without credentials, such as https://registry.npmjs.org/.`;
+  }
+
+  public static formatAccessInvalid(text: string): string {
+    return `"${text}" is not an access: the access is ${Resources.accessLevels.join(" or ")}.`;
+  }
+
+  public static formatSpecifier(packageName: string, version: string): string {
+    return `${packageName}@${version}`;
+  }
+
+  public static formatIntegrity(algorithm: string, hash: string): string {
+    return `${algorithm}-${hash}`;
+  }
+
+  public static formatAlreadyPublished(specifier: string): string {
+    return `${specifier} is already published from this archive.`;
+  }
+
+  public static formatPublishedOtherwise(specifier: string): string {
+    return `${specifier} is already published from another archive.`;
+  }
+
+  public static formatLatestInvalid(packageName: string, latest: string): string {
+    return `${packageName}'s latest version, ${latest}, is not a version.`;
+  }
+
+  public static formatNotNewer(specifier: string, latest: string): string {
+    return `${specifier} is not newer than ${latest}, the package's latest version.`;
+  }
+
+  public static formatNpmFailed(specifier: string, commandValues: readonly string[], exitCode: number | null, errorOutput: string): string {
+    return Resources.formatFailureLine(`${specifier}: ${Resources.npmProgram} ${commandValues.join(Resources.valueSeparator)} exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatNotServed(specifier: string, waitMilliseconds: number): string {
+    return `${specifier} was published, but the registry did not serve it within ${waitMilliseconds / 1_000} seconds.`;
+  }
+
+  public static formatPublished(specifier: string): string {
+    return `${specifier} published.`;
+  }
+
   public static formatGitCommitRevision(revision: string): string {
     return `${revision}^{commit}`;
   }
@@ -191,5 +252,15 @@ export class Resources {
     const detail = errorOutput.trim();
 
     return detail.length === 0 ? `"${command}" failed with exit code ${exitCode}.` : `"${command}" failed with exit code ${exitCode}: ${detail}`;
+  }
+
+  private static formatFailureLine(failure: string, errorOutput: string): string {
+    const detail = errorOutput.split(Resources.lineBreakPattern).map(t => t.trim()).filter(t => t.length > 0).join(Resources.messagePartSeparator);
+
+    return detail.length === 0 ? `${failure}.` : `${failure}: ${Resources.removeCredentials(detail)}`;
+  }
+
+  private static removeCredentials(text: string): string {
+    return text.replace(Resources.urlCredentialsPattern, "$1");
   }
 }
