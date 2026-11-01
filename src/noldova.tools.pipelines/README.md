@@ -95,8 +95,9 @@ A `package.json`, in an archive or under `src/`, makes the step throw `JsonExcep
 
 ### The publish step
 
-`publish <folder> <version> <commit> <scope> <registry> <access>` publishes the archives the archive step checks, with the `npm` program, which must be on the `PATH`.
-The registry is an `https` URL without credentials, such as `https://registry.npmjs.org/`, and the access is `public` or `restricted`.
+`publish <folder> <version> <commit> <scope> <registry> <access>` publishes the archives the archive step checks, with the `npm` program, which must be on the `PATH` as an executable, as it is on Linux and macOS.
+The registry is an `https` URL without credentials, a query or a fragment, such as `https://registry.npmjs.org/`, and the access is `public` or `restricted`.
+A release is published under the `latest` dist-tag, and a nightly version under `nightly`.
 The step passes no token: `npm` takes its credentials from its own configuration, such as the environment a pipeline sets up.
 
 ```ts
@@ -115,12 +116,12 @@ process.exitCode = await commandLine.runAsync(["publish", "archives", "0.0.4", "
 The step:
 
 1. runs the archive step's checks, and fails with their message when they fail;
-2. asks the registry about each package, and fails, publishing nothing, with one line for each version it already has from another archive and each version that isn't newer than the package's `latest`; a version it already has from the same archive is skipped;
+2. asks the registry about each package, and fails, publishing nothing, with one line for each version it already has from another archive and each version that isn't newer than the version the package's tag points to; a version it already has from the same archive is skipped;
 3. publishes the rest in turn, and stops at the first publish that fails;
 4. waits until the registry serves each version it published with the same archive, up to 10 minutes, asking every 10 seconds, also after a failed publish, so a rerun skips the versions already published.
 
 It succeeds with one line for each package, such as `@noldova/tools.pipelines@0.0.4 published.`, and otherwise fails with one line for each problem.
-A failed `npm` call is one of those lines, with `npm`'s exit code and message, and without the credentials of any URL in it; `npm` failing to start throws `ProcessException`.
+A failed `npm` call is one of those lines, with `npm`'s exit code and message, and without the credentials, query or fragment of any URL in it; `npm` failing to start throws `ProcessException`.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 

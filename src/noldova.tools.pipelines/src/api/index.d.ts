@@ -792,9 +792,11 @@ export declare class Npm {
   public viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult>;
 
   /**
-   * Publishes an archive to the registry.
+   * Publishes an archive to the registry under a dist-tag.
    *
-   * @param archivePath The archive's path.
+   * @param archivePath The archive's path, relative to the current folder or
+   * full.
+   * @param tag The dist-tag the version gets, such as `latest` or `nightly`.
    * @param access `public` or `restricted`.
    * @param registry The registry's URL.
    * @returns A promise of how `npm publish` ended. It rejects with
@@ -804,11 +806,11 @@ export declare class Npm {
    * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
    *
    * const npm = new Npm(new ProcessRunner(), process.cwd());
-   * const result = await npm.publishAsync("archives/noldova-tools.pipelines-0.0.4.tgz", "public", "https://registry.npmjs.org/");
+   * const result = await npm.publishAsync("archives/noldova-tools.pipelines-0.0.4.tgz", "latest", "public", "https://registry.npmjs.org/");
    * result.isSuccessful; // true when the registry took the archive
    * ```
    */
-  public publishAsync(archivePath: string, access: string, registry: string): Promise<ProcessResult>;
+  public publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult>;
 }
 
 /**
@@ -1015,8 +1017,10 @@ export declare class PublishStep implements IStep {
    * Publishes the release's archives.
    *
    * @param values The archive step's four values, then the registry, an
-   * `https` URL without credentials such as `https://registry.npmjs.org/`,
-   * and the access, `public` or `restricted`.
+   * `https` URL without credentials, a query or a fragment, such as
+   * `https://registry.npmjs.org/`, and the access, `public` or `restricted`.
+   * A release is published under the `latest` dist-tag, and a nightly
+   * version under `nightly`.
    * @returns A promise of the result. It succeeds with one line for each
    * package, such as `@noldova/tools.pipelines@0.0.4 published.` or
    * `@noldova/tools.pipelines@0.0.4 is already published from this archive.`
@@ -1024,14 +1028,15 @@ export declare class PublishStep implements IStep {
    * six values, a registry or an access that is not one, or the archive
    * step's failure. Otherwise, before it publishes anything, it fails with
    * one line for each version the registry already has from another
-   * archive, each version not newer than its package's latest, and each
+   * archive, each version not newer than the version its package's tag
+   * points to, and each
    * read of the registry that fails, with `npm`'s exit code and message.
    * After that, it publishes the archives in turn and stops at the first
    * publish that fails; it still waits for the versions it published before
    * it, and fails with a line for that publish, with `npm`'s exit code and
    * message, and for each version the registry does not serve in time or
-   * serves from another archive. A URL's credentials in `npm`'s message are
-   * left out of the line. It rejects as {@link ArchiveStep.runAsync} does,
+   * serves from another archive. A URL's credentials, query and fragment in
+   * `npm`'s message are left out of the line. It rejects as {@link ArchiveStep.runAsync} does,
    * and with {@link ProcessException} if `npm` cannot start.
    * @example
    * ```ts

@@ -47,6 +47,7 @@ export class PublishStep implements IStep {
     if (!check.result.isSuccessful)
       return check.result;
 
+    const tag = Version.parse(version).nightlyDate === null ? Resources.latestTag : Resources.nightlyTag;
     const reports: string[] = [];
     const findings: string[] = [];
     const pending: PackageArchive[] = [];
@@ -60,7 +61,7 @@ export class PublishStep implements IStep {
       else if (published.length > 0)
         findings.push(Resources.formatPublishedOtherwise(specifier));
       else {
-        const finding = await this.checkNewerAsync(archive.packageName, version, registry);
+        const finding = await this.checkNewerAsync(archive.packageName, version, tag, registry);
         if (finding === null)
           pending.push(archive);
         else
@@ -73,7 +74,7 @@ export class PublishStep implements IStep {
 
     const published: PackageArchive[] = [];
     for (const archive of pending) {
-      const result = await this.npm.publishAsync(archive.filePath, access, registry);
+      const result = await this.npm.publishAsync(archive.filePath, tag, access, registry);
       if (!result.isSuccessful) {
         findings.push(Resources.formatNpmFailed(Resources.formatSpecifier(archive.packageName, version), Resources.npmPublishValues, result.exitCode, result.errorOutput));
         break;
@@ -82,7 +83,7 @@ export class PublishStep implements IStep {
       published.push(archive);
     }
 
-    const deadline = Date.now() + this.waitMilliseconds;
+    const deadline = performance.now() + this.waitMilliseconds;
     for (const archive of published) {
       const finding = await this.waitUntilServedAsync(archive, version, registry, deadline);
       if (finding === null)
@@ -96,22 +97,22 @@ export class PublishStep implements IStep {
     return findings.length > 0 ? StepResult.failed(message) : StepResult.succeeded(message);
   }
 
-  private async checkNewerAsync(packageName: string, version: string, registry: string): Promise<string | null> {
-    const latest = await this.readFieldOrEmptyAsync(packageName, Resources.npmLatestField, registry);
-    if (latest instanceof StepResult)
-      return latest.message;
-    if (latest.length === 0)
+  private async checkNewerAsync(packageName: string, version: string, tag: string, registry: string): Promise<string | null> {
+    const tagged = await this.readFieldOrEmptyAsync(packageName, Resources.formatDistTagField(tag), registry);
+    if (tagged instanceof StepResult)
+      return tagged.message;
+    if (tagged.length === 0)
       return null;
-    if (Version.validate(latest) !== null)
-      return Resources.formatLatestInvalid(packageName, latest);
+    if (Version.validate(tagged) !== null)
+      return Resources.formatTaggedInvalid(packageName, tag, tagged);
 
-    return Version.parse(version).compareTo(Version.parse(latest)) > 0 ? null : Resources.formatNotNewer(Resources.formatSpecifier(packageName, version), latest);
+    return Version.parse(version).compareTo(Version.parse(tagged)) > 0 ? null : Resources.formatNotNewer(Resources.formatSpecifier(packageName, version), tag, tagged);
   }
 
   private async waitUntilServedAsync(archive: PackageArchive, version: string, registry: string, deadline: number): Promise<string | null> {
     const specifier = Resources.formatSpecifier(archive.packageName, version);
     let served = await this.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
-    while ((served instanceof StepResult || served.length === 0) && Date.now() < deadline) {
+    while ((served instanceof StepResult || served.length === 0) && performance.now() < deadline) {
       await delayAsync(this.retryMilliseconds);
       served = await this.readFieldOrEmptyAsync(specifier, Resources.npmIntegrityField, registry);
     }
@@ -138,7 +139,7 @@ export class PublishStep implements IStep {
 
     const url = new URL(text);
 
-    return url.protocol === Resources.registryProtocol && url.username.length === 0 && url.password.length === 0;
+    return url.protocol === Resources.registryProtocol && url.username.length === 0 && url.password.length === 0 && url.search.length === 0 && url.hash.length === 0;
   }
 
   private static readIntegrity(archivePath: string): string {

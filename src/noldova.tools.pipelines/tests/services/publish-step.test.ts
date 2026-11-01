@@ -34,8 +34,8 @@ class FakeNpm extends Npm {
     return (results.length > 1 ? results.shift() : results[0]) ?? PublishStepTests.NOT_FOUND;
   }
 
-  public override async publishAsync(archivePath: string, access: string, registry: string): Promise<ProcessResult> {
-    this.calls.push(`publish ${path.basename(archivePath)} ${access} ${registry}`);
+  public override async publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult> {
+    this.calls.push(`publish ${path.basename(archivePath)} ${tag} ${access} ${registry}`);
 
     return this.publishes.get(path.basename(archivePath)) ?? new ProcessResult(0, "", "");
   }
@@ -45,6 +45,7 @@ class FakeNpm extends Npm {
 export class PublishStepTests {
   public static readonly NOT_FOUND: ProcessResult = new ProcessResult(1, "", "npm error code E404\nnpm error 404 Not Found - GET https://registry.example/@noldova%2fa - Not found\n");
   private static readonly REGISTRY: string = "https://registry.example/";
+  private static readonly NIGHTLY: string = "0.0.5-nightly.20261101";
   private static readonly COMMIT: string = "0000000000000000000000000000000000000000";
   private static readonly PACKAGES: Readonly<Record<string, string>> = {
     "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\" }",
@@ -75,14 +76,16 @@ export class PublishStepTests {
   @TestData("http://registry.example/", "http://registry.example/")
   @TestData("registry.example", "registry.example")
   @TestData("https://ci:token-value@registry.example/", "https://registry.example/")
+  @TestData("https://registry.example/?_authToken=token-value", "https://registry.example/")
+  @TestData("https://registry.example/#token-value", "https://registry.example/")
   @TestMethod
-  public async failsForARegistryThatIsNotAnHttpsUrlWithoutCredentialsAsync(registry: string, shown: string): Promise<void> {
+  public async failsForARegistryThatIsNotAnHttpsUrlWithoutCredentialsAQueryOrAFragmentAsync(registry: string, shown: string): Promise<void> {
     const npm = new FakeNpm({});
 
     const result = await PublishStepTests.createStep(".", npm).runAsync(["archives", "0.0.4", PublishStepTests.COMMIT, "@noldova", registry, "public"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual(`"${shown}" is not a registry: a registry is an https URL without credentials, such as https://registry.npmjs.org/.`, result.message);
+    Assert.areEqual(`"${shown}" is not a registry: a registry is an https URL without credentials, a query or a fragment, such as https://registry.npmjs.org/.`, result.message);
     Assert.areEqual(0, npm.calls.length);
   }
 
@@ -131,8 +134,8 @@ export class PublishStepTests {
         "view @noldova/a dist-tags.latest https://registry.example/",
         "view @noldova/b@0.0.4 dist.integrity https://registry.example/",
         "view @noldova/b dist-tags.latest https://registry.example/",
-        "publish noldova-a-0.0.4.tgz public https://registry.example/",
-        "publish noldova-b-0.0.4.tgz public https://registry.example/",
+        "publish noldova-a-0.0.4.tgz latest public https://registry.example/",
+        "publish noldova-b-0.0.4.tgz latest public https://registry.example/",
         "view @noldova/a@0.0.4 dist.integrity https://registry.example/",
         "view @noldova/b@0.0.4 dist.integrity https://registry.example/"
       ].join("\n"),
@@ -154,7 +157,7 @@ export class PublishStepTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual("@noldova/a@0.0.4 is already published from this archive.\n@noldova/b@0.0.4 published.", result.message);
-    Assert.areEqual("publish noldova-b-0.0.4.tgz restricted https://registry.example/", npm.calls.filter(t => t.startsWith("publish ")).join("\n"));
+    Assert.areEqual("publish noldova-b-0.0.4.tgz latest restricted https://registry.example/", npm.calls.filter(t => t.startsWith("publish ")).join("\n"));
   }
 
   @TestData("0.0.4", "@noldova/b@0.0.4 is not newer than 0.0.4, the package's latest version.")
@@ -178,11 +181,51 @@ export class PublishStepTests {
   }
 
   @TestMethod
+  public async publishesANightlyVersionWithTheNightlyTagAfterTheNightlyItFollowsAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository, PublishStepTests.NIGHTLY);
+    const npm = new FakeNpm({
+      "@noldova/a@0.0.5-nightly.20261101 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.5-nightly.20261101.tgz"))],
+      "@noldova/b@0.0.5-nightly.20261101 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.5-nightly.20261101.tgz"))],
+      "@noldova/a dist-tags.nightly": [PublishStepTests.found("0.0.5-nightly.20261031\n")]
+    });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, PublishStepTests.NIGHTLY, commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      [
+        "view @noldova/a dist-tags.nightly https://registry.example/",
+        "view @noldova/b dist-tags.nightly https://registry.example/",
+        "publish noldova-a-0.0.5-nightly.20261101.tgz nightly public https://registry.example/",
+        "publish noldova-b-0.0.5-nightly.20261101.tgz nightly public https://registry.example/"
+      ].join("\n"),
+      npm.calls.filter(t => t.includes(" dist-tags.") || t.startsWith("publish ")).join("\n"));
+  }
+
+  @TestData("0.0.5-nightly.20261101")
+  @TestData("0.0.6-nightly.20261031")
+  @TestMethod
+  public async failsBeforePublishingANightlyVersionThatIsNotNewerThanTheNightlyTagAsync(nightly: string): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository, PublishStepTests.NIGHTLY);
+    const npm = new FakeNpm({ "@noldova/b dist-tags.nightly": [PublishStepTests.found(nightly)] });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, PublishStepTests.NIGHTLY, commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`@noldova/b@0.0.5-nightly.20261101 is not newer than ${nightly}, the package's nightly version.`, result.message);
+    Assert.areEqual(0, npm.calls.filter(t => t.startsWith("publish ")).length);
+  }
+
+  @TestMethod
   public async failsWithNpmsMessageWithoutCredentialsWhenTheRegistryCannotBeReadAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository);
-    const failure = new ProcessResult(1, "", "npm error code ECONNREFUSED\nnpm error request to https://ci:token-value@registry.example/@noldova%2fa failed\n");
+    const failure = new ProcessResult(1, "", "npm error code ECONNREFUSED\nnpm error request to https://ci:token-value@registry.example/@noldova%2fa?_authToken=token-value#token-value failed\n");
     const npm = new FakeNpm({ "@noldova/a@0.0.4 dist.integrity": [failure], "@noldova/b dist-tags.latest": [new ProcessResult(1, "", "")] });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
@@ -225,7 +268,7 @@ export class PublishStepTests {
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual("@noldova/a@0.0.4: npm publish exited with code 1: npm error code E403", result.message);
-    Assert.areEqual("publish noldova-a-0.0.4.tgz public https://registry.example/", npm.calls.filter(t => t.startsWith("publish ")).join("\n"));
+    Assert.areEqual("publish noldova-a-0.0.4.tgz latest public https://registry.example/", npm.calls.filter(t => t.startsWith("publish ")).join("\n"));
   }
 
   @TestMethod
@@ -274,9 +317,9 @@ export class PublishStepTests {
     return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner));
   }
 
-  private static packArchives(repository: GitRepositoryFixture): string {
-    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"0.0.4\" }" });
-    repository.pack("archives/noldova-b-0.0.4.tgz", { "package/package.json": "{ \"name\": \"@noldova/b\", \"version\": \"0.0.4\" }" });
+  private static packArchives(repository: GitRepositoryFixture, version: string = "0.0.4"): string {
+    for (const name of ["a", "b"])
+      repository.pack(`archives/noldova-${name}-${version}.tgz`, { "package/package.json": `{ "name": "@noldova/${name}", "version": "${version}" }` });
 
     return path.join(repository.directory, "archives");
   }

@@ -29,6 +29,7 @@ export class Resources {
   public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet", "--end-of-options"];
   public static readonly integrityAlgorithm: string = "sha512";
   public static readonly integrityEncoding: BinaryToTextEncoding = "base64";
+  public static readonly latestTag: string = "latest";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly lineSeparator: string = "\n";
   public static readonly mainBranch: string = "origin/main";
@@ -40,14 +41,15 @@ export class Resources {
   public static readonly nameField: string = "name";
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
   public static readonly nightlySeparator: string = "-nightly.";
+  public static readonly nightlyTag: string = "nightly";
   public static readonly npmAccessValues: readonly string[] = ["--access"];
   public static readonly npmIntegrityField: string = "dist.integrity";
-  public static readonly npmLatestField: string = "dist-tags.latest";
   public static readonly npmNotFoundCode: string = "E404";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
   public static readonly npmProgram: string = "npm";
   public static readonly npmPublishValues: readonly string[] = ["publish"];
   public static readonly npmRegistryValues: readonly string[] = ["--registry"];
+  public static readonly npmTagValues: readonly string[] = ["--tag"];
   public static readonly npmViewValues: readonly string[] = ["view"];
   public static readonly packagesFolderPath: string = "src";
   public static readonly patchPartName: string = "patch";
@@ -68,6 +70,7 @@ export class Resources {
   public static readonly testsFolderName: string = "tests";
   public static readonly textEncoding: BufferEncoding = "utf8";
   public static readonly urlCredentialsPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
+  public static readonly urlQueryPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/[^\s?#]*)[?#]\S*/gi;
   public static readonly usageSeparator: string = " | ";
   public static readonly valueSeparator: string = " ";
   public static readonly versionField: string = "version";
@@ -189,7 +192,7 @@ export class Resources {
   }
 
   public static formatRegistryInvalid(text: string): string {
-    return `"${Resources.removeCredentials(text)}" is not a registry: a registry is an https URL without credentials, such as https://registry.npmjs.org/.`;
+    return `"${Resources.removeCredentials(text)}" is not a registry: a registry is an https URL without credentials, a query or a fragment, such as https://registry.npmjs.org/.`;
   }
 
   public static formatAccessInvalid(text: string): string {
@@ -212,12 +215,16 @@ export class Resources {
     return `${specifier} is already published from another archive.`;
   }
 
-  public static formatLatestInvalid(packageName: string, latest: string): string {
-    return `${packageName}'s latest version, ${latest}, is not a version.`;
+  public static formatDistTagField(tag: string): string {
+    return `dist-tags.${tag}`;
   }
 
-  public static formatNotNewer(specifier: string, latest: string): string {
-    return `${specifier} is not newer than ${latest}, the package's latest version.`;
+  public static formatTaggedInvalid(packageName: string, tag: string, tagged: string): string {
+    return `${packageName}'s ${tag} version, ${tagged}, is not a version.`;
+  }
+
+  public static formatNotNewer(specifier: string, tag: string, tagged: string): string {
+    return `${specifier} is not newer than ${tagged}, the package's ${tag} version.`;
   }
 
   public static formatNpmFailed(specifier: string, commandValues: readonly string[], exitCode: number | null, errorOutput: string): string {
@@ -261,6 +268,6 @@ export class Resources {
   }
 
   private static removeCredentials(text: string): string {
-    return text.replace(Resources.urlCredentialsPattern, "$1");
+    return text.replace(Resources.urlCredentialsPattern, "$1").replace(Resources.urlQueryPattern, "$1");
   }
 }

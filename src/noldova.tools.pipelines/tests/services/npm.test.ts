@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import path from "node:path";
+
 import { Assert, TestClass, TestMethod } from "@noldova/context.testing";
 import { Npm, ProcessException, ProcessResult, ProcessRunner } from "@noldova/tools.pipelines";
 
@@ -39,13 +41,15 @@ export class NpmTests {
   }
 
   @TestMethod
-  public async publishesAnArchiveWithTheAccessToTheRegistryAsync(): Promise<void> {
+  public async publishesAnArchiveByItsFullPathWithTheTagAndAccessToTheRegistryAsync(): Promise<void> {
     const processRunner = new RecordingProcessRunner(new ProcessResult(1, "", "npm error code E403"));
 
-    const result = await new Npm(processRunner, "release").publishAsync("archives/noldova-a-0.0.4.tgz", "public", "https://registry.example/");
+    const result = await new Npm(processRunner, "release").publishAsync("archives/noldova-a-0.0.4.tgz", "latest", "public", "https://registry.example/");
 
     Assert.areEqual(1, result.exitCode);
-    Assert.areEqual("release: npm publish archives/noldova-a-0.0.4.tgz --access public --registry https://registry.example/", processRunner.calls.join("\n"));
+    Assert.areEqual(
+      `release: npm publish ${path.resolve("archives/noldova-a-0.0.4.tgz")} --tag latest --access public --registry https://registry.example/`,
+      processRunner.calls.join("\n"));
   }
 
   @TestMethod
