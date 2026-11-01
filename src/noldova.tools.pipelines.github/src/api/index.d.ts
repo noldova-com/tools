@@ -82,6 +82,8 @@ export declare class GitHubTags implements ITagHost {
    * Creates the tags over an environment, which it reads at each call.
    *
    * @param environment The environment variables, such as `process.env`.
+   * @param timeoutMilliseconds How long it waits for each answer of the API.
+   * Omitted, it waits a minute.
    * @example
    * ```ts
    * import { GitHubTags } from "@noldova/tools.pipelines.github";
@@ -89,7 +91,7 @@ export declare class GitHubTags implements ITagHost {
    * const tags = new GitHubTags(process.env);
    * ```
    */
-  public constructor(environment: Readonly<Record<string, string | undefined>>);
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number);
 
   /**
    * Reads the commit a tag points to, following an annotated tag to its
@@ -104,8 +106,9 @@ export declare class GitHubTags implements ITagHost {
    * such as `GitHub answered GET repos/noldova-com/tools/git/ref/tags/v0.0.4
    * with 403: Resource not accessible by integration`. It rejects with
    * `JsonException`, from `@noldova/context.json`, for an answer that is not
-   * the JSON GitHub documents, and with the error `fetch` gives when GitHub
-   * can't be reached or doesn't answer within a minute.
+   * the JSON GitHub documents, with a `DOMException` named `TimeoutError`
+   * when GitHub doesn't answer within the timeout, and with the error `fetch`
+   * gives when GitHub can't be reached.
    * @example
    * ```ts
    * import { GitHubTags } from "@noldova/tools.pipelines.github";
@@ -121,10 +124,12 @@ export declare class GitHubTags implements ITagHost {
    *
    * @param tag The tag's name, such as `v0.0.4`.
    * @param commit The commit's full id.
-   * @returns A promise of `true` when GitHub created the tag, `false` when it
-   * answers that the reference already exists, or a failed
-   * {@link StepResult}, as {@link GitHubTags.readTagAsync} gives one. It
-   * rejects as {@link GitHubTags.readTagAsync} does.
+   * @returns A promise of `true` when GitHub created the tag, or `false` when
+   * GitHub refuses it as unprocessable, status 422, and reading the tag then
+   * finds it, such as one another run made. Otherwise it is a failed
+   * {@link StepResult}, as {@link GitHubTags.readTagAsync} gives one: with the
+   * 422's message when reading finds no tag, and with the read's failure when
+   * the read fails. It rejects as {@link GitHubTags.readTagAsync} does.
    * @example
    * ```ts
    * import { GitHubTags } from "@noldova/tools.pipelines.github";

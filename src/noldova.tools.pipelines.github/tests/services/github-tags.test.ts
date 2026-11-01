@@ -38,6 +38,7 @@ export class GitHubTagsTests {
     Assert.areEqual("application/vnd.github+json", request?.headers.accept);
     Assert.areEqual(`Bearer ${GitHubTagsTests.TOKEN}`, request?.headers.authorization);
     Assert.areEqual("2022-11-28", request?.headers["x-github-api-version"]);
+    Assert.isUndefined(request?.headers["content-type"]);
   }
 
   @TestMethod
@@ -79,6 +80,7 @@ export class GitHubTagsTests {
   @TestData(502, "text/html", "<html>Bad gateway</html>\n", "<html>Bad gateway</html>")
   @TestData(503, "text/plain", "  ", "Service Unavailable")
   @TestData(500, "", "{ \"message\": \"broken\" }", "{ \"message\": \"broken\" }")
+  @TestData(500, "application/json", "[\"broken\"]", "[\"broken\"]")
   @TestMethod
   public async failsWithTheRequestTheStatusAndGitHubsMessageAsync(status: number, contentType: string, body: string, message: string): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.REFERENCE]: new GitHubApiAnswer(status, body, contentType) });
@@ -123,18 +125,8 @@ export class GitHubTagsTests {
     const request = api.requests[0];
     Assert.areEqual("POST", request?.method);
     Assert.areEqual(JSON.stringify({ ref: "refs/tags/v0.0.4", sha: GitHubTagsTests.COMMIT }), request?.body);
+    Assert.areEqual("application/json", request?.headers["content-type"]);
     Assert.areEqual(`Bearer ${GitHubTagsTests.TOKEN}`, request?.headers.authorization);
-  }
-
-  @TestMethod
-  public async answersFalseWhenTheReferenceAlreadyExistsAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({
-      [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(422, { message: "Reference already exists" })
-    });
-
-    const created = await GitHubTagsTests.createTags(api).createTagAsync("v0.0.4", GitHubTagsTests.COMMIT);
-
-    Assert.areEqual(false, created);
   }
 
   @TestData(true)
@@ -155,18 +147,62 @@ export class GitHubTagsTests {
         ? `v0.0.4 already points to commit ${GitHubTagsTests.COMMIT}.`
         : `v0.0.4 points to commit ${GitHubTagsTests.TAG_OBJECT}, not ${GitHubTagsTests.COMMIT}; a tag is never moved.`,
       result.message);
-    Assert.areEqual(JSON.stringify(["GET", "POST", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
+    Assert.areEqual(JSON.stringify(["GET", "POST", "GET", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
   }
 
-  @TestData(422, "Object does not exist")
-  @TestData(403, "Resource not accessible by integration")
   @TestMethod
-  public async failsWhenGitHubRefusesTheTagAsync(status: number, message: string): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(status, { message }) });
+  public async answersFalseWhenGitHubRefusesATagThatExistsAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(422, { message: "Reference already exists" }),
+      [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.json(200, { object: { type: "commit", sha: GitHubTagsTests.COMMIT } })
+    });
 
     const created = await GitHubTagsTests.createTags(api).createTagAsync("v0.0.4", GitHubTagsTests.COMMIT);
 
-    Assert.areEqual(`GitHub answered POST repos/noldova-com/tools/git/refs with ${status}: ${message}`, GitHubTagsTests.readFailure(created));
+    Assert.areEqual(false, created);
+    Assert.areEqual(JSON.stringify(["POST", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
+  }
+
+  @TestMethod
+  public async failsWithTheRefusalWhenGitHubRefusesATagThatDoesNotExistAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(422, { message: "Object does not exist" }) });
+
+    const created = await GitHubTagsTests.createTags(api).createTagAsync("v0.0.4", GitHubTagsTests.COMMIT);
+
+    Assert.areEqual("GitHub answered POST repos/noldova-com/tools/git/refs with 422: Object does not exist", GitHubTagsTests.readFailure(created));
+    Assert.areEqual(JSON.stringify(["POST", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
+  }
+
+  @TestMethod
+  public async failsWithTheReadsAnswerWhenReadingARefusedTagFailsAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(422, { message: "Reference already exists" }),
+      [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.json(403, { message: "Resource not accessible by integration" })
+    });
+
+    const created = await GitHubTagsTests.createTags(api).createTagAsync("v0.0.4", GitHubTagsTests.COMMIT);
+
+    Assert.areEqual("GitHub answered GET repos/noldova-com/tools/git/ref/tags/v0.0.4 with 403: Resource not accessible by integration", GitHubTagsTests.readFailure(created));
+  }
+
+  @TestMethod
+  public async failsWithoutReadingWhenGitHubForbidsTheTagAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(403, { message: "Resource not accessible by integration" }) });
+
+    const created = await GitHubTagsTests.createTags(api).createTagAsync("v0.0.4", GitHubTagsTests.COMMIT);
+
+    Assert.areEqual("GitHub answered POST repos/noldova-com/tools/git/refs with 403: Resource not accessible by integration", GitHubTagsTests.readFailure(created));
+    Assert.areEqual(1, api.requests.length);
+  }
+
+  @TestMethod
+  public async rejectsWithTimeoutErrorWhenGitHubDoesNotAnswerInTimeAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.HELD });
+    const tags = new GitHubTags({ GITHUB_API_URL: api.url, GITHUB_REPOSITORY: "noldova-com/tools", GITHUB_TOKEN: GitHubTagsTests.TOKEN }, 100);
+
+    const error = await Assert.throwsAsync(() => tags.readTagAsync("v0.0.4"), DOMException);
+
+    Assert.areEqual("TimeoutError", error.name);
   }
 
   @TestData("GITHUB_API_URL")

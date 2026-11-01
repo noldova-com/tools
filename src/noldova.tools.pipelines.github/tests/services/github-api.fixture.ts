@@ -11,14 +11,18 @@ import type { AddressInfo } from "node:net";
 import { setTimeout } from "node:timers/promises";
 
 export class GitHubApiAnswer {
+  public static readonly HELD: GitHubApiAnswer = new GitHubApiAnswer(0, "", "", true);
+
   public readonly status: number;
   public readonly body: string;
   public readonly contentType: string;
+  public readonly isHeld: boolean;
 
-  public constructor(status: number, body: string, contentType: string = "application/json; charset=utf-8") {
+  public constructor(status: number, body: string, contentType: string = "application/json; charset=utf-8", isHeld: boolean = false) {
     this.status = status;
     this.body = body;
     this.contentType = contentType;
+    this.isHeld = isHeld;
   }
 
   public static json(status: number, value: unknown): GitHubApiAnswer {
@@ -42,11 +46,13 @@ export class GitHubApiRequest {
 
 export class GitHubApiFixture implements AsyncDisposable {
   private static readonly HOST: string = "127.0.0.1";
+  private static readonly RELEASE_DEADLINE_MILLISECONDS: number = 5_000;
+  // Node's handle names, as process.getActiveResourcesInfo() gives them.
   private static readonly TCP_RESOURCE_TYPES: readonly string[] = ["TCPServerWrap", "TCPSocketWrap"];
 
   private readonly server: http.Server;
   private readonly answers: Map<string, GitHubApiAnswer[]>;
-  private readonly tcpResourceCountBefore: number = GitHubApiFixture.countTcpResources();
+  private readonly tcpResourcesBefore: readonly string[] = GitHubApiFixture.listTcpResources();
 
   public readonly requests: GitHubApiRequest[] = [];
 
@@ -62,6 +68,9 @@ export class GitHubApiFixture implements AsyncDisposable {
 
         const queued = this.answers.get(`${method} ${url}`) ?? [];
         const answer = (queued.length > 1 ? queued.shift() : queued[0]) ?? GitHubApiAnswer.json(404, { message: "Not Found" });
+        if (answer.isHeld)
+          return;
+
         response.writeHead(answer.status, { "Connection": "close", ...(answer.contentType.length === 0 ? {} : { "Content-Type": answer.contentType }) });
         response.end(answer.body);
       });
@@ -86,11 +95,27 @@ export class GitHubApiFixture implements AsyncDisposable {
   public async [Symbol.asyncDispose](): Promise<void> {
     this.server.closeAllConnections();
     await new Promise<void>(resolve => this.server.close(() => resolve()));
-    while (GitHubApiFixture.countTcpResources() > this.tcpResourceCountBefore)
+    const deadline = performance.now() + GitHubApiFixture.RELEASE_DEADLINE_MILLISECONDS;
+    for (let extra = this.listExtraTcpResources(); extra.length > 0; extra = this.listExtraTcpResources()) {
+      if (performance.now() > deadline)
+        throw new Error(`The server's handles stayed open for ${GitHubApiFixture.RELEASE_DEADLINE_MILLISECONDS} ms after it closed: ${extra.join(", ")}.`);
+
       await setTimeout(0);
+    }
   }
 
-  private static countTcpResources(): number {
-    return process.getActiveResourcesInfo().filter(t => GitHubApiFixture.TCP_RESOURCE_TYPES.includes(t)).length;
+  private listExtraTcpResources(): readonly string[] {
+    const extra = GitHubApiFixture.listTcpResources();
+    for (const resource of this.tcpResourcesBefore) {
+      const index = extra.indexOf(resource);
+      if (index >= 0)
+        extra.splice(index, 1);
+    }
+
+    return extra;
+  }
+
+  private static listTcpResources(): string[] {
+    return process.getActiveResourcesInfo().filter(t => GitHubApiFixture.TCP_RESOURCE_TYPES.includes(t));
   }
 }

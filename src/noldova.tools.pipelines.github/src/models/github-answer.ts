@@ -36,7 +36,7 @@ export class GitHubAnswer {
     const text = this.text.trim();
     if (text.length === 0)
       return this.statusText;
-    if (!Resources.jsonContentTypePattern.test(this.contentType))
+    if (!Resources.jsonContentTypePattern.test(this.contentType) || !text.startsWith(Resources.jsonObjectStart))
       return text;
 
     return this.readBody().readOptionalString(Resources.messageField) ?? text;

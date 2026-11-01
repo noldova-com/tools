@@ -14,9 +14,11 @@ import { Resources } from "../resources.js";
 
 export class GitHubTags implements ITagHost {
   private readonly environment: Readonly<Record<string, string | undefined>>;
+  private readonly timeoutMilliseconds: number;
 
-  public constructor(environment: Readonly<Record<string, string | undefined>>) {
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds) {
     this.environment = environment;
+    this.timeoutMilliseconds = timeoutMilliseconds;
   }
 
   public async readTagAsync(tag: string): Promise<string | StepResult> {
@@ -24,7 +26,7 @@ export class GitHubTags implements ITagHost {
     if (connection instanceof StepResult)
       return connection;
 
-    const reference = await GitHubTags.requestAsync(connection, Resources.readMethod, Resources.formatTagReferencePath(tag));
+    const reference = await this.requestAsync(connection, Resources.readMethod, Resources.formatTagReferencePath(tag));
     if (reference.status === Resources.notFoundStatus)
       return "";
     if (reference.status !== Resources.foundStatus)
@@ -32,7 +34,7 @@ export class GitHubTags implements ITagHost {
 
     let target = reference.readBody().readObject(Resources.objectField);
     while (target.readString(Resources.typeField) === Resources.annotatedTagType) {
-      const tagObject = await GitHubTags.requestAsync(connection, Resources.readMethod, Resources.formatTagObjectPath(target.readString(Resources.shaField)));
+      const tagObject = await this.requestAsync(connection, Resources.readMethod, Resources.formatTagObjectPath(target.readString(Resources.shaField)));
       if (tagObject.status !== Resources.foundStatus)
         return tagObject.toFailure();
 
@@ -51,13 +53,17 @@ export class GitHubTags implements ITagHost {
     if (connection instanceof StepResult)
       return connection;
 
-    const answer = await GitHubTags.requestAsync(connection, Resources.createMethod, Resources.referencesPath, { ref: Resources.formatTagReference(tag), sha: commit });
+    const answer = await this.requestAsync(connection, Resources.createMethod, Resources.referencesPath, { ref: Resources.formatTagReference(tag), sha: commit });
     if (answer.status === Resources.createdStatus)
       return true;
-    if (answer.status === Resources.unprocessableStatus && answer.readMessage() === Resources.referenceExistsMessage)
-      return false;
+    if (answer.status !== Resources.unprocessableStatus)
+      return answer.toFailure();
 
-    return answer.toFailure();
+    const found = await this.readTagAsync(tag);
+    if (found instanceof StepResult)
+      return found;
+
+    return found.length > 0 ? false : answer.toFailure();
   }
 
   private readConnection(): GitHubConnection | StepResult {
@@ -72,16 +78,17 @@ export class GitHubTags implements ITagHost {
     return this.environment[name] ?? "";
   }
 
-  private static async requestAsync(connection: GitHubConnection, method: string, path: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer> {
+  private async requestAsync(connection: GitHubConnection, method: string, path: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer> {
     const resource = Resources.formatResource(connection.repository, path);
     const response = await fetch(`${connection.apiUrl}/${resource}`, {
       method,
       headers: {
         [Resources.acceptHeader]: Resources.apiMediaType,
         [Resources.authorizationHeader]: Resources.formatAuthorization(connection.token),
-        [Resources.apiVersionHeader]: Resources.apiVersion
+        [Resources.apiVersionHeader]: Resources.apiVersion,
+        ...(body === undefined ? {} : { [Resources.contentTypeHeader]: Resources.jsonContentType })
       },
-      signal: AbortSignal.timeout(Resources.apiTimeoutMilliseconds),
+      signal: AbortSignal.timeout(this.timeoutMilliseconds),
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
 

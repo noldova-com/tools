@@ -21,14 +21,15 @@ export class Resources {
   public static readonly createdStatus: number = 201;
   public static readonly createMethod: string = "POST";
   public static readonly foundStatus: number = 200;
+  public static readonly jsonContentType: string = "application/json";
   public static readonly jsonContentTypePattern: RegExp = /^application\/(?:[a-z0-9.-]+\+)?json\b/i;
+  public static readonly jsonObjectStart: string = "{";
   public static readonly lineSeparator: string = "\n";
   public static readonly messageField: string = "message";
   public static readonly notFoundStatus: number = 404;
   public static readonly objectField: string = "object";
   public static readonly programName: string = "pipelines";
   public static readonly readMethod: string = "GET";
-  public static readonly referenceExistsMessage: string = "Reference already exists";
   public static readonly referencesPath: string = "git/refs";
   public static readonly repositoryVariable: string = "GITHUB_REPOSITORY";
   public static readonly shaField: string = "sha";
