@@ -24,7 +24,8 @@ npm run build
 npm test
 ```
 
-`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing` and `@noldova/context.json`, which the build and the packages read JSON with, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
+`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing`, `@noldova/context.json`, which the build and the packages read JSON with, and the published `@noldova/tools.pipelines` 0.0.1 as `tools.pipelines.published`, whose `Version` checks the `--version` option, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
+Under that name it stays apart from the `@noldova/tools.pipelines` that the build installs into `node_modules`.
 Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.1" }`, or from the `--version` option, such as for a nightly version:
 
 ```bash
@@ -51,7 +52,7 @@ Every pull request into `main` must pass its checks before it merges.
 | Check / Linked issue | `.github/workflows/require-linked-issue.yml`, the "PR" workflow: the PR description has a standalone `Issue: #N`, `Issue #N` or closing reference, such as `Closes #N`, that names an issue in this repository. |
 | Check / Runner / Versions | The shared check's own call of the shared settings, which name the runner "Check / Linked issue" uses. |
 | Versions / Versions | The organization's shared settings, `.github`'s `versions.yml`, name the Node.js and npm versions and the runner for each target that "Build and test" uses. |
-| Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job, on the GitHub-hosted runner the shared settings name for Linux x64, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged; a second build of the same commit, in another folder, packs byte-identical archives; and the tool, installed from the packed archives into a folder of its own as the release workflow installs it, checks them from a depth-1 checkout of the commit with `pipelines archive`. |
+| Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job, on the GitHub-hosted runner the shared settings name for Linux x64, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, and refuses `--version 01.0.0` with the published `Version`'s message; `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged; a second build of the same commit, in another folder, packs byte-identical archives; and the tool, installed from the packed archives into a folder of its own as the release workflow installs it, checks them from a depth-1 checkout of the commit with `pipelines archive`. |
 | All targets | Passes only when "Versions / Versions" and "Linux x64" pass. |
 
 ## Releases
