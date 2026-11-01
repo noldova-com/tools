@@ -6,32 +6,98 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { Exception, type ExceptionOptions } from "@noldova/context.exceptions";
+
+/**
+ * The abstract base of this package's exceptions; catch it to handle any of
+ * them. A check that finds something wrong returns a failed
+ * {@link StepResult} instead.
+ */
+export declare abstract class PipelineException extends Exception {
+  /**
+   * Initializes the message and the cause for a derived exception.
+   *
+   * @param message The complete explanation, kept as given.
+   * @param options The failure that caused this one, as its `cause`.
+   * Omitted, the exception has no cause.
+   * @example
+   * ```ts
+   * import type { ExceptionOptions } from "@noldova/context.exceptions";
+   * import { PipelineException } from "@noldova/tools.pipelines";
+   *
+   * class StepException extends PipelineException {
+   *   public constructor(message: string, options?: ExceptionOptions) {
+   *     super(message, options);
+   *   }
+   * }
+   * const exception = new StepException("The step could not run.");
+   * exception.name; // "StepException"
+   * exception instanceof PipelineException; // true
+   * ```
+   */
+  protected constructor(message: string, options?: ExceptionOptions);
+}
+
+/**
+ * The exception that is thrown when a program cannot start, or when it ends
+ * in a way that no check expects, such as git failing to read a file it
+ * reported as present.
+ */
+export declare class ProcessException extends PipelineException {
+  /**
+   * The program that could not start or that failed, such as `"git"`.
+   */
+  public readonly program: string;
+
+  /**
+   * Creates the exception for a program.
+   *
+   * @param program The program that could not start or that failed.
+   * @param message The complete explanation, kept as given, such as the
+   * command that failed and what it wrote to its error output. Omitted, it is
+   * `The program "<program>" failed.`
+   * @param options The failure that caused this one, such as the error a
+   * program that cannot start reports. Omitted, the exception has no cause.
+   * @example
+   * ```ts
+   * import { ExceptionOptions } from "@noldova/context.exceptions";
+   * import { PipelineException, ProcessException } from "@noldova/tools.pipelines";
+   *
+   * const exception = new ProcessException("git", "\"git\" could not start: spawn git ENOENT", new ExceptionOptions(new Error("spawn git ENOENT")));
+   * exception.program; // "git"
+   * exception.name; // "ProcessException"
+   * exception instanceof PipelineException; // true
+   * new ProcessException("git").message; // "The program \"git\" failed."
+   * ```
+   */
+  public constructor(program: string, message?: string, options?: ExceptionOptions);
+}
+
 /**
  * The exception that is thrown when a text is not a version, when a
  * version's part is not a whole number from 0 to `Number.MAX_SAFE_INTEGER`,
  * or when a nightly version's date is not a calendar date.
  */
-export declare class VersionException extends Error {
-  /**
-   * The exception's class name, `"VersionException"`.
-   */
-  public override readonly name: string;
-
+export declare class VersionException extends PipelineException {
   /**
    * Creates the exception with the explanation it reports.
    *
    * @param message The complete explanation, kept as given, such as which
-   * text was not a version and the form a version takes.
+   * text was not a version and the form a version takes. Omitted, it is
+   * `The text is not a version.`
+   * @param options The failure that caused this one, as its `cause`.
+   * Omitted, the exception has no cause.
    * @example
    * ```ts
-   * import { VersionException } from "@noldova/tools.pipelines";
+   * import { PipelineException, VersionException } from "@noldova/tools.pipelines";
    *
    * const exception = new VersionException("\"1.4\" is not a version.");
    * exception.name; // "VersionException"
-   * exception instanceof Error; // true
+   * exception instanceof PipelineException; // true
+   * new VersionException().message; // "The text is not a version."
    * ```
    */
-  public constructor(message: string);
+  public constructor(message?: string, options?: ExceptionOptions);
 }
 
 /**
@@ -114,6 +180,26 @@ export declare class Version {
   public static parse(text: string): Version;
 
   /**
+   * Tells why a text is not a version, without throwing, for a text that
+   * comes from outside the program, such as a command-line value.
+   *
+   * @param text The text to check, of the form {@link Version.parse} reads.
+   * @returns `null` if {@link Version.parse} reads the text, otherwise the
+   * message its `VersionException` would carry: that the text is not of the
+   * form, that a part is greater than `Number.MAX_SAFE_INTEGER`, or that the
+   * date is not a calendar date.
+   * @example
+   * ```ts
+   * import { Version } from "@noldova/tools.pipelines";
+   *
+   * Version.validate("1.4.0"); // null
+   * Version.validate("1.4"); // "\"1.4\" is not a version: a version is major.minor.patch, …"
+   * Version.validate("1.4.1-nightly.20261131"); // "A nightly version's date must be a calendar date …"
+   * ```
+   */
+  public static validate(text: string): string | null;
+
+  /**
    * Compares this version with another, major part first, then minor, then
    * patch; with the same three parts, a nightly version comes before the
    * release, and nightly versions come in the order of their dates.
@@ -165,4 +251,423 @@ export declare class Version {
    * ```
    */
   public toString(): string;
+}
+
+/**
+ * What a program wrote and how it ended.
+ */
+export declare class ProcessResult {
+  /**
+   * The program's exit code, `0` when it succeeded; `null` when it ended
+   * through a signal instead.
+   */
+  public readonly exitCode: number | null;
+
+  /**
+   * Everything the program wrote to its standard output, as UTF-8 text.
+   */
+  public readonly output: string;
+
+  /**
+   * Everything the program wrote to its error output, as UTF-8 text.
+   */
+  public readonly errorOutput: string;
+
+  /**
+   * Creates the result of a program's run.
+   *
+   * @param exitCode The exit code, or `null` when the program ended through
+   * a signal.
+   * @param output What the program wrote to its standard output.
+   * @param errorOutput What the program wrote to its error output.
+   * @example
+   * ```ts
+   * import { ProcessResult } from "@noldova/tools.pipelines";
+   *
+   * const result = new ProcessResult(0, "git version 2.55.0\n", "");
+   * result.isSuccessful; // true
+   * ```
+   */
+  public constructor(exitCode: number | null, output: string, errorOutput: string);
+
+  /**
+   * Whether the program succeeded, its exit code `0`.
+   *
+   * @example
+   * ```ts
+   * import { ProcessResult } from "@noldova/tools.pipelines";
+   *
+   * new ProcessResult(1, "", "").isSuccessful; // false
+   * new ProcessResult(null, "", "").isSuccessful; // false, the program ended through a signal
+   * ```
+   */
+  public get isSuccessful(): boolean;
+}
+
+/**
+ * What a step found: that it succeeded, or that it failed, each with the
+ * message a pipeline's log shows. A failed check is a result, not an
+ * exception; a result never changes after it is created.
+ */
+export declare class StepResult {
+  /**
+   * Whether the step succeeded.
+   */
+  public readonly isSuccessful: boolean;
+
+  /**
+   * The message for the log: what the step did, or what is wrong.
+   */
+  public readonly message: string;
+
+  private constructor();
+
+  /**
+   * Creates the result of a step that succeeded.
+   *
+   * @param message What the step did, such as what it checked.
+   * @returns A result whose `isSuccessful` is `true`.
+   * @example
+   * ```ts
+   * import { StepResult } from "@noldova/tools.pipelines";
+   *
+   * StepResult.succeeded("The archives hold 0.0.4.").isSuccessful; // true
+   * ```
+   */
+  public static succeeded(message: string): StepResult;
+
+  /**
+   * Creates the result of a step that failed.
+   *
+   * @param message What is wrong, written so the reader can fix it.
+   * @returns A result whose `isSuccessful` is `false`.
+   * @example
+   * ```ts
+   * import { StepResult } from "@noldova/tools.pipelines";
+   *
+   * StepResult.failed("Commit 225059f… is not on origin/main.").isSuccessful; // false
+   * ```
+   */
+  public static failed(message: string): StepResult;
+}
+
+/**
+ * A step of a pipeline that a {@link CommandLine} runs by its name, such as
+ * {@link SourceStep}.
+ */
+export declare interface IStep {
+  /**
+   * The name a command line gives to run the step, such as `"source"`.
+   */
+  readonly name: string;
+
+  /**
+   * The values the step takes, as a usage line shows them, such as
+   * `"<version> <commit>"`.
+   */
+  readonly usage: string;
+
+  /**
+   * Runs the step.
+   *
+   * @param values The values given after the step's name, in order. The step
+   * checks them itself, so a wrong number or form fails the step instead of
+   * throwing.
+   * @returns A promise of what the step found. It never rejects for a failed
+   * check, only when something else goes wrong, such as with a
+   * {@link PipelineException}.
+   * @example
+   * ```ts
+   * import { type IStep, StepResult } from "@noldova/tools.pipelines";
+   *
+   * const step: IStep = {
+   *   name: "greet",
+   *   usage: "<name>",
+   *   runAsync: async values => StepResult.succeeded(`Hello, ${values.join(" ")}.`)
+   * };
+   * (await step.runAsync(["world"])).message; // "Hello, world."
+   * ```
+   */
+  runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * Where a {@link CommandLine} writes a step's message; each pipeline host
+ * implements it, such as by writing a failure as the host's error annotation.
+ */
+export declare interface IStepOutput {
+  /**
+   * Writes the message of a step that succeeded.
+   *
+   * @param message The step's message.
+   * @example
+   * ```ts
+   * import type { IStepOutput } from "@noldova/tools.pipelines";
+   *
+   * const output: IStepOutput = {
+   *   writeSuccess: message => console.log(message),
+   *   writeFailure: message => console.error(message)
+   * };
+   * output.writeSuccess("Commit 225059f… is on origin/main, and its version.json holds 0.0.4.");
+   * ```
+   */
+  writeSuccess(message: string): void;
+
+  /**
+   * Writes the message of a step that failed, or the usage line when the
+   * command line names no step it has.
+   *
+   * @param message What is wrong.
+   * @example
+   * ```ts
+   * import type { IStepOutput } from "@noldova/tools.pipelines";
+   *
+   * const output: IStepOutput = {
+   *   writeSuccess: message => console.log(message),
+   *   writeFailure: message => console.error(message)
+   * };
+   * output.writeFailure("Commit 225059f… is not on origin/main.");
+   * ```
+   */
+  writeFailure(message: string): void;
+}
+
+/**
+ * The command-line base a pipeline host builds its command line on: it runs
+ * the step its first value names with the values after it, writes the step's
+ * message, and gives the exit code.
+ */
+export declare class CommandLine {
+  /**
+   * Creates a command line over its steps.
+   *
+   * @param programName The name the usage line shows, such as the command a
+   * workflow calls.
+   * @param steps The steps it can run, each with its own name; the usage
+   * line lists them in this order.
+   * @param output Where it writes each message.
+   * @example
+   * ```ts
+   * import { CommandLine, Git, ProcessRunner, SourceStep } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
+   *   writeSuccess: message => console.log(message),
+   *   writeFailure: message => console.error(message)
+   * });
+   * ```
+   */
+  public constructor(programName: string, steps: readonly IStep[], output: IStepOutput);
+
+  /**
+   * Runs the step the first value names.
+   *
+   * @param values The command line's values after the program, such as
+   * `["source", "0.0.4", "<commit>"]`.
+   * @returns A promise of the exit code: `0` after a step that succeeded,
+   * whose message it wrote with {@link IStepOutput.writeSuccess}; `1` after a
+   * step that failed, whose message it wrote with
+   * {@link IStepOutput.writeFailure}, or when no step has the first value's
+   * name, after writing the usage line, such as
+   * `Usage: pipelines source <version> <commit>`. It rejects with what the
+   * step rejects with, such as a {@link PipelineException}.
+   * @example
+   * ```ts
+   * import { CommandLine, Git, ProcessRunner, SourceStep } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
+   *   writeSuccess: message => console.log(message),
+   *   writeFailure: message => console.error(message)
+   * });
+   * process.exitCode = await commandLine.runAsync(process.argv.slice(2));
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<number>;
+}
+
+/**
+ * Runs a program without a shell and collects what it writes.
+ */
+export declare class ProcessRunner {
+  /**
+   * Runs a program to its end.
+   *
+   * @param program The program, found on the `PATH` as the operating system
+   * finds it, or a path to it.
+   * @param values The values passed to the program, each as one argument,
+   * never read by a shell.
+   * @param workingDirectory The directory the program runs in.
+   * @returns A promise of the program's exit code and of what it wrote. A
+   * program that fails still resolves, with its exit code; the promise
+   * rejects with {@link ProcessException} only when the program cannot
+   * start, such as when it is not installed or the directory does not exist.
+   * @example
+   * ```ts
+   * import { ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const result = await new ProcessRunner().runAsync("git", ["--version"], process.cwd());
+   * result.isSuccessful; // true where git is installed
+   * ```
+   */
+  public runAsync(program: string, values: readonly string[], workingDirectory: string): Promise<ProcessResult>;
+}
+
+/**
+ * Reads what a step needs from a clone of a git repository, through the
+ * `git` program.
+ */
+export declare class Git {
+  /**
+   * Creates a reader of one clone.
+   *
+   * @param processRunner What runs `git`.
+   * @param workingDirectory The clone's directory, or any directory inside
+   * it.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * ```
+   */
+  public constructor(processRunner: ProcessRunner, workingDirectory: string);
+
+  /**
+   * Tells whether a revision names a commit in the clone.
+   *
+   * @param revision A commit id, or a reference such as
+   * `refs/remotes/origin/main`.
+   * @returns A promise of `true` if the revision names a commit, otherwise
+   * `false`. It rejects with {@link ProcessException} if git cannot start or
+   * fails otherwise, such as outside a clone.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.hasCommitAsync("refs/remotes/origin/main"); // true in a clone that fetched main
+   * ```
+   */
+  public hasCommitAsync(revision: string): Promise<boolean>;
+
+  /**
+   * Tells whether a commit holds a file.
+   *
+   * @param commit The commit, which the clone holds.
+   * @param filePath The file's path from the repository's root, with `/`
+   * between folders, such as `version.json`.
+   * @returns A promise of `true` if the commit holds the path, otherwise
+   * `false`. It rejects with {@link ProcessException} if git cannot start or
+   * fails otherwise.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.hasFileAsync("refs/remotes/origin/main", "version.json"); // true where main holds the file
+   * ```
+   */
+  public hasFileAsync(commit: string, filePath: string): Promise<boolean>;
+
+  /**
+   * Tells whether a commit is in another commit's history, such as on a
+   * branch.
+   *
+   * @param commit The commit to look for, which the clone holds.
+   * @param descendant The commit or reference whose history is searched; a
+   * commit is in its own history.
+   * @returns A promise of `true` if the commit is in the descendant's
+   * history, otherwise `false`. It rejects with {@link ProcessException} if
+   * git cannot start or fails otherwise, such as when the clone holds
+   * neither commit.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.isAncestorAsync("HEAD", "refs/remotes/origin/main"); // true when HEAD is on main
+   * ```
+   */
+  public isAncestorAsync(commit: string, descendant: string): Promise<boolean>;
+
+  /**
+   * Reads a file as a commit holds it.
+   *
+   * @param commit The commit, which holds the file.
+   * @param filePath The file's path from the repository's root, with `/`
+   * between folders.
+   * @returns A promise of the file's content as UTF-8 text. It rejects with
+   * {@link ProcessException} if git cannot start or cannot read the file,
+   * such as when the commit does not hold it.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.readFileAsync("refs/remotes/origin/main", "version.json"); // "{\n  \"version\": \"0.0.4\"\n}\n"
+   * ```
+   */
+  public readFileAsync(commit: string, filePath: string): Promise<string>;
+}
+
+/**
+ * The step that checks a release's source before anything is built or
+ * published: `source <version> <commit>`. It succeeds only when the version
+ * is a version, the commit is a full commit id that the clone holds, the
+ * commit is on `origin/main`, and the `version.json` at the commit's root is
+ * a JSON object whose `version` is that version.
+ */
+export declare class SourceStep implements IStep {
+  /**
+   * The step's name, `"source"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<version> <commit>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step over a clone.
+   *
+   * @param git The reader of the clone, which has fetched `origin/main` with
+   * its history.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner, SourceStep } from "@noldova/tools.pipelines";
+   *
+   * const step = new SourceStep(new Git(new ProcessRunner(), process.cwd()));
+   * step.name; // "source"
+   * ```
+   */
+  public constructor(git: Git);
+
+  /**
+   * Checks the release's source.
+   *
+   * @param values The version, such as `0.0.4`, and the commit's full id,
+   * 40 lowercase hexadecimal digits.
+   * @returns A promise of the result: succeeded, such as
+   * `Commit 225059f… is on origin/main, and its version.json holds 0.0.4.`,
+   * or failed with the first thing that is wrong, checked in this order: not
+   * two values, a version that is not a version, a commit that is not a full
+   * id, a commit the clone does not hold, a clone without `origin/main`, a
+   * commit not on it, a commit without `version.json`, and a `version` other
+   * than the one given. It rejects with `JsonException`, from
+   * `@noldova/context.json`, if `version.json` is not a JSON object with a
+   * `version` text, and with {@link ProcessException} if git cannot start or
+   * fails otherwise.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner, SourceStep } from "@noldova/tools.pipelines";
+   *
+   * const step = new SourceStep(new Git(new ProcessRunner(), process.cwd()));
+   * const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"]);
+   * result.isSuccessful; // true when that commit is on main and holds 0.0.4
+   * (await step.runAsync(["0.0.4"])).message; // "The source step takes <version> <commit>."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
 }

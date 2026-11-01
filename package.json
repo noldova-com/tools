@@ -13,6 +13,8 @@
     "test": "node scripts/test.ts"
   },
   "devDependencies": {
+    "@noldova/context.exceptions": "0.0.3",
+    "@noldova/context.json": "0.0.3",
     "@noldova/context.testing": "0.0.3",
     "@types/node": "24.19.2",
     "typescript": "7.0.2"

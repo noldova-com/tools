@@ -24,7 +24,8 @@ npm run build
 npm test
 ```
 
-`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations and the test runner `@noldova/context.testing`, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
+`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing` and `@noldova/context.json`, which the build and the packages read JSON with, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
+Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.1" }`.
 `npm test` runs every package's tests and fails unless they cover all of the packages' source.
 Two options shorten its output, as the CI run uses them:
 

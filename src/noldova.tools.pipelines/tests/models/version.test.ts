@@ -132,6 +132,46 @@ export class VersionTests {
       failure.message);
   }
 
+  @TestData("0.0.0")
+  @TestData("1.4.0")
+  @TestData("9007199254740991.0.1")
+  @TestData("1.4.1-nightly.20261101")
+  @TestData("0.1.1-nightly.20280229")
+  @TestMethod
+  public validatesAVersionWithoutAProblem(text: string): void {
+    Assert.isNull(Version.validate(text));
+  }
+
+  @TestData("")
+  @TestData("1.4")
+  @TestData("01.4.0")
+  @TestData("v1.4.0")
+  @TestData("1.4.0-beta.1")
+  @TestData("1.4.0-nightly.2026110")
+  @TestMethod
+  public validatesATextThatIsNotAVersionWithItsProblem(text: string): void {
+    Assert.areEqual(
+      `"${text}" is not a version: a version is major.minor.patch, each a whole number without a leading zero, such as 1.4.0, or a nightly version, major.minor.patch-nightly.YYYYMMDD, such as 1.4.1-nightly.20261101.`,
+      Version.validate(text));
+  }
+
+  @TestData("9007199254740992.0.0", "major", "9007199254740992")
+  @TestData("0.9007199254740992.0", "minor", "9007199254740992")
+  @TestData("0.0.9007199254740992-nightly.20261101", "patch", "9007199254740992")
+  @TestMethod
+  public validatesAPartBeyondTheSafeIntegersWithItsProblem(text: string, partName: string, value: string): void {
+    Assert.areEqual(`A version's ${partName} part must be a whole number from 0 to 9007199254740991, not ${value}.`, Version.validate(text));
+  }
+
+  @TestData("20261131")
+  @TestData("20270229")
+  @TestMethod
+  public validatesANightlyDateThatIsNotACalendarDateWithItsProblem(nightlyDate: string): void {
+    Assert.areEqual(
+      `A nightly version's date must be a calendar date written YYYYMMDD, from year 1000, such as 20261101, not "${nightlyDate}".`,
+      Version.validate(`1.4.1-nightly.${nightlyDate}`));
+  }
+
   @TestMethod
   public keepsTheConstructedParts(): void {
     const version = new Version(3, 2, 1);
