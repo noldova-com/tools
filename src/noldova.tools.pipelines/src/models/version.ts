@@ -10,9 +10,6 @@ import { VersionException } from "../exceptions/version.exception.js";
 import { Resources } from "../resources.js";
 
 export class Version {
-  private static readonly PATTERN: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
-  private static readonly NIGHTLY_DATE_PATTERN: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
-
   public readonly major: number;
   public readonly minor: number;
   public readonly patch: number;
@@ -32,15 +29,20 @@ export class Version {
   }
 
   public static parse(text: string): Version {
-    const match = Version.PATTERN.exec(text);
+    const match = Resources.versionPattern.exec(text);
     if (match === null)
       throw new VersionException(Resources.formatVersionInvalid(text));
+    const problem = Version.validateMatch(match);
+    if (problem !== null)
+      throw new VersionException(problem);
 
-    const major = Version.parsePart(Resources.majorPartName, match[1]);
-    const minor = Version.parsePart(Resources.minorPartName, match[2]);
-    const patch = Version.parsePart(Resources.patchPartName, match[3]);
+    return new Version(Number(match[1]), Number(match[2]), Number(match[3]), match[4] ?? null);
+  }
 
-    return new Version(major, minor, patch, match[4] ?? null);
+  public static validate(text: string): string | null {
+    const match = Resources.versionPattern.exec(text);
+
+    return match === null ? Resources.formatVersionInvalid(text) : Version.validateMatch(match);
   }
 
   public compareTo(other: Version): number {
@@ -60,9 +62,9 @@ export class Version {
   }
 
   public toString(): string {
-    const release = `${this.major}.${this.minor}.${this.patch}`;
+    const release = [this.major, this.minor, this.patch].join(Resources.versionPartSeparator);
 
-    return this.nightlyDate === null ? release : `${release}-nightly.${this.nightlyDate}`;
+    return this.nightlyDate === null ? release : `${release}${Resources.nightlySeparator}${this.nightlyDate}`;
   }
 
   private static checkPart(partName: string, value: number): void {
@@ -70,18 +72,29 @@ export class Version {
       throw new VersionException(Resources.formatVersionPartInvalid(partName, String(value)));
   }
 
-  private static parsePart(partName: string, text: string | undefined): number {
-    const value = Number(text);
-    if (!Number.isSafeInteger(value))
-      throw new VersionException(Resources.formatVersionPartInvalid(partName, String(text)));
+  private static validateMatch(match: RegExpExecArray): string | null {
+    return Version.validatePart(Resources.majorPartName, match[1])
+      ?? Version.validatePart(Resources.minorPartName, match[2])
+      ?? Version.validatePart(Resources.patchPartName, match[3])
+      ?? (match[4] === undefined ? null : Version.validateNightlyDate(match[4]));
+  }
 
-    return value;
+  private static validatePart(partName: string, text: string | undefined): string | null {
+    return Number.isSafeInteger(Number(text)) ? null : Resources.formatVersionPartInvalid(partName, String(text));
   }
 
   private static checkNightlyDate(value: string): void {
-    const match = Version.NIGHTLY_DATE_PATTERN.exec(value);
+    const problem = Version.validateNightlyDate(value);
+    if (problem !== null)
+      throw new VersionException(problem);
+  }
+
+  private static validateNightlyDate(value: string): string | null {
+    const match = Resources.nightlyDatePattern.exec(value);
     if (match === null || !Version.isCalendarDate(Number(match[1]), Number(match[2]), Number(match[3])))
-      throw new VersionException(Resources.formatNightlyDateInvalid(value));
+      return Resources.formatNightlyDateInvalid(value);
+
+    return null;
   }
 
   private static isCalendarDate(year: number, month: number, day: number): boolean {

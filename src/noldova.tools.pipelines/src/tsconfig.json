@@ -1,6 +1,7 @@
 {
   "extends": "../../../tsconfig-base.json",
   "compilerOptions": {
+    "types": ["node"],
     "rootDir": ".",
     "outDir": "../../../_build/packages/noldova.tools.pipelines",
     "sourceMap": true
