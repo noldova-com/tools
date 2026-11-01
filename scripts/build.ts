@@ -26,6 +26,7 @@ export class Build extends Script {
   private static readonly GIT_HEAD_ARGUMENTS: readonly string[] = ["rev-parse", "--verify", "HEAD"];
   private static readonly GIT_HEAD_FIELD: string = "gitHead";
   private static readonly GIT_PROGRAM: string = "git";
+  private static readonly GIT_ROOT_ARGUMENTS: readonly string[] = ["rev-parse", "--show-toplevel"];
   private static readonly INSTALL_ARGUMENTS: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
   private static readonly INSTALLING_PACKAGES: string = "Installing the locked npm packages…";
   private static readonly LICENSE_FILE_NAME: string = "LICENSE";
@@ -35,6 +36,7 @@ export class Build extends Script {
   private static readonly PACKAGE_MANIFEST_FILE_NAME: string = "package.json";
   private static readonly VERSION_FIELD: string = "version";
   private static readonly VERSION_OPTION: string = "--version";
+  private static readonly VERSION_OPTION_VALUE_SEPARATOR: string = "=";
   private static readonly VERSION_PATTERN: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([1-9][0-9]{3})([0-9]{2})([0-9]{2}))?$/;
   private static readonly VERSION_PLACEHOLDER: string = "__VERSION__";
 
@@ -54,7 +56,11 @@ export class Build extends Script {
   }
 
   private async readHeadCommitAsync(): Promise<string> {
-    return (await this.executeProcessAsync(Build.GIT_PROGRAM, Build.GIT_HEAD_ARGUMENTS, process.cwd(), true)).trim();
+    const root = (await this.readProcessOutputAsync(Build.GIT_PROGRAM, Build.GIT_ROOT_ARGUMENTS, process.cwd())).trim();
+    if (path.relative(root, process.cwd()).length !== 0)
+      throw new CommandFailedException(Build.checkoutRootDiffers(process.cwd(), root));
+
+    return (await this.readProcessOutputAsync(Build.GIT_PROGRAM, Build.GIT_HEAD_ARGUMENTS, process.cwd())).trim();
   }
 
   private async installLockedPackagesAsync(): Promise<void> {
@@ -89,9 +95,10 @@ export class Build extends Script {
     if (!await this.pathExistsAsync(manifestPath))
       throw new CommandFailedException(Build.manifestMissing(manifestPath));
 
-    const manifest = JSON.parse((await this.readFileAsync(manifestPath)).replaceAll(Build.VERSION_PLACEHOLDER, version)) as Record<string, unknown>;
-    manifest[Build.GIT_HEAD_FIELD] = commit;
-    await this.writeFileAsync(`${buildDirectory}/${Build.PACKAGE_MANIFEST_FILE_NAME}`, `${JSON.stringify(manifest, null, Build.MANIFEST_INDENTATION)}\n`);
+    const json = await import("@noldova/context.json");
+    const manifest = json.JsonReader.parse((await this.readFileAsync(manifestPath)).replaceAll(Build.VERSION_PLACEHOLDER, version), manifestPath);
+    const content = { ...manifest.toJson(), [Build.GIT_HEAD_FIELD]: commit };
+    await this.writeFileAsync(`${buildDirectory}/${Build.PACKAGE_MANIFEST_FILE_NAME}`, `${JSON.stringify(content, null, Build.MANIFEST_INDENTATION)}\n`);
   }
 
   private async installPackedPackagesAsync(version: string): Promise<void> {
@@ -106,6 +113,9 @@ export class Build extends Script {
   }
 
   private static readVersionOption(arguments_: readonly string[]): string | undefined {
+    if (arguments_.some(t => t.startsWith(`${Build.VERSION_OPTION}${Build.VERSION_OPTION_VALUE_SEPARATOR}`)))
+      throw new CommandFailedException(Build.versionMissing(Build.VERSION_OPTION));
+
     const index = arguments_.indexOf(Build.VERSION_OPTION);
     if (index < 0)
       return undefined;
@@ -132,7 +142,9 @@ export class Build extends Script {
     if (match === null)
       return false;
 
-    const [, , , , year, month, day] = match;
+    const [, major, minor, patch, year, month, day] = match;
+    if (![major, minor, patch].every(t => Number.isSafeInteger(Number(t))))
+      return false;
     if (year === undefined || month === undefined || day === undefined)
       return true;
 
@@ -167,12 +179,16 @@ export class Build extends Script {
     return `No ${Build.PACKAGE_MANIFEST_FILE_NAME} at "${manifestPath}".`;
   }
 
+  private static checkoutRootDiffers(directory: string, root: string): string {
+    return `The build runs at the root of its git checkout, ${root}, not at ${directory}.`;
+  }
+
   private static optionDuplicated(option: string): string {
     return `Option ${option} was given more than once.`;
   }
 
   private static versionMissing(option: string): string {
-    return `Option ${option} takes a version, such as 0.0.5 or 0.0.5-nightly.20261102.`;
+    return `Option ${option} takes a version as its next value, such as ${option} 0.0.5 or ${option} 0.0.5-nightly.20261102.`;
   }
 
   private static versionInvalid(text: string): string {

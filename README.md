@@ -31,7 +31,7 @@ Every package takes its version from `version.json` at the repository's root, su
 npm run build -- --version 0.0.5-nightly.20261102
 ```
 
-The build writes the checkout's head commit into every package's `package.json` as `gitHead`, so each published version names the commit it was built from; it fails before building when it can't read the commit.
+The build writes the checkout's head commit into every package's `package.json` as `gitHead`, so each published version names the commit it was built from; it fails before building when it can't read the commit or doesn't run at the root of its checkout.
 `npm test` runs every package's tests and fails unless they cover all of the packages' source.
 Two options shorten its output, as the CI run uses them:
 

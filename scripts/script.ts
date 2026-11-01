@@ -20,6 +20,7 @@ export abstract class Script {
   private static readonly DECLARATION_FILE_NAME: string = "index.d.ts";
   private static readonly NPM_EXECUTABLE_PATH_UNAVAILABLE: string = "npm_execpath is unavailable. Run the script through npm.";
   private static readonly NPM_EXECUTABLE_PATH_VARIABLE: string = "npm_execpath";
+  private static readonly PROCESS_OUTPUT_LIMIT: number = 65_536;
   private static readonly README_FILE_NAME: string = "README.md";
   private static readonly SOURCE_TSCONFIG_PATH: string = "src/tsconfig.json";
   private static readonly STEP_DONE: string = " Done.";
@@ -52,7 +53,21 @@ export abstract class Script {
     arguments_: readonly string[],
     workingDirectory: string,
     silent: boolean = false,
-    environment?: Record<string, string>): Promise<string> {
+    environment?: Record<string, string>): Promise<void> {
+    await this.runProcessAsync(command, arguments_, workingDirectory, silent, environment, null);
+  }
+
+  protected async readProcessOutputAsync(command: string, arguments_: readonly string[], workingDirectory: string): Promise<string> {
+    return await this.runProcessAsync(command, arguments_, workingDirectory, true, undefined, Script.PROCESS_OUTPUT_LIMIT);
+  }
+
+  private async runProcessAsync(
+    command: string,
+    arguments_: readonly string[],
+    workingDirectory: string,
+    silent: boolean,
+    environment: Record<string, string> | undefined,
+    outputLimit: number | null): Promise<string> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, arguments_, {
         cwd: workingDirectory,
@@ -62,17 +77,22 @@ export abstract class Script {
       });
       const output: string[] = [];
       const standardOutput: string[] = [];
+      let standardOutputLength = 0;
       child.stdout?.on("data", (t: Buffer) => {
         output.push(t.toString());
-        standardOutput.push(t.toString());
+        standardOutputLength += t.length;
+        if (outputLimit !== null && standardOutputLength <= outputLimit)
+          standardOutput.push(t.toString());
       });
       child.stderr?.on("data", (t: Buffer) => output.push(t.toString()));
 
       child.on("close", t => {
-        if (t === 0)
-          resolve(standardOutput.join(""));
-        else
+        if (t !== 0)
           reject(new CommandFailedException(Script.commandFailed(command, t, output.join(""))));
+        else if (outputLimit !== null && standardOutputLength > outputLimit)
+          reject(new CommandFailedException(Script.outputTooLong(command, outputLimit)));
+        else
+          resolve(standardOutput.join(""));
       });
 
       child.on("error", t => { reject(t); });
@@ -161,6 +181,10 @@ export abstract class Script {
 
   private static commandFailed(command: string, exitCode: number | null, output: string): string {
     return output.trim().length === 0 ? `Command "${command}" failed with exit code ${exitCode}.` : output.trimEnd();
+  }
+
+  private static outputTooLong(command: string, outputLimit: number): string {
+    return `Command "${command}" wrote more than ${outputLimit} bytes.`;
   }
 
   private static readmeMissing(packageName: string, readmePath: string): string {
