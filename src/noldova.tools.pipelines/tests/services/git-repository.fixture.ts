@@ -49,6 +49,10 @@ export class GitRepositoryFixture implements Disposable {
     this.run("add", "--all");
     this.run("commit", "--quiet", "--no-verify", "--allow-empty", "--message", "Commit");
 
+    return this.readHead();
+  }
+
+  public readHead(): string {
     return this.run("rev-parse", "HEAD").trim();
   }
 

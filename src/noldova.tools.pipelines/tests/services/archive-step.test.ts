@@ -40,8 +40,8 @@ export class ArchiveStepTests {
     "src/noldova.b/package.json": "{ \"name\": \"@noldova/b\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/a\": \"__VERSION__\" } }",
     "src/noldova.c/package.json": "{ \"name\": \"@noldova/c\", \"version\": \"__VERSION__\", \"private\": true }"
   };
-  private static readonly MANIFEST_A: string = "{ \"name\": \"@noldova/a\", \"version\": \"0.0.4\" }";
-  private static readonly MANIFEST_B: string = "{ \"name\": \"@noldova/b\", \"version\": \"0.0.4\", \"private\": false, \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@example/d\": \"^1.0.0\" } }";
+  private static readonly MANIFEST_A: string = "{ \"name\": \"@noldova/a\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\" }";
+  private static readonly MANIFEST_B: string = "{ \"name\": \"@noldova/b\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\", \"private\": false, \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@example/d\": \"^1.0.0\" } }";
 
   @TestMethod
   public namesItselfAndItsValues(): void {
@@ -81,7 +81,7 @@ export class ArchiveStepTests {
   public async givesNoArchivesWithAFailedResultAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(ArchiveStepTests.PACKAGES);
-    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.MANIFEST_A });
+    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(ArchiveStepTests.MANIFEST_A, commit) });
 
     const check = await ArchiveStepTests.createStep(repository.directory).checkAsync([path.join(repository.directory, "archives"), "0.0.4", commit, "@noldova"]);
 
@@ -180,7 +180,7 @@ export class ArchiveStepTests {
   public async failsWithEveryArchiveTheFolderLacksOrShouldNotHoldAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(ArchiveStepTests.PACKAGES);
-    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.MANIFEST_A });
+    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(ArchiveStepTests.MANIFEST_A, commit) });
     repository.pack("archives/noldova-a-0.0.3.tgz", { "package/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"0.0.3\" }" });
     fs.writeFileSync(path.join(repository.directory, "archives", "notes.txt"), "notes");
     const folder = path.join(repository.directory, "archives");
@@ -212,10 +212,35 @@ export class ArchiveStepTests {
         "noldova-a-0.0.4.tgz: its name is @example/a, not @noldova/a.",
         "noldova-a-0.0.4.tgz: @example/a is outside the scope @noldova.",
         "noldova-a-0.0.4.tgz: its version is 0.0.3, not 0.0.4.",
+        `noldova-a-0.0.4.tgz: it has no gitHead, which should be ${commit}.`,
         "noldova-a-0.0.4.tgz: it is marked private.",
         "noldova-a-0.0.4.tgz: its dependency @noldova/b is ^0.0.4, not exactly 0.0.4."
       ].join("\n"),
       result.message);
+  }
+
+  @TestMethod
+  public async failsForAnArchiveFromAnotherCommitAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const other = "1111111111111111111111111111111111111111";
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A.replace("__COMMIT__", other), ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`noldova-a-0.0.4.tgz: its gitHead is ${other}, not ${commit}.`, result.message);
+  }
+
+  @TestMethod
+  public async rejectsAGitHeadThatIsNotATextAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A.replace("\"__COMMIT__\"", "1"), ArchiveStepTests.MANIFEST_B);
+
+    const exception = await Assert.throwsAsync(() => ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]), JsonException);
+
+    Assert.isTrue(exception.path.startsWith("noldova-a-0.0.4.tgz/package/package.json"), exception.path);
   }
 
   @TestMethod
@@ -310,9 +335,14 @@ export class ArchiveStepTests {
   }
 
   private static packArchives(repository: GitRepositoryFixture, manifestA: string, manifestB: string): string {
-    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": manifestA });
-    repository.pack("archives/noldova-b-0.0.4.tgz", { "package/package.json": manifestB });
+    const commit = repository.readHead();
+    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(manifestA, commit) });
+    repository.pack("archives/noldova-b-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(manifestB, commit) });
 
     return path.join(repository.directory, "archives");
+  }
+
+  private static withCommit(manifest: string, commit: string): string {
+    return manifest.replace("__COMMIT__", commit);
   }
 }

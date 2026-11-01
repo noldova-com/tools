@@ -25,7 +25,13 @@ npm test
 ```
 
 `npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing` and `@noldova/context.json`, which the build and the packages read JSON with, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
-Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.1" }`.
+Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.1" }`, or from the `--version` option, such as for a nightly version:
+
+```bash
+npm run build -- --version 0.0.5-nightly.20261102
+```
+
+The build writes the checkout's head commit into every package's `package.json` as `gitHead`, so each published version names the commit it was built from; it fails before building when it can't read the commit or doesn't run at the root of a git checkout.
 `npm test` runs every package's tests and fails unless they cover all of the packages' source.
 Two options shorten its output, as the CI run uses them:
 

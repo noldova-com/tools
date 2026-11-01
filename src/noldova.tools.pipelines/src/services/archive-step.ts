@@ -67,7 +67,7 @@ export class ArchiveStep implements IStep {
       ...fileNames.filter(t => !archiveNames.includes(t)).map(t => Resources.formatArchiveUnexpected(folder, t, version))
     ];
     for (const archive of archives.filter(t => fileNames.includes(path.basename(t.filePath))))
-      findings.push(...await this.checkArchiveAsync(archive.filePath, archive.packageName, version, scope, packageNames));
+      findings.push(...await this.checkArchiveAsync(archive.filePath, archive.packageName, version, commit, scope, packageNames));
 
     if (findings.length > 0)
       return ArchiveStep.failed(findings.join(Resources.lineSeparator));
@@ -92,7 +92,7 @@ export class ArchiveStep implements IStep {
     return packageNames.sort();
   }
 
-  private async checkArchiveAsync(archivePath: string, packageName: string, version: string, scope: string, packageNames: readonly string[]): Promise<readonly string[]> {
+  private async checkArchiveAsync(archivePath: string, packageName: string, version: string, commit: string, scope: string, packageNames: readonly string[]): Promise<readonly string[]> {
     const archiveName = path.basename(archivePath);
     const result = await this.tar.readFileAsync(archivePath, Resources.archiveManifestPath);
     if (!result.isSuccessful)
@@ -109,6 +109,13 @@ export class ArchiveStep implements IStep {
     const foundVersion = manifest.readString(Resources.versionField);
     if (foundVersion !== version)
       findings.push(Resources.formatFieldDiffers(archiveName, Resources.versionField, foundVersion, version));
+    if (!manifest.hasField(Resources.gitHeadField))
+      findings.push(Resources.formatFieldMissing(archiveName, Resources.gitHeadField, commit));
+    else {
+      const gitHead = manifest.readString(Resources.gitHeadField);
+      if (gitHead !== commit)
+        findings.push(Resources.formatFieldDiffers(archiveName, Resources.gitHeadField, gitHead, commit));
+    }
     if (ArchiveStep.isPrivate(manifest))
       findings.push(Resources.formatArchivePrivate(archiveName));
 

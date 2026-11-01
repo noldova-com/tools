@@ -38,6 +38,7 @@ export class Resources {
   public static readonly manifestFileName: string = "package.json";
   public static readonly messagePartSeparator: string = "; ";
   public static readonly minorPartName: string = "minor";
+  public static readonly gitHeadField: string = "gitHead";
   public static readonly nameField: string = "name";
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
   public static readonly nightlySeparator: string = "-nightly.";
@@ -173,6 +174,10 @@ export class Resources {
 
   public static formatOutsideScope(archiveName: string, packageName: string, scope: string): string {
     return `${archiveName}: ${packageName} is outside the scope ${scope}.`;
+  }
+
+  public static formatFieldMissing(archiveName: string, field: string, expected: string): string {
+    return `${archiveName}: it has no ${field}, which should be ${expected}.`;
   }
 
   public static formatArchivePrivate(archiveName: string): string {

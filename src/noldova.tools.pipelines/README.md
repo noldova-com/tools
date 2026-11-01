@@ -73,7 +73,7 @@ It succeeds only when:
 - the version is a version, the commit is its full id, and the scope is `@` and a lowercase name, such as `@noldova`;
 - the checkout is at the commit;
 - the folder holds one archive for each package at the version, named as `npm pack` names it, such as `noldova-tools.pipelines-0.0.4.tgz`, and nothing else;
-- each archive's `package/package.json` has the package's name, inside the scope, and the version, isn't `"private": true`, and lists any other expected package under `dependencies` at exactly the version.
+- each archive's `package/package.json` has the package's name, inside the scope, the version, and the commit as its `gitHead`, isn't `"private": true`, and lists any other expected package under `dependencies` at exactly the version.
 
 ```ts
 import { ArchiveStep, CommandLine, Git, ProcessRunner, SourceStep, Tar } from "@noldova/tools.pipelines";
@@ -91,7 +91,7 @@ process.exitCode = await commandLine.runAsync(["archive", "archives", "0.0.4", "
 A wrong value, a checkout at another commit or a missing folder fails with that one message.
 Otherwise the step fails with one line for each problem it finds with the archives, such as `archives has no noldova-tools.pipelines-0.0.4.tgz.` or `noldova-tools.pipelines-0.0.4.tgz: its version is 0.0.3, not 0.0.4.`
 It reads each manifest with the `tar` program, which must be on the `PATH`; an archive `tar` can't read is one of those lines, with `tar`'s exit code and message.
-A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, or has a `private` that isn't `true` or `false` or `dependencies` that aren't an object of texts.
+A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, has a `gitHead` that isn't a text, or has a `private` that isn't `true` or `false` or `dependencies` that aren't an object of texts.
 
 ### The publish step
 
