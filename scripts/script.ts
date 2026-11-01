@@ -52,7 +52,7 @@ export abstract class Script {
     arguments_: readonly string[],
     workingDirectory: string,
     silent: boolean = false,
-    environment?: Record<string, string>): Promise<void> {
+    environment?: Record<string, string>): Promise<string> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, arguments_, {
         cwd: workingDirectory,
@@ -61,12 +61,16 @@ export abstract class Script {
         env: environment === undefined ? process.env : { ...process.env, ...environment }
       });
       const output: string[] = [];
-      child.stdout?.on("data", (t: Buffer) => output.push(t.toString()));
+      const standardOutput: string[] = [];
+      child.stdout?.on("data", (t: Buffer) => {
+        output.push(t.toString());
+        standardOutput.push(t.toString());
+      });
       child.stderr?.on("data", (t: Buffer) => output.push(t.toString()));
 
       child.on("close", t => {
         if (t === 0)
-          resolve();
+          resolve(standardOutput.join(""));
         else
           reject(new CommandFailedException(Script.commandFailed(command, t, output.join(""))));
       });

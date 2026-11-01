@@ -11,6 +11,7 @@
  * @example
  * npm run build - builds every package.
  * npm run build <package...> - builds the named packages, such as noldova.tools.pipelines.
+ * npm run build -- --version <version> [package...] - builds at that version instead of version.json's, such as 0.0.5-nightly.20261102.
  */
 
 import path from "node:path";
@@ -22,25 +23,38 @@ import { Script } from "./script.ts";
 
 export class Build extends Script {
   private static readonly CLEAN_INSTALL_ARGUMENTS: readonly string[] = ["ci", "--ignore-scripts", "--no-audit", "--no-fund"];
+  private static readonly GIT_HEAD_ARGUMENTS: readonly string[] = ["rev-parse", "--verify", "HEAD"];
+  private static readonly GIT_HEAD_FIELD: string = "gitHead";
+  private static readonly GIT_PROGRAM: string = "git";
   private static readonly INSTALL_ARGUMENTS: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
   private static readonly INSTALLING_PACKAGES: string = "Installing the locked npm packages…";
   private static readonly LICENSE_FILE_NAME: string = "LICENSE";
+  private static readonly MANIFEST_INDENTATION: number = 2;
   private static readonly NODE_MODULES_DIRECTORY_NAME: string = "node_modules";
   private static readonly PACK_ARGUMENTS: readonly string[] = ["pack", "--silent", "--pack-destination"];
   private static readonly PACKAGE_MANIFEST_FILE_NAME: string = "package.json";
   private static readonly VERSION_FIELD: string = "version";
+  private static readonly VERSION_OPTION: string = "--version";
+  private static readonly VERSION_PATTERN: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([1-9][0-9]{3})([0-9]{2})([0-9]{2}))?$/;
   private static readonly VERSION_PLACEHOLDER: string = "__VERSION__";
 
   public override async runAsync(): Promise<void> {
-    const packagesInfo = Build.selectPackages(process.argv.slice(2));
+    const arguments_ = process.argv.slice(2);
+    const versionOption = Build.readVersionOption(arguments_);
+    const packagesInfo = Build.selectPackages(Build.removeVersionOption(arguments_));
+    const commit = await this.readHeadCommitAsync();
 
     await this.installLockedPackagesAsync();
-    const version = await this.readVersionAsync();
+    const version = versionOption ?? await this.readVersionAsync();
     await this.createDirectoryAsync(Config.BUILD_FOLDER);
     await this.createDirectoryAsync(Config.PACKAGES_FOLDER);
 
     for (const packageInfo of packagesInfo)
-      await this.buildPackageAsync(packageInfo, version);
+      await this.buildPackageAsync(packageInfo, version, commit);
+  }
+
+  private async readHeadCommitAsync(): Promise<string> {
+    return (await this.executeProcessAsync(Build.GIT_PROGRAM, Build.GIT_HEAD_ARGUMENTS, process.cwd(), true)).trim();
   }
 
   private async installLockedPackagesAsync(): Promise<void> {
@@ -56,13 +70,13 @@ export class Build extends Script {
     return json.JsonReader.parse(await this.readFileAsync(Config.VERSION_FILE_PATH), Config.VERSION_FILE_PATH).readString(Build.VERSION_FIELD);
   }
 
-  private async buildPackageAsync(packageInfo: PackageInfo, version: string): Promise<void> {
+  private async buildPackageAsync(packageInfo: PackageInfo, version: string, commit: string): Promise<void> {
     await this.runStepAsync(Build.buildingPackage(packageInfo.packageName), async () => {
       const buildDirectory = `${Config.BUILD_FOLDER}/${packageInfo.name}`;
 
       await this.removeDirectoryAsync(buildDirectory);
       await this.createDirectoryAsync(buildDirectory);
-      await this.writeManifestAsync(packageInfo, buildDirectory, version);
+      await this.writeManifestAsync(packageInfo, buildDirectory, version, commit);
       await this.copyFileAsync(Build.LICENSE_FILE_NAME, `${buildDirectory}/${Build.LICENSE_FILE_NAME}`);
       await this.compilePackageAsync(packageInfo);
       await this.executeNPMCommandAsync([...Build.PACK_ARGUMENTS, path.resolve(Config.PACKAGES_FOLDER)], path.resolve(buildDirectory), true);
@@ -70,13 +84,14 @@ export class Build extends Script {
     });
   }
 
-  private async writeManifestAsync(packageInfo: PackageInfo, buildDirectory: string, version: string): Promise<void> {
+  private async writeManifestAsync(packageInfo: PackageInfo, buildDirectory: string, version: string, commit: string): Promise<void> {
     const manifestPath = `${Build.SOURCE_DIRECTORY_NAME}/${packageInfo.name}/${Build.PACKAGE_MANIFEST_FILE_NAME}`;
     if (!await this.pathExistsAsync(manifestPath))
       throw new CommandFailedException(Build.manifestMissing(manifestPath));
 
-    const manifest = await this.readFileAsync(manifestPath);
-    await this.writeFileAsync(`${buildDirectory}/${Build.PACKAGE_MANIFEST_FILE_NAME}`, manifest.replaceAll(Build.VERSION_PLACEHOLDER, version));
+    const manifest = JSON.parse((await this.readFileAsync(manifestPath)).replaceAll(Build.VERSION_PLACEHOLDER, version)) as Record<string, unknown>;
+    manifest[Build.GIT_HEAD_FIELD] = commit;
+    await this.writeFileAsync(`${buildDirectory}/${Build.PACKAGE_MANIFEST_FILE_NAME}`, `${JSON.stringify(manifest, null, Build.MANIFEST_INDENTATION)}\n`);
   }
 
   private async installPackedPackagesAsync(version: string): Promise<void> {
@@ -88,6 +103,42 @@ export class Build extends Script {
     }
 
     await this.executeNPMCommandAsync([...Build.INSTALL_ARGUMENTS, ...archives], process.cwd(), true);
+  }
+
+  private static readVersionOption(arguments_: readonly string[]): string | undefined {
+    const index = arguments_.indexOf(Build.VERSION_OPTION);
+    if (index < 0)
+      return undefined;
+    if (arguments_.lastIndexOf(Build.VERSION_OPTION) !== index)
+      throw new CommandFailedException(Build.optionDuplicated(Build.VERSION_OPTION));
+
+    const version = arguments_[index + 1];
+    if (version === undefined)
+      throw new CommandFailedException(Build.versionMissing(Build.VERSION_OPTION));
+    if (!Build.isVersion(version))
+      throw new CommandFailedException(Build.versionInvalid(version));
+
+    return version;
+  }
+
+  private static removeVersionOption(arguments_: readonly string[]): readonly string[] {
+    const index = arguments_.indexOf(Build.VERSION_OPTION);
+
+    return index < 0 ? arguments_ : arguments_.filter((_, t) => t !== index && t !== index + 1);
+  }
+
+  private static isVersion(text: string): boolean {
+    const match = Build.VERSION_PATTERN.exec(text);
+    if (match === null)
+      return false;
+
+    const [, , , , year, month, day] = match;
+    if (year === undefined || month === undefined || day === undefined)
+      return true;
+
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+
+    return date.getUTCFullYear() === Number(year) && date.getUTCMonth() === Number(month) - 1 && date.getUTCDate() === Number(day);
   }
 
   private static selectPackages(names: readonly string[]): readonly PackageInfo[] {
@@ -114,6 +165,18 @@ export class Build extends Script {
 
   private static manifestMissing(manifestPath: string): string {
     return `No ${Build.PACKAGE_MANIFEST_FILE_NAME} at "${manifestPath}".`;
+  }
+
+  private static optionDuplicated(option: string): string {
+    return `Option ${option} was given more than once.`;
+  }
+
+  private static versionMissing(option: string): string {
+    return `Option ${option} takes a version, such as 0.0.5 or 0.0.5-nightly.20261102.`;
+  }
+
+  private static versionInvalid(text: string): string {
+    return `"${text}" is not a version: a version is major.minor.patch, such as 0.0.5, or a nightly version, such as 0.0.5-nightly.20261102.`;
   }
 
   private static packageDuplicated(name: string): string {
