@@ -12,6 +12,8 @@ import path from "node:path";
 import { JsonReader } from "@noldova/context.json";
 
 import type { IStep } from "../interfaces/i-step.js";
+import { ArchiveCheck } from "../models/archive-check.js";
+import { PackageArchive } from "../models/package-archive.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -31,42 +33,48 @@ export class ArchiveStep implements IStep {
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
+    return (await this.checkAsync(values)).result;
+  }
+
+  public async checkAsync(values: readonly string[]): Promise<ArchiveCheck> {
     const [folder, version, commit, scope, ...rest] = values;
     if (folder === undefined || version === undefined || commit === undefined || scope === undefined || rest.length !== 0)
-      return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
+      return ArchiveStep.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const versionProblem = Version.validate(version);
     if (versionProblem !== null)
-      return StepResult.failed(versionProblem);
+      return ArchiveStep.failed(versionProblem);
     if (!Resources.commitPattern.test(commit))
-      return StepResult.failed(Resources.formatCommitInvalid(commit));
+      return ArchiveStep.failed(Resources.formatCommitInvalid(commit));
     if (!Resources.scopePattern.test(scope))
-      return StepResult.failed(Resources.formatScopeInvalid(scope));
+      return ArchiveStep.failed(Resources.formatScopeInvalid(scope));
 
     const head = await this.git.readHeadAsync();
     if (head !== commit)
-      return StepResult.failed(Resources.formatHeadDiffers(head, commit));
+      return ArchiveStep.failed(Resources.formatHeadDiffers(head, commit));
     if (fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory() !== true)
-      return StepResult.failed(Resources.formatFolderMissing(folder));
+      return ArchiveStep.failed(Resources.formatFolderMissing(folder));
 
     const packageNames = await this.readPackageNamesAsync(commit);
     if (packageNames.length === 0)
-      return StepResult.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
+      return ArchiveStep.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
 
-    const archives = packageNames.map(t => ({ packageName: t, archiveName: Resources.formatArchiveName(t, version) }));
-    const archiveNames = archives.map(t => t.archiveName);
+    const archives = packageNames.map(t => new PackageArchive(t, path.join(folder, Resources.formatArchiveName(t, version))));
+    const archiveNames = archives.map(t => path.basename(t.filePath));
     const fileNames = fs.readdirSync(folder).sort();
     const findings = [
       ...archiveNames.filter(t => !fileNames.includes(t)).map(t => Resources.formatArchiveMissing(folder, t)),
       ...fileNames.filter(t => !archiveNames.includes(t)).map(t => Resources.formatArchiveUnexpected(folder, t, version))
     ];
-    for (const archive of archives.filter(t => fileNames.includes(t.archiveName)))
-      findings.push(...await this.checkArchiveAsync(path.join(folder, archive.archiveName), archive.packageName, version, scope, packageNames));
+    for (const archive of archives.filter(t => fileNames.includes(path.basename(t.filePath))))
+      findings.push(...await this.checkArchiveAsync(archive.filePath, archive.packageName, version, scope, packageNames));
 
     if (findings.length > 0)
-      return StepResult.failed(findings.join(Resources.lineSeparator));
+      return ArchiveStep.failed(findings.join(Resources.lineSeparator));
 
-    return StepResult.succeeded(archives.map(t => Resources.formatArchiveChecked(t.archiveName, t.packageName, version, commit)).join(Resources.lineSeparator));
+    const checked = archives.map(t => Resources.formatArchiveChecked(path.basename(t.filePath), t.packageName, version, commit));
+
+    return new ArchiveCheck(StepResult.succeeded(checked.join(Resources.lineSeparator)), archives);
   }
 
   private async readPackageNamesAsync(commit: string): Promise<readonly string[]> {
@@ -114,6 +122,10 @@ export class ArchiveStep implements IStep {
     }
 
     return findings;
+  }
+
+  private static failed(message: string): ArchiveCheck {
+    return new ArchiveCheck(StepResult.failed(message), []);
   }
 
   private static isPrivate(manifest: JsonReader): boolean {

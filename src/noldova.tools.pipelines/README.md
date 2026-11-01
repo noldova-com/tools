@@ -93,6 +93,36 @@ Otherwise the step fails with one line for each problem it finds with the archiv
 It reads each manifest with the `tar` program, which must be on the `PATH`; an archive `tar` can't read is one of those lines, with `tar`'s exit code and message.
 A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, or has a `private` that isn't `true` or `false` or `dependencies` that aren't an object of texts.
 
+### The publish step
+
+`publish <folder> <version> <commit> <scope> <registry> <access>` publishes the archives the archive step checks, with the `npm` program, which must be on the `PATH` as an executable, as it is on Linux and macOS.
+The registry is an `https` URL without credentials, a query or a fragment, such as `https://registry.npmjs.org/`, and the access is `public` or `restricted`.
+A release is published under the `latest` dist-tag, and a nightly version under `nightly`; a nightly version must be newer than both.
+The step passes no token: `npm` takes its credentials from its own configuration, such as the environment a pipeline sets up.
+
+```ts
+import { ArchiveStep, CommandLine, Git, Npm, ProcessRunner, PublishStep, Tar } from "@noldova/tools.pipelines";
+
+const processRunner = new ProcessRunner();
+const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+const commandLine = new CommandLine("pipelines", [archiveStep, new PublishStep(archiveStep, new Npm(processRunner, process.cwd()))], {
+  writeSuccess: message => console.log(message),
+  writeFailure: message => console.error(message)
+});
+
+process.exitCode = await commandLine.runAsync(["publish", "archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://registry.npmjs.org/", "public"]);
+```
+
+The step:
+
+1. runs the archive step's checks, and fails with their message when they fail;
+2. asks the registry about each package, and fails, publishing nothing, with one line for each version it already has from another archive and each version that isn't newer than the version a tag it must pass points to; a version it already has from the same archive is skipped;
+3. publishes the rest in turn, and stops at the first publish that fails;
+4. waits until the registry serves each version it published with the same archive, up to 10 minutes, asking every 10 seconds, also after a failed publish, so a rerun skips the versions already published.
+
+It succeeds with one line for each package, such as `@noldova/tools.pipelines@0.0.4 published.`, and otherwise fails with one line for each problem.
+A failed `npm` call is one of those lines, with `npm`'s exit code and message, and without the credentials, query or fragment of any URL in it; `npm` failing to start throws `ProcessException`.
+
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 
 ## License
