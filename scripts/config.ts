@@ -16,6 +16,7 @@ export class Config {
   public static readonly VERSION_FILE_PATH: string = "version.json";
 
   public static readonly PACKAGES_INFO: readonly PackageInfo[] = [
-    new PackageInfo("noldova.tools.pipelines", "@noldova/tools.pipelines")
+    new PackageInfo("noldova.tools.pipelines", "@noldova/tools.pipelines"),
+    new PackageInfo("noldova.tools.pipelines.github", "@noldova/tools.pipelines.github")
   ];
 }
