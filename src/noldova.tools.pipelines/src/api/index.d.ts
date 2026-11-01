@@ -557,8 +557,8 @@ export declare class Git {
    * @param commit The commit, which the clone holds.
    * @param filePath The file's path from the repository's root, with `/`
    * between folders, such as `version.json`.
-   * @returns A promise of `true` if the commit holds the path, otherwise
-   * `false`. It rejects with {@link ProcessException} if git cannot start or
+   * @returns A promise of `true` if the commit holds a file at the path,
+   * otherwise `false`, also when the path is a folder. It rejects with {@link ProcessException} if git cannot start or
    * fails otherwise.
    * @example
    * ```ts

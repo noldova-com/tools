@@ -74,6 +74,26 @@ export class GitTests {
   }
 
   @TestMethod
+  public async findsNoFileForAFolderAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ "version.json/version.json": "{}" });
+    const git = GitTests.createGit(repository);
+
+    Assert.isFalse(await git.hasFileAsync(commit, "version.json"));
+    Assert.isTrue(await git.hasFileAsync(commit, "version.json/version.json"));
+  }
+
+  @TestMethod
+  public async takesAValueThatStartsWithADashAsARevisionAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.setMain(repository.commit({ "version.json": "{}" }));
+    const git = GitTests.createGit(repository);
+
+    Assert.isFalse(await git.hasCommitAsync("--all"));
+    Assert.isFalse(await git.hasFileAsync("--all", "version.json"));
+  }
+
+  @TestMethod
   public async tellsWhetherACommitIsInAnotherCommitsHistoryAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const first = repository.commit({ "version.json": "{}" });
@@ -104,7 +124,7 @@ export class GitTests {
     const exception = await Assert.throwsAsync(() => GitTests.createGit(repository).readFileAsync(commit, "missing.json"), ProcessException);
 
     Assert.areEqual("git", exception.program);
-    Assert.isTrue(exception.message.startsWith(`"git cat-file blob ${commit}:missing.json" failed with exit code 128: `), exception.message);
+    Assert.isTrue(exception.message.startsWith(`"git cat-file blob --end-of-options ${commit}:missing.json" failed with exit code 128: `), exception.message);
   }
 
   @TestMethod
@@ -115,7 +135,7 @@ export class GitTests {
 
       const exception = await Assert.throwsAsync(() => git.isAncestorAsync("HEAD", "HEAD"), ProcessException);
 
-      Assert.isTrue(exception.message.startsWith("\"git merge-base --is-ancestor HEAD HEAD\" failed with exit code 128: "), exception.message);
+      Assert.isTrue(exception.message.startsWith("\"git merge-base --is-ancestor --end-of-options HEAD HEAD\" failed with exit code 128: "), exception.message);
     }
     finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -128,7 +148,7 @@ export class GitTests {
 
     const exception = await Assert.throwsAsync(() => git.hasCommitAsync("HEAD"), ProcessException);
 
-    Assert.areEqual("\"git rev-parse --verify --quiet HEAD^{commit}\" failed with exit code 2.", exception.message);
+    Assert.areEqual("\"git rev-parse --verify --quiet --end-of-options HEAD^{commit}\" failed with exit code 2.", exception.message);
   }
 
   @TestMethod

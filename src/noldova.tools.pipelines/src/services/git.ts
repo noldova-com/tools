@@ -25,7 +25,9 @@ export class Git {
   }
 
   public async hasFileAsync(commit: string, filePath: string): Promise<boolean> {
-    return await this.verifyAsync(Resources.formatGitFileRevision(commit, filePath));
+    const revision = Resources.formatGitFileRevision(commit, filePath);
+
+    return await this.verifyAsync(revision) && (await this.readAsync([...Resources.gitReadTypeValues, revision])).trim() === Resources.gitFileType;
   }
 
   public async isAncestorAsync(commit: string, descendant: string): Promise<boolean> {
@@ -33,7 +35,10 @@ export class Git {
   }
 
   public async readFileAsync(commit: string, filePath: string): Promise<string> {
-    const values = [...Resources.gitReadFileValues, Resources.formatGitFileRevision(commit, filePath)];
+    return await this.readAsync([...Resources.gitReadFileValues, Resources.formatGitFileRevision(commit, filePath)]);
+  }
+
+  private async readAsync(values: readonly string[]): Promise<string> {
     const result = await this.runAsync(values);
     if (!result.isSuccessful)
       throw Git.failed(values, result);

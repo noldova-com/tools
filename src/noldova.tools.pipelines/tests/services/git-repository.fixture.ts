@@ -39,8 +39,10 @@ export class GitRepositoryFixture implements Disposable {
   }
 
   public commit(files: Readonly<Record<string, string>>): string {
-    for (const [filePath, content] of Object.entries(files))
+    for (const [filePath, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(this.directory, filePath)), { recursive: true });
       fs.writeFileSync(path.join(this.directory, filePath), content);
+    }
 
     this.run("add", "--all");
     this.run("commit", "--quiet", "--no-verify", "--allow-empty", "--message", "Commit");

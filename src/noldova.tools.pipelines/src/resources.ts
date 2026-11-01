@@ -9,11 +9,13 @@
 export class Resources {
   public static readonly commitPattern: RegExp = /^[0-9a-f]{40}$/;
   public static readonly failureExitCode: number = 1;
-  public static readonly gitIsAncestorValues: readonly string[] = ["merge-base", "--is-ancestor"];
+  public static readonly gitFileType: string = "blob";
+  public static readonly gitIsAncestorValues: readonly string[] = ["merge-base", "--is-ancestor", "--end-of-options"];
   public static readonly gitNotFoundExitCode: number = 1;
   public static readonly gitProgram: string = "git";
-  public static readonly gitReadFileValues: readonly string[] = ["cat-file", "blob"];
-  public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet"];
+  public static readonly gitReadFileValues: readonly string[] = ["cat-file", "blob", "--end-of-options"];
+  public static readonly gitReadTypeValues: readonly string[] = ["cat-file", "-t", "--end-of-options"];
+  public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet", "--end-of-options"];
   public static readonly mainBranch: string = "origin/main";
   public static readonly mainReference: string = "refs/remotes/origin/main";
   public static readonly majorPartName: string = "major";

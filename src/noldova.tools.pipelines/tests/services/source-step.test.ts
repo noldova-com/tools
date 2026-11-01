@@ -118,10 +118,12 @@ export class SourceStepTests {
     Assert.areEqual(`Commit ${commit} is not on origin/main.`, result.message);
   }
 
+  @TestData("README.md")
+  @TestData("version.json/version.json")
   @TestMethod
-  public async failsForACommitWithoutTheVersionFileAsync(): Promise<void> {
+  public async failsForACommitWithoutTheVersionFileAsync(filePath: string): Promise<void> {
     using repository = GitRepositoryFixture.create();
-    const commit = repository.commit({ "README.md": "# Example\n" });
+    const commit = repository.commit({ [filePath]: "{ \"version\": \"0.0.4\" }" });
     repository.setMain(commit);
 
     const result = await SourceStepTests.createStep(repository).runAsync(["0.0.4", commit]);
