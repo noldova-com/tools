@@ -592,6 +592,26 @@ export declare class Git {
   public isAncestorAsync(commit: string, descendant: string): Promise<boolean>;
 
   /**
+   * Lists the files a commit holds in a folder and the folders inside it.
+   *
+   * @param commit The commit, which the clone holds.
+   * @param folderPath The folder's path from the repository's root, with `/`
+   * between folders, such as `src`.
+   * @returns A promise of each file's path from the repository's root, with
+   * `/` between folders, in git's order; none when the commit has no such
+   * folder. It rejects with {@link ProcessException} if git cannot start or
+   * fails otherwise, such as when the clone does not hold the commit.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.listFilesAsync("refs/remotes/origin/main", "src"); // ["src/noldova.tools.pipelines/package.json", …]
+   * ```
+   */
+  public listFilesAsync(commit: string, folderPath: string): Promise<readonly string[]>;
+
+  /**
    * Reads a file as a commit holds it.
    *
    * @param commit The commit, which holds the file.
@@ -609,6 +629,62 @@ export declare class Git {
    * ```
    */
   public readFileAsync(commit: string, filePath: string): Promise<string>;
+
+  /**
+   * Reads the commit the checkout is at.
+   *
+   * @returns A promise of the commit's full id. It rejects with
+   * {@link ProcessException} if git cannot start or fails otherwise, such as
+   * in a clone without commits.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.readHeadAsync(); // "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"
+   * ```
+   */
+  public readHeadAsync(): Promise<string>;
+}
+
+/**
+ * Reads files from `.tgz` archives through the `tar` program.
+ */
+export declare class Tar {
+  /**
+   * Creates the reader.
+   *
+   * @param processRunner The runner that starts `tar`.
+   * @example
+   * ```ts
+   * import { ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const tar = new Tar(new ProcessRunner());
+   * ```
+   */
+  public constructor(processRunner: ProcessRunner);
+
+  /**
+   * Reads one file from an archive.
+   *
+   * @param archivePath The archive's path, such as
+   * `archives/noldova-tools.pipelines-0.0.4.tgz`.
+   * @param filePath The file's path inside the archive, such as
+   * `package/package.json`.
+   * @returns A promise of how `tar` ended: on success, its output is the
+   * file's content as UTF-8 text; when the archive is not a `.tgz` or lacks
+   * the file, it failed, with `tar`'s message. It rejects with
+   * {@link ProcessException} if `tar` cannot start, such as when it is not
+   * installed or the archive's folder does not exist.
+   * @example
+   * ```ts
+   * import { ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const result = await new Tar(new ProcessRunner()).readFileAsync("archives/noldova-tools.pipelines-0.0.4.tgz", "package/package.json");
+   * result.isSuccessful; // true when the archive holds the file
+   * ```
+   */
+  public readFileAsync(archivePath: string, filePath: string): Promise<ProcessResult>;
 }
 
 /**
@@ -667,6 +743,82 @@ export declare class SourceStep implements IStep {
    * const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"]);
    * result.isSuccessful; // true when that commit is on main and holds 0.0.4
    * (await step.runAsync(["0.0.4"])).message; // "The source step takes <version> <commit>."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that checks a release's archives before anything is published:
+ * `archive <folder> <version> <commit> <scope>`. The packages it expects are
+ * the commit's `package.json` files under `src/`, outside `tests/` folders,
+ * that are not `"private": true`. It succeeds only when the checkout is at
+ * the commit, and the folder holds exactly one archive for each package at
+ * the version, named as `npm pack` names it, whose `package/package.json`
+ * has the package's name, inside the scope, and the version, is not
+ * `"private": true`, and depends on the expected packages at exactly the
+ * version.
+ */
+export declare class ArchiveStep implements IStep {
+  /**
+   * The step's name, `"archive"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<folder> <version> <commit> <scope>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step over a clone and an archive reader.
+   *
+   * @param git The reader of the clone whose checkout the archives were
+   * packed from.
+   * @param tar The reader of the archives.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * step.name; // "archive"
+   * ```
+   */
+  public constructor(git: Git, tar: Tar);
+
+  /**
+   * Checks the release's archives.
+   *
+   * @param values The folder of archives, such as `archives`; the version,
+   * such as `0.0.4`; the commit's full id, 40 lowercase hexadecimal digits;
+   * and the scope, such as `@noldova`.
+   * @returns A promise of the result. It succeeds with one line for each
+   * archive, such as
+   * `noldova-tools.pipelines-0.0.4.tgz: @noldova/tools.pipelines@0.0.4 from commit 225059f…`.
+   * It fails with the first of these that is wrong: not four values, a
+   * version that is not a version, a commit that is not a full id, a scope
+   * that is not `@` and a lowercase name, a checkout at another commit, a
+   * folder that does not exist, and a commit without a package to publish.
+   * Otherwise it fails with one line for each problem with the archives: an
+   * archive missing, a file that is not an expected archive, an archive
+   * `tar` cannot read the manifest of, with `tar`'s message, and a manifest
+   * with another name, a name outside the scope, another version,
+   * `"private": true`, or an expected package as a dependency at anything
+   * but exactly the version. It rejects with `JsonException`, from
+   * `@noldova/context.json`, if a `package.json` the step reads is not a
+   * JSON object with a `name` and a `version` text where it needs them, and
+   * with {@link ProcessException} if git or `tar` cannot start or git fails
+   * otherwise.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const result = await step.runAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova"]);
+   * result.isSuccessful; // true when the folder holds exactly the packages at 0.0.4
+   * (await step.runAsync(["archives"])).message; // "The archive step takes <folder> <version> <commit> <scope>."
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;
