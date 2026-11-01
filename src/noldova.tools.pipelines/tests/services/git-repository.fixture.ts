@@ -52,7 +52,6 @@ export class GitRepositoryFixture implements Disposable {
     return this.run("rev-parse", "HEAD").trim();
   }
 
-  // tar is given paths inside the repository, since GNU tar reads a path with a colon, such as a Windows drive, as a remote host.
   public pack(archivePath: string, files: Readonly<Record<string, string>>): string {
     const stagingPath = path.join(this.directory, GitRepositoryFixture.STAGING_FOLDER);
     for (const [filePath, content] of Object.entries(files)) {

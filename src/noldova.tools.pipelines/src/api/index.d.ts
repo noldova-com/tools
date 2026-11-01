@@ -352,6 +352,67 @@ export declare class StepResult {
 }
 
 /**
+ * A package and the path of its archive, as {@link ArchiveStep} checked it.
+ */
+export declare class PackageArchive {
+  /**
+   * The package's name, such as `@noldova/tools.pipelines`.
+   */
+  public readonly packageName: string;
+
+  /**
+   * The archive's path, such as
+   * `archives/noldova-tools.pipelines-0.0.4.tgz`.
+   */
+  public readonly filePath: string;
+
+  /**
+   * Creates the pair.
+   *
+   * @param packageName The package's name.
+   * @param filePath The archive's path.
+   * @example
+   * ```ts
+   * import { PackageArchive } from "@noldova/tools.pipelines";
+   *
+   * const archive = new PackageArchive("@noldova/tools.pipelines", "archives/noldova-tools.pipelines-0.0.4.tgz");
+   * ```
+   */
+  public constructor(packageName: string, filePath: string);
+}
+
+/**
+ * What {@link ArchiveStep.checkAsync} found: its result, and the archives it
+ * checked when it succeeded.
+ */
+export declare class ArchiveCheck {
+  /**
+   * The archive step's result.
+   */
+  public readonly result: StepResult;
+
+  /**
+   * Each expected package with its archive, by package name, when the result
+   * succeeded; none when it failed.
+   */
+  public readonly archives: readonly PackageArchive[];
+
+  /**
+   * Creates the check.
+   *
+   * @param result The archive step's result.
+   * @param archives The archives it checked.
+   * @example
+   * ```ts
+   * import { ArchiveCheck, StepResult } from "@noldova/tools.pipelines";
+   *
+   * const check = new ArchiveCheck(StepResult.failed("There is no folder archives."), []);
+   * ```
+   */
+  public constructor(result: StepResult, archives: readonly PackageArchive[]);
+}
+
+/**
  * A step of a pipeline that a {@link CommandLine} runs by its name, such as
  * {@link SourceStep}.
  */
@@ -688,6 +749,71 @@ export declare class Tar {
 }
 
 /**
+ * Runs the `npm` program's registry commands. It passes no credentials;
+ * `npm` takes them from its own configuration, such as the environment a
+ * pipeline sets up.
+ */
+export declare class Npm {
+  /**
+   * Creates the runner.
+   *
+   * @param processRunner The runner that starts `npm`.
+   * @param workingDirectory The directory `npm` runs in, whose configuration
+   * it reads.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const npm = new Npm(new ProcessRunner(), process.cwd());
+   * ```
+   */
+  public constructor(processRunner: ProcessRunner, workingDirectory: string);
+
+  /**
+   * Reads a field of a package or a version from the registry, asking the
+   * registry rather than `npm`'s cache.
+   *
+   * @param specifier The package, such as `@noldova/tools.pipelines`, or one
+   * of its versions, such as `@noldova/tools.pipelines@0.0.4`.
+   * @param field The field, such as `dist.integrity` or `dist-tags.latest`.
+   * @param registry The registry's URL.
+   * @returns A promise of how `npm view` ended: on success, its output is the
+   * field's value, empty when the version or the field doesn't exist. It
+   * rejects with {@link ProcessException} if `npm` cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const npm = new Npm(new ProcessRunner(), process.cwd());
+   * const result = await npm.viewAsync("@noldova/tools.pipelines", "dist-tags.latest", "https://registry.npmjs.org/");
+   * result.output; // "0.0.4\n" once 0.0.4 is the latest version
+   * ```
+   */
+  public viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult>;
+
+  /**
+   * Publishes an archive to the registry under a dist-tag.
+   *
+   * @param archivePath The archive's path, relative to the current folder or
+   * full.
+   * @param tag The dist-tag the version gets, such as `latest` or `nightly`.
+   * @param access `public` or `restricted`.
+   * @param registry The registry's URL.
+   * @returns A promise of how `npm publish` ended. It rejects with
+   * {@link ProcessException} if `npm` cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const npm = new Npm(new ProcessRunner(), process.cwd());
+   * const result = await npm.publishAsync("archives/noldova-tools.pipelines-0.0.4.tgz", "latest", "public", "https://registry.npmjs.org/");
+   * result.isSuccessful; // true when the registry took the archive
+   * ```
+   */
+  public publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult>;
+}
+
+/**
  * The step that checks a release's source before anything is built or
  * published: `source <version> <commit>`. It succeeds only when the version
  * is a version, the commit is a full commit id that the clone holds, the
@@ -820,6 +946,107 @@ export declare class ArchiveStep implements IStep {
    * const result = await step.runAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova"]);
    * result.isSuccessful; // true when the folder holds exactly the packages at 0.0.4
    * (await step.runAsync(["archives"])).message; // "The archive step takes <folder> <version> <commit> <scope>."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+
+  /**
+   * Checks the release's archives as {@link ArchiveStep.runAsync} does, and
+   * gives the archives it checked with the result, for a step that goes on
+   * to use them.
+   *
+   * @param values The same values as {@link ArchiveStep.runAsync}.
+   * @returns A promise of the check: the result, and when it succeeded, each
+   * expected package with its archive, by package name. It rejects as
+   * {@link ArchiveStep.runAsync} does.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const check = await step.checkAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova"]);
+   * check.archives.map(t => t.packageName); // ["@noldova/tools.pipelines"] when the check succeeded
+   * ```
+   */
+  public checkAsync(values: readonly string[]): Promise<ArchiveCheck>;
+}
+
+/**
+ * The step that publishes a release's archives:
+ * `publish <folder> <version> <commit> <scope> <registry> <access>`. It runs
+ * {@link ArchiveStep}'s checks first, then publishes each package whose
+ * version the registry doesn't have and waits until the registry serves each
+ * version it published with the same archive.
+ */
+export declare class PublishStep implements IStep {
+  /**
+   * The step's name, `"publish"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes,
+   * `"<folder> <version> <commit> <scope> <registry> <access>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param archiveStep The step that checks the archives first.
+   * @param npm The runner of `npm`, which publishes and reads the registry.
+   * @param waitMilliseconds How long the step waits, after its last publish,
+   * for the registry to serve every version it published; 10 minutes by
+   * default.
+   * @param retryMilliseconds How long the step waits between two reads of
+   * the registry while it waits; 10 seconds by default.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, Npm, ProcessRunner, PublishStep, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new PublishStep(archiveStep, new Npm(processRunner, process.cwd()));
+   * step.name; // "publish"
+   * ```
+   */
+  public constructor(archiveStep: ArchiveStep, npm: Npm, waitMilliseconds?: number, retryMilliseconds?: number);
+
+  /**
+   * Publishes the release's archives.
+   *
+   * @param values The archive step's four values, then the registry, an
+   * `https` URL without credentials, a query or a fragment, such as
+   * `https://registry.npmjs.org/`, and the access, `public` or `restricted`.
+   * A release is published under the `latest` dist-tag, and a nightly
+   * version under `nightly`; a nightly version must be newer than both.
+   * @returns A promise of the result. It succeeds with one line for each
+   * package, such as `@noldova/tools.pipelines@0.0.4 published.` or
+   * `@noldova/tools.pipelines@0.0.4 is already published from this archive.`
+   * It fails with the first of these that is wrong, publishing nothing: not
+   * six values, a registry or an access that is not one, or the archive
+   * step's failure. Otherwise, before it publishes anything, it fails with
+   * one line for each version the registry already has from another
+   * archive, each version not newer than the version a tag it must pass
+   * points to, and each
+   * read of the registry that fails, with `npm`'s exit code and message.
+   * After that, it publishes the archives in turn and stops at the first
+   * publish that fails; it still waits for the versions it published before
+   * it, and fails with a line for that publish, with `npm`'s exit code and
+   * message, and for each version the registry does not serve in time or
+   * serves from another archive. A URL's credentials, query and fragment in
+   * `npm`'s message are left out of the line. It rejects as {@link ArchiveStep.runAsync} does,
+   * and with {@link ProcessException} if `npm` cannot start.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, Npm, ProcessRunner, PublishStep, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new PublishStep(archiveStep, new Npm(processRunner, process.cwd()));
+   * const result = await step.runAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://registry.npmjs.org/", "public"]);
+   * result.isSuccessful; // true when every package's 0.0.4 is published and served
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

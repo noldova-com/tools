@@ -63,6 +63,32 @@ export class ArchiveStepTests {
     Assert.areEqual(`noldova-a-0.0.4.tgz: @noldova/a@0.0.4 from commit ${commit}\nnoldova-b-0.0.4.tgz: @noldova/b@0.0.4 from commit ${commit}`, result.message);
   }
 
+  @TestMethod
+  public async givesTheCheckedArchivesWithTheResultAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const check = await ArchiveStepTests.createStep(repository.directory).checkAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(check.result.isSuccessful, check.result.message);
+    Assert.areEqual(
+      `@noldova/a ${path.join(folder, "noldova-a-0.0.4.tgz")},@noldova/b ${path.join(folder, "noldova-b-0.0.4.tgz")}`,
+      check.archives.map(t => `${t.packageName} ${t.filePath}`).join(","));
+  }
+
+  @TestMethod
+  public async givesNoArchivesWithAFailedResultAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.MANIFEST_A });
+
+    const check = await ArchiveStepTests.createStep(repository.directory).checkAsync([path.join(repository.directory, "archives"), "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(check.result.isSuccessful);
+    Assert.areEqual(0, check.archives.length);
+  }
+
   @TestData("")
   @TestData("archives 0.0.4 0000000000000000000000000000000000000000")
   @TestData("archives 0.0.4 0000000000000000000000000000000000000000 @noldova more")
