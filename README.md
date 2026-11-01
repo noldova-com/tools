@@ -56,10 +56,10 @@ Every pull request into `main` must pass its checks before it merges.
 
 ## Releases
 
-A maintainer releases both packages with the "Release" workflow, `.github/workflows/release.yml`, started from `main` with the version, which `version.json` holds at the commit, and the full id of the commit on `main`: in the repository's Actions tab, choose "Release", then "Run workflow" on `main`, or run
+A maintainer releases both packages with the "Release npm packages" workflow, `.github/workflows/release-npm.yml`, started from `main` with the version, which `version.json` holds at the commit, and the full id of the commit on `main`: in the repository's Actions tab, choose "Release npm packages", then "Run workflow" on `main`, or run
 
 ```bash
-gh workflow run release.yml --ref main -f version=<version> -f commit=<full commit id>
+gh workflow run release-npm.yml --ref main -f version=<version> -f commit=<full commit id>
 ```
 
 It runs only from `main`, on GitHub-hosted runners, with the tool built from the commit itself, and takes the registry, the scope and the access from the shared versions workflow:
@@ -67,7 +67,7 @@ It runs only from `main`, on GitHub-hosted runners, with the tool built from the
 | Job | What it does |
 |---|---|
 | Check and build | With read access only: checks that the commit is on `main`, builds the packages, checks the source with `pipelines source` and the archives with `pipelines archive`, and keeps the archives for the next jobs. |
-| Publish to npm | Waits in the `release` environment, which npm's trusted publishing names, for a reviewer's approval; then checks the commit out, installs the tool from the checked archives, and checks and publishes them with `pipelines publish` to npm's registry, public, with provenance. |
+| Publish to npm | Waits in the `release` environment, which npm's trusted publishing names, for a reviewer's approval; then checks the commit out, installs the tool from the checked archives, and checks and publishes them with `pipelines publish` to npm's registry, public, with provenance, through trusted publishing: npm takes the job's ID token, and no npm token is stored. |
 | Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag`, and passes when the tag is already there. |
 
 A rerun never publishes a version twice: the publish step skips a version the registry already holds from the same archive, and fails when it holds a different one.

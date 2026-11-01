@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-name: Release
+name: Release npm packages
 
 on:
   workflow_dispatch:
@@ -160,17 +160,10 @@ jobs:
       - name: Publish the packages
         env:
           npm_config_provenance: 'true'
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           RELEASE_REGISTRY: ${{ needs.versions.outputs.publish-registry-url }}
           RELEASE_SCOPE: ${{ needs.versions.outputs.publish-scope }}
           RELEASE_ACCESS: ${{ needs.versions.outputs.publish-access }}
-        run: |
-          if [ -n "$NPM_TOKEN" ]; then
-            registry_path="${RELEASE_REGISTRY#https:}"
-            printf '%s:_authToken=${NPM_TOKEN}\n' "${registry_path%/}/" > "$RUNNER_TEMP/npmrc"
-            export npm_config_userconfig="$RUNNER_TEMP/npmrc"
-          fi
-          pipelines publish "$RUNNER_TEMP/archives" "$RELEASE_VERSION" "$RELEASE_COMMIT" "$RELEASE_SCOPE" "$RELEASE_REGISTRY" "$RELEASE_ACCESS"
+        run: pipelines publish "$RUNNER_TEMP/archives" "$RELEASE_VERSION" "$RELEASE_COMMIT" "$RELEASE_SCOPE" "$RELEASE_REGISTRY" "$RELEASE_ACCESS"
 
   tag:
     name: Tag the commit
