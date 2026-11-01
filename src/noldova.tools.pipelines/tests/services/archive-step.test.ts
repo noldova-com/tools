@@ -216,8 +216,28 @@ export class ArchiveStepTests {
 
     const lines = result.message.split("\n");
     Assert.isFalse(result.isSuccessful);
-    Assert.isTrue(lines[0]?.startsWith("noldova-a-0.0.4.tgz: tar could not read its package/package.json: ") === true, result.message);
-    Assert.isTrue(result.message.includes("\nnoldova-b-0.0.4.tgz: tar could not read its package/package.json: "), result.message);
+    Assert.areEqual(2, lines.length, result.message);
+    Assert.isTrue(lines[0]?.startsWith("noldova-a-0.0.4.tgz: tar could not read its package/package.json and exited with code ") === true, result.message);
+    Assert.isTrue(lines[1]?.startsWith("noldova-b-0.0.4.tgz: tar could not read its package/package.json and exited with code ") === true, result.message);
+  }
+
+  @TestMethod
+  public async foldsTarsMessageOntoTheArchivesLineAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+    const errorOutput = "\ngzip: stdin: not in gzip format\r\ntar: Child returned status 1\n  tar: Error is not recoverable: exiting now\n";
+    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new FixedTar(new ProcessResult(2, "", errorOutput)));
+
+    const result = await step.runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      [
+        "noldova-a-0.0.4.tgz: tar could not read its package/package.json and exited with code 2: gzip: stdin: not in gzip format; tar: Child returned status 1; tar: Error is not recoverable: exiting now",
+        "noldova-b-0.0.4.tgz: tar could not read its package/package.json and exited with code 2: gzip: stdin: not in gzip format; tar: Child returned status 1; tar: Error is not recoverable: exiting now"
+      ].join("\n"),
+      result.message);
   }
 
   @TestMethod

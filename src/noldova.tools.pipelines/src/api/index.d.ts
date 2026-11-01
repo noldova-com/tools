@@ -756,8 +756,8 @@ export declare class SourceStep implements IStep {
  * the commit, and the folder holds exactly one archive for each package at
  * the version, named as `npm pack` names it, whose `package/package.json`
  * has the package's name, inside the scope, and the version, is not
- * `"private": true`, and depends on the expected packages at exactly the
- * version.
+ * `"private": true`, and lists any expected package under `dependencies` at
+ * exactly the version.
  */
 export declare class ArchiveStep implements IStep {
   /**
@@ -802,14 +802,15 @@ export declare class ArchiveStep implements IStep {
    * folder that does not exist, and a commit without a package to publish.
    * Otherwise it fails with one line for each problem with the archives: an
    * archive missing, a file that is not an expected archive, an archive
-   * `tar` cannot read the manifest of, with `tar`'s message, and a manifest
-   * with another name, a name outside the scope, another version,
-   * `"private": true`, or an expected package as a dependency at anything
-   * but exactly the version. It rejects with `JsonException`, from
-   * `@noldova/context.json`, if a `package.json` the step reads is not a
-   * JSON object with a `name` and a `version` text where it needs them, and
-   * with {@link ProcessException} if git or `tar` cannot start or git fails
-   * otherwise.
+   * `tar` cannot read the manifest of, with `tar`'s exit code and message,
+   * and a manifest with another name, a name outside the scope, another
+   * version, `"private": true`, or an expected package under `dependencies`
+   * at anything but exactly the version. It rejects with `JsonException`,
+   * from `@noldova/context.json`, if a `package.json` the step reads is not
+   * a JSON object, lacks a `name` or `version` text where it needs one, or
+   * has a `private` that is not `true` or `false` or `dependencies` that are
+   * not an object of texts, and with {@link ProcessException} if git or
+   * `tar` cannot start or git fails otherwise.
    * @example
    * ```ts
    * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";

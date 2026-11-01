@@ -19,17 +19,18 @@ export class Resources {
   public static readonly gitIsAncestorValues: readonly string[] = ["merge-base", "--is-ancestor", "--end-of-options"];
   public static readonly gitListFilesValues: readonly string[] = ["ls-tree", "-r", "-z", "--name-only", "--full-tree", "--end-of-options"];
   public static readonly gitNotFoundExitCode: number = 1;
-  public static readonly gitPathsSeparator: string = "--";
   public static readonly gitProgram: string = "git";
   public static readonly gitReadFileValues: readonly string[] = ["cat-file", "blob", "--end-of-options"];
   public static readonly gitReadHeadValues: readonly string[] = ["rev-parse", "--verify", "--end-of-options"];
   public static readonly gitReadTypeValues: readonly string[] = ["cat-file", "-t", "--end-of-options"];
   public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet", "--end-of-options"];
+  public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly lineSeparator: string = "\n";
   public static readonly mainBranch: string = "origin/main";
   public static readonly mainReference: string = "refs/remotes/origin/main";
   public static readonly majorPartName: string = "major";
   public static readonly manifestFileName: string = "package.json";
+  public static readonly messagePartSeparator: string = "; ";
   public static readonly minorPartName: string = "minor";
   public static readonly nameField: string = "name";
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
@@ -140,9 +141,10 @@ export class Resources {
   }
 
   public static formatArchiveUnreadable(archiveName: string, filePath: string, exitCode: number | null, errorOutput: string): string {
-    const detail = errorOutput.trim();
+    const detail = errorOutput.split(Resources.lineBreakPattern).map(t => t.trim()).filter(t => t.length > 0).join(Resources.messagePartSeparator);
+    const failure = `${archiveName}: ${Resources.tarProgram} could not read its ${filePath} and exited with code ${exitCode}`;
 
-    return detail.length === 0 ? `${archiveName}: ${Resources.tarProgram} could not read its ${filePath} and exited with code ${exitCode}.` : `${archiveName}: ${Resources.tarProgram} could not read its ${filePath}: ${detail}`;
+    return detail.length === 0 ? `${failure}.` : `${failure}: ${detail}`;
   }
 
   public static formatFieldDiffers(archiveName: string, field: string, found: string, expected: string): string {

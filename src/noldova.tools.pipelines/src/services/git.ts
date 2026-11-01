@@ -35,7 +35,7 @@ export class Git {
   }
 
   public async listFilesAsync(commit: string, folderPath: string): Promise<readonly string[]> {
-    const output = await this.readAsync([...Resources.gitListFilesValues, commit, Resources.gitPathsSeparator, folderPath]);
+    const output = await this.readAsync([...Resources.gitListFilesValues, commit, folderPath]);
 
     return output.split(Resources.gitFileSeparator).filter(t => t.length > 0);
   }
