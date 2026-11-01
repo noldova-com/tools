@@ -123,6 +123,28 @@ The step:
 It succeeds with one line for each package, such as `@noldova/tools.pipelines@0.0.4 published.`, and otherwise fails with one line for each problem.
 A failed `npm` call is one of those lines, with `npm`'s exit code and message, and without the credentials, query or fragment of any URL in it; `npm` failing to start throws `ProcessException`.
 
+### The nightly step
+
+`nightly <commit> <registry>` works out a nightly build's version, which the later steps take, and prints it alone, such as `0.0.5-nightly.20261102`: the release in `version.json` at the commit with one more patch, and the UTC date.
+The commit must be on `origin/main`, and the registry is as the publish step takes it.
+
+```ts
+import { ArchiveStep, CommandLine, Git, NightlyStep, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+
+const processRunner = new ProcessRunner();
+const git = new Git(processRunner, process.cwd());
+const nightlyStep = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
+const commandLine = new CommandLine("pipelines", [nightlyStep], {
+  writeSuccess: message => console.log(message),
+  writeFailure: message => console.error(message)
+});
+
+process.exitCode = await commandLine.runAsync(["nightly", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "https://registry.npmjs.org/"]);
+```
+
+The step prints nothing when the last nightly version of every package the archive step expects has the commit as its `gitHead`, or is from the same UTC date, so a pipeline skips the build when the output is empty.
+It fails with one line naming the packages when only some have a nightly version from that date, and with `npm`'s exit code and message for a read of the registry that fails.
+
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 
 ## License
