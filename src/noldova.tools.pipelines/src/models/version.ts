@@ -36,7 +36,11 @@ export class Version {
     if (match === null)
       throw new VersionException(Resources.formatVersionInvalid(text));
 
-    return new Version(Number(match[1]), Number(match[2]), Number(match[3]), match[4] ?? null);
+    const major = Version.parsePart(Resources.majorPartName, match[1]);
+    const minor = Version.parsePart(Resources.minorPartName, match[2]);
+    const patch = Version.parsePart(Resources.patchPartName, match[3]);
+
+    return new Version(major, minor, patch, match[4] ?? null);
   }
 
   public compareTo(other: Version): number {
@@ -63,7 +67,15 @@ export class Version {
 
   private static checkPart(partName: string, value: number): void {
     if (!Number.isSafeInteger(value) || value < 0)
-      throw new VersionException(Resources.formatVersionPartInvalid(partName, value));
+      throw new VersionException(Resources.formatVersionPartInvalid(partName, String(value)));
+  }
+
+  private static parsePart(partName: string, text: string | undefined): number {
+    const value = Number(text);
+    if (!Number.isSafeInteger(value))
+      throw new VersionException(Resources.formatVersionPartInvalid(partName, String(text)));
+
+    return value;
   }
 
   private static checkNightlyDate(value: string): void {

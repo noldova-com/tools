@@ -15,7 +15,7 @@ export class Resources {
     return `"${text}" is not a version: a version is major.minor.patch, each a whole number without a leading zero, such as 1.4.0, or a nightly version, major.minor.patch-nightly.YYYYMMDD, such as 1.4.1-nightly.20261101.`;
   }
 
-  public static formatVersionPartInvalid(partName: string, value: number): string {
+  public static formatVersionPartInvalid(partName: string, value: string): string {
     return `A version's ${partName} part must be a whole number from 0 to ${Number.MAX_SAFE_INTEGER}, not ${value}.`;
   }
 

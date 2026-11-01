@@ -77,11 +77,16 @@ export class VersionTests {
       failure.message);
   }
 
+  @TestData("1.9007199254740992.0", "minor", "9007199254740992")
+  @TestData("1.9007199254740993.0", "minor", "9007199254740993")
+  @TestData("1234567890123456789012345.0.0", "major", "1234567890123456789012345")
+  @TestData("0.0.18014398509481985", "patch", "18014398509481985")
+  @TestData("0.0.9007199254740993-nightly.20261101", "patch", "9007199254740993")
   @TestMethod
-  public refusesAPartBeyondTheSafeIntegers(): void {
-    const failure = Assert.throws(() => Version.parse("1.9007199254740992.0"), VersionException);
+  public refusesAPartBeyondTheSafeIntegersQuotingItsText(text: string, partName: string, value: string): void {
+    const failure = Assert.throws(() => Version.parse(text), VersionException);
 
-    Assert.areEqual("A version's minor part must be a whole number from 0 to 9007199254740991, not 9007199254740992.", failure.message);
+    Assert.areEqual(`A version's ${partName} part must be a whole number from 0 to 9007199254740991, not ${value}.`, failure.message);
   }
 
   @TestData("20261301")
