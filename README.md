@@ -10,7 +10,30 @@ Development tools from Noldova.
 | `@noldova/tools.pipelines.github` | Runs those steps on GitHub Actions: the command line a workflow calls, GitHub's environment, tags and annotations |
 
 [documents/ARCHITECTURE.md](documents/ARCHITECTURE.md) lists what each package owns.
-How to install and use each package comes with its first release.
+`@noldova/tools.pipelines` lives in `src/noldova.tools.pipelines`, and its README says how to install and use it; `@noldova/tools.pipelines.github` comes with its first code.
+
+## Build and test
+
+The toolchain is Node.js 24.21.0 with npm 11.19.0, as `package.json` pins them.
+
+```bash
+npm run build
+```
+
+```bash
+npm test
+```
+
+`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations and the test runner `@noldova/context.testing`, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
+`npm test` runs every package's tests and fails unless they cover all of the packages' source.
+Two options shorten its output, as the CI run uses them:
+
+```bash
+npm test -- --skip-test-details --skip-coverage-details
+```
+
+- `--skip-test-details` hides the line of each passing test; failures, skipped tests and the totals still print.
+- `--skip-coverage-details` hides the coverage rows of fully covered files; files with gaps and the overall row still print.
 
 ## Checks
 
@@ -20,6 +43,9 @@ Every pull request into `main` must pass its checks before it merges.
 |---|---|
 | Check / Linked issue | `.github/workflows/require-linked-issue.yml`, the "PR" workflow: the PR description has a standalone `Issue: #N`, `Issue #N` or closing reference, such as `Closes #N`, that names an issue in this repository. |
 | Check / Runner / Versions | The shared check's own call of the shared settings, which name the runner "Check / Linked issue" uses. |
+| Versions / Versions | The organization's shared settings, `.github`'s `versions.yml`, name the Node.js and npm versions and the runner for each target that "Build and test" uses. |
+| Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job, on the GitHub-hosted runner the shared settings name for Linux x64, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged. |
+| All targets | Passes only when "Versions / Versions" and "Linux x64" pass. |
 
 ## Contributing
 
