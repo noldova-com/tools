@@ -71,7 +71,8 @@ It runs only from `main`, on GitHub-hosted runners, with the tool built from the
 | Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag`, and passes when the tag is already there. |
 
 A rerun never publishes a version twice: the publish step skips a version the registry already holds from the same archive, and fails when it holds a different one.
-"Re-run failed jobs" publishes the archives the first attempt checked. "Re-run all jobs" builds and packs the commit again, and the "Build and test" workflow checks that a second build of a commit packs byte-identical archives, so a rerun of a release that was published passes without publishing anything.
+"Re-run failed jobs" publishes the archives the first attempt checked.
+"Re-run all jobs" builds and packs the commit again, and the "Build and test" workflow checks that a second build of a commit packs byte-identical archives, so a rerun of a release that was published passes without publishing anything.
 
 ## Contributing
 
