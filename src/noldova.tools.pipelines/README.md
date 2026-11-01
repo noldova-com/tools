@@ -64,6 +64,35 @@ process.exitCode = await commandLine.runAsync(process.argv.slice(2));
 Otherwise it fails with the first thing that is wrong, such as `Commit 225059f… is not on origin/main.` or `version.json at commit 225059f… holds 0.0.3, not 0.0.4.`
 A `version.json` that isn't a JSON object with a `version` text makes the step throw `JsonException`, from `@noldova/context.json`.
 
+### The archive step
+
+`archive <folder> <version> <commit> <scope>` checks the archives a build packed with `npm pack`, before anything is published.
+The packages it expects are the commit's `package.json` files under `src/`, outside `tests/` folders, that aren't `"private": true`.
+It succeeds only when:
+
+- the version is a version, the commit is its full id, and the scope is `@` and a lowercase name, such as `@noldova`;
+- the checkout is at the commit;
+- the folder holds one archive for each package at the version, named as `npm pack` names it, such as `noldova-tools.pipelines-0.0.4.tgz`, and nothing else;
+- each archive's `package/package.json` has the package's name, inside the scope, and the version, isn't `"private": true`, and lists any other expected package under `dependencies` at exactly the version.
+
+```ts
+import { ArchiveStep, CommandLine, Git, ProcessRunner, SourceStep, Tar } from "@noldova/tools.pipelines";
+
+const processRunner = new ProcessRunner();
+const git = new Git(processRunner, process.cwd());
+const commandLine = new CommandLine("pipelines", [new SourceStep(git), new ArchiveStep(git, new Tar(processRunner))], {
+  writeSuccess: message => console.log(message),
+  writeFailure: message => console.error(message)
+});
+
+process.exitCode = await commandLine.runAsync(["archive", "archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova"]);
+```
+
+A wrong value, a checkout at another commit or a missing folder fails with that one message.
+Otherwise the step fails with one line for each problem it finds with the archives, such as `archives has no noldova-tools.pipelines-0.0.4.tgz.` or `noldova-tools.pipelines-0.0.4.tgz: its version is 0.0.3, not 0.0.4.`
+It reads each manifest with the `tar` program, which must be on the `PATH`; an archive `tar` can't read is one of those lines, with `tar`'s exit code and message.
+A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, or has a `private` that isn't `true` or `false` or `dependencies` that aren't an object of texts.
+
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 
 ## License

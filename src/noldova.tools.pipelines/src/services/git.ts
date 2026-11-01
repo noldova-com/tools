@@ -34,8 +34,18 @@ export class Git {
     return await this.testAsync([...Resources.gitIsAncestorValues, commit, descendant]);
   }
 
+  public async listFilesAsync(commit: string, folderPath: string): Promise<readonly string[]> {
+    const output = await this.readAsync([...Resources.gitListFilesValues, commit, folderPath]);
+
+    return output.split(Resources.gitFileSeparator).filter(t => t.length > 0);
+  }
+
   public async readFileAsync(commit: string, filePath: string): Promise<string> {
     return await this.readAsync([...Resources.gitReadFileValues, Resources.formatGitFileRevision(commit, filePath)]);
+  }
+
+  public async readHeadAsync(): Promise<string> {
+    return (await this.readAsync([...Resources.gitReadHeadValues, Resources.gitHeadRevision])).trim();
   }
 
   private async readAsync(values: readonly string[]): Promise<string> {
