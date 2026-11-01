@@ -68,6 +68,9 @@ export class Resources {
   public static readonly sourceStepName: string = "source";
   public static readonly sourceStepUsage: string = "<version> <commit>";
   public static readonly successExitCode: number = 0;
+  public static readonly tagPrefix: string = "v";
+  public static readonly tagStepName: string = "tag";
+  public static readonly tagStepUsage: string = "<version> <commit>";
   public static readonly tarProgram: string = "tar";
   public static readonly tarReadFileValues: readonly string[] = ["-xzOf"];
   public static readonly testsFolderName: string = "tests";
@@ -256,6 +259,30 @@ export class Resources {
 
   public static formatNightlyPartlyPublished(specifiers: readonly string[], date: string): string {
     return `Only some packages' last nightly is from ${date}, UTC, so the publish step would refuse a new one for them: ${specifiers.join(", ")}.`;
+  }
+
+  public static formatTagName(version: string): string {
+    return `${Resources.tagPrefix}${version}`;
+  }
+
+  public static formatTagVersionNotRelease(version: string): string {
+    return `${version} is a nightly version; only a release version is tagged.`;
+  }
+
+  public static formatTagCreated(tag: string, commit: string): string {
+    return `Tagged commit ${commit} as ${tag}.`;
+  }
+
+  public static formatTagFound(tag: string, commit: string): string {
+    return `${tag} already points to commit ${commit}.`;
+  }
+
+  public static formatTagElsewhere(tag: string, found: string, commit: string): string {
+    return `${tag} points to commit ${found}, not ${commit}; a tag is never moved.`;
+  }
+
+  public static formatTagUnreadable(tag: string): string {
+    return `${tag} exists, so it could not be created, but reading it found no tag.`;
   }
 
   public static formatGitCommitRevision(revision: string): string {

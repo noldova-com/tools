@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the first step, `source`, which checks a release's commit before anything is built or published.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly` and `tag`.
 
 ## Install
 
@@ -144,6 +144,28 @@ process.exitCode = await commandLine.runAsync(["nightly", "225059f4c1e6a3b2d8f7e
 
 The step prints nothing when the last nightly version of every package the archive step expects has the commit as its `gitHead`, or is from the same UTC date, so a pipeline skips the build when the output is empty.
 It fails with one line naming the packages when only some have a nightly version from that date, and with `npm`'s exit code and message for a read of the registry that fails.
+
+### The tag step
+
+`tag <version> <commit>` ends a release: it tags the released commit `v<version>`, such as `v0.0.4`.
+It reads and creates the tag through the host's `ITagHost`, which a host's package implements, such as through the host's API.
+
+```ts
+import { type ITagHost, TagStep } from "@noldova/tools.pipelines";
+
+const tags = new Map<string, string>();
+const host: ITagHost = {
+  readTagAsync: async tag => tags.get(tag) ?? "",
+  createTagAsync: async (tag, commit) => tags.has(tag) ? false : (tags.set(tag, commit), true)
+};
+const result = await new TagStep(host).runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"]);
+result.message; // "Tagged commit 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 as v0.0.4."
+```
+
+- It fails, before asking the host, unless the version is a release version and the commit is its full id; a nightly version gets no tag.
+- It creates the tag when the host has none, and succeeds, such as `Tagged commit 225059f… as v0.0.4.`
+- When the tag is already there, such as from a rerun or from another run that made it first, it succeeds if the tag points to the commit, and otherwise fails, naming both commits; it never moves or deletes a tag.
+- A failed answer of the host is the step's result.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 

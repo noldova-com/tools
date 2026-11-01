@@ -7,4 +7,5 @@
  */
 
 export { GitHubStepOutput } from "../services/github-step-output.js";
+export { GitHubTags } from "../services/github-tags.js";
 export { PipelinesProgram } from "../services/pipelines-program.js";
