@@ -73,19 +73,21 @@ export class PublishStepTests {
     Assert.areEqual("The publish step takes <folder> <version> <commit> <scope> <registry> <access>.", result.message);
   }
 
-  @TestData("http://registry.example/", "http://registry.example/")
-  @TestData("registry.example", "registry.example")
-  @TestData("https://ci:token-value@registry.example/", "https://registry.example/")
-  @TestData("https://registry.example/?_authToken=token-value", "https://registry.example/")
-  @TestData("https://registry.example/#token-value", "https://registry.example/")
+  @TestData("http://registry.example/")
+  @TestData("registry.example")
+  @TestData("https://ci:token-value@registry.example/")
+  @TestData("https://registry.example/?_authToken=token-value")
+  @TestData("https://registry.example/#token-value")
+  @TestData("registry.example/?_authToken=token-value")
+  @TestData("ci:token-value@registry.example")
   @TestMethod
-  public async failsForARegistryThatIsNotAnHttpsUrlWithoutCredentialsAQueryOrAFragmentAsync(registry: string, shown: string): Promise<void> {
+  public async failsWithoutShowingARegistryThatIsNotAnHttpsUrlWithoutCredentialsAQueryOrAFragmentAsync(registry: string): Promise<void> {
     const npm = new FakeNpm({});
 
     const result = await PublishStepTests.createStep(".", npm).runAsync(["archives", "0.0.4", PublishStepTests.COMMIT, "@noldova", registry, "public"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual(`"${shown}" is not a registry: a registry is an https URL without credentials, a query or a fragment, such as https://registry.npmjs.org/.`, result.message);
+    Assert.areEqual("The registry is not an https URL without credentials, a query or a fragment, such as https://registry.npmjs.org/.", result.message);
     Assert.areEqual(0, npm.calls.length);
   }
 
@@ -188,6 +190,7 @@ export class PublishStepTests {
     const npm = new FakeNpm({
       "@noldova/a@0.0.5-nightly.20261101 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-a-0.0.5-nightly.20261101.tgz"))],
       "@noldova/b@0.0.5-nightly.20261101 dist.integrity": [PublishStepTests.NOT_FOUND, PublishStepTests.found(PublishStepTests.integrityOf(folder, "noldova-b-0.0.5-nightly.20261101.tgz"))],
+      "@noldova/a dist-tags.latest": [PublishStepTests.found("0.0.4\n")],
       "@noldova/a dist-tags.nightly": [PublishStepTests.found("0.0.5-nightly.20261031\n")]
     });
 
@@ -196,7 +199,9 @@ export class PublishStepTests {
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(
       [
+        "view @noldova/a dist-tags.latest https://registry.example/",
         "view @noldova/a dist-tags.nightly https://registry.example/",
+        "view @noldova/b dist-tags.latest https://registry.example/",
         "view @noldova/b dist-tags.nightly https://registry.example/",
         "publish noldova-a-0.0.5-nightly.20261101.tgz nightly public https://registry.example/",
         "publish noldova-b-0.0.5-nightly.20261101.tgz nightly public https://registry.example/"
@@ -204,19 +209,21 @@ export class PublishStepTests {
       npm.calls.filter(t => t.includes(" dist-tags.") || t.startsWith("publish ")).join("\n"));
   }
 
-  @TestData("0.0.5-nightly.20261101")
-  @TestData("0.0.6-nightly.20261031")
+  @TestData("latest", "0.0.5")
+  @TestData("latest", "0.1.0")
+  @TestData("nightly", "0.0.5-nightly.20261101")
+  @TestData("nightly", "0.0.6-nightly.20261031")
   @TestMethod
-  public async failsBeforePublishingANightlyVersionThatIsNotNewerThanTheNightlyTagAsync(nightly: string): Promise<void> {
+  public async failsBeforePublishingANightlyVersionThatIsNotNewerThanLatestAndNightlyAsync(tag: string, tagged: string): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);
     const folder = PublishStepTests.packArchives(repository, PublishStepTests.NIGHTLY);
-    const npm = new FakeNpm({ "@noldova/b dist-tags.nightly": [PublishStepTests.found(nightly)] });
+    const npm = new FakeNpm({ [`@noldova/b dist-tags.${tag}`]: [PublishStepTests.found(tagged)] });
 
     const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, PublishStepTests.NIGHTLY, commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual(`@noldova/b@0.0.5-nightly.20261101 is not newer than ${nightly}, the package's nightly version.`, result.message);
+    Assert.areEqual(`@noldova/b@0.0.5-nightly.20261101 is not newer than ${tagged}, the package's ${tag} version.`, result.message);
     Assert.areEqual(0, npm.calls.filter(t => t.startsWith("publish ")).length);
   }
 

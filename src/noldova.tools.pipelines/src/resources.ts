@@ -191,8 +191,8 @@ export class Resources {
     return `${scope}/`;
   }
 
-  public static formatRegistryInvalid(text: string): string {
-    return `"${Resources.removeCredentials(text)}" is not a registry: a registry is an https URL without credentials, a query or a fragment, such as https://registry.npmjs.org/.`;
+  public static formatRegistryInvalid(): string {
+    return "The registry is not an https URL without credentials, a query or a fragment, such as https://registry.npmjs.org/.";
   }
 
   public static formatAccessInvalid(text: string): string {

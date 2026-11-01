@@ -1020,7 +1020,7 @@ export declare class PublishStep implements IStep {
    * `https` URL without credentials, a query or a fragment, such as
    * `https://registry.npmjs.org/`, and the access, `public` or `restricted`.
    * A release is published under the `latest` dist-tag, and a nightly
-   * version under `nightly`.
+   * version under `nightly`; a nightly version must be newer than both.
    * @returns A promise of the result. It succeeds with one line for each
    * package, such as `@noldova/tools.pipelines@0.0.4 published.` or
    * `@noldova/tools.pipelines@0.0.4 is already published from this archive.`
@@ -1028,7 +1028,7 @@ export declare class PublishStep implements IStep {
    * six values, a registry or an access that is not one, or the archive
    * step's failure. Otherwise, before it publishes anything, it fails with
    * one line for each version the registry already has from another
-   * archive, each version not newer than the version its package's tag
+   * archive, each version not newer than the version a tag it must pass
    * points to, and each
    * read of the registry that fails, with `npm`'s exit code and message.
    * After that, it publishes the archives in turn and stops at the first

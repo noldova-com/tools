@@ -39,7 +39,7 @@ export class PublishStep implements IStep {
     if (folder === undefined || version === undefined || commit === undefined || scope === undefined || registry === undefined || access === undefined || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
     if (!PublishStep.isRegistry(registry))
-      return StepResult.failed(Resources.formatRegistryInvalid(registry));
+      return StepResult.failed(Resources.formatRegistryInvalid());
     if (!Resources.accessLevels.includes(access))
       return StepResult.failed(Resources.formatAccessInvalid(access));
 
@@ -48,6 +48,7 @@ export class PublishStep implements IStep {
       return check.result;
 
     const tag = Version.parse(version).nightlyDate === null ? Resources.latestTag : Resources.nightlyTag;
+    const comparedTags = tag === Resources.latestTag ? [tag] : [Resources.latestTag, tag];
     const reports: string[] = [];
     const findings: string[] = [];
     const pending: PackageArchive[] = [];
@@ -61,7 +62,7 @@ export class PublishStep implements IStep {
       else if (published.length > 0)
         findings.push(Resources.formatPublishedOtherwise(specifier));
       else {
-        const finding = await this.checkNewerAsync(archive.packageName, version, tag, registry);
+        const finding = await this.checkNewerAsync(archive.packageName, version, comparedTags, registry);
         if (finding === null)
           pending.push(archive);
         else
@@ -97,7 +98,17 @@ export class PublishStep implements IStep {
     return findings.length > 0 ? StepResult.failed(message) : StepResult.succeeded(message);
   }
 
-  private async checkNewerAsync(packageName: string, version: string, tag: string, registry: string): Promise<string | null> {
+  private async checkNewerAsync(packageName: string, version: string, tags: readonly string[], registry: string): Promise<string | null> {
+    for (const tag of tags) {
+      const finding = await this.checkNewerThanTagAsync(packageName, version, tag, registry);
+      if (finding !== null)
+        return finding;
+    }
+
+    return null;
+  }
+
+  private async checkNewerThanTagAsync(packageName: string, version: string, tag: string, registry: string): Promise<string | null> {
     const tagged = await this.readFieldOrEmptyAsync(packageName, Resources.formatDistTagField(tag), registry);
     if (tagged instanceof StepResult)
       return tagged.message;
