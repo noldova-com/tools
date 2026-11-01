@@ -37,7 +37,6 @@ export class Build extends Script {
   private static readonly VERSION_FIELD: string = "version";
   private static readonly VERSION_OPTION: string = "--version";
   private static readonly VERSION_OPTION_VALUE_SEPARATOR: string = "=";
-  private static readonly VERSION_PATTERN: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([1-9][0-9]{3})([0-9]{2})([0-9]{2}))?$/;
   private static readonly VERSION_PLACEHOLDER: string = "__VERSION__";
 
   public override async runAsync(): Promise<void> {
@@ -47,6 +46,9 @@ export class Build extends Script {
     const commit = await this.readHeadCommitAsync();
 
     await this.installLockedPackagesAsync();
+    if (versionOption !== undefined)
+      await Build.checkVersionAsync(versionOption);
+
     const version = versionOption ?? await this.readVersionAsync();
     await this.createDirectoryAsync(Config.BUILD_FOLDER);
     await this.createDirectoryAsync(Config.PACKAGES_FOLDER);
@@ -125,32 +127,21 @@ export class Build extends Script {
     const version = arguments_[index + 1];
     if (version === undefined)
       throw new CommandFailedException(Build.versionMissing(Build.VERSION_OPTION));
-    if (!Build.isVersion(version))
-      throw new CommandFailedException(Build.versionInvalid(version));
 
     return version;
+  }
+
+  private static async checkVersionAsync(version: string): Promise<void> {
+    const pipelines = await import("tools.pipelines.published");
+    const problem = pipelines.Version.validate(version);
+    if (problem !== null)
+      throw new CommandFailedException(problem);
   }
 
   private static removeVersionOption(arguments_: readonly string[]): readonly string[] {
     const index = arguments_.indexOf(Build.VERSION_OPTION);
 
     return index < 0 ? arguments_ : arguments_.filter((_, t) => t !== index && t !== index + 1);
-  }
-
-  private static isVersion(text: string): boolean {
-    const match = Build.VERSION_PATTERN.exec(text);
-    if (match === null)
-      return false;
-
-    const [, major, minor, patch, year, month, day] = match;
-    if (![major, minor, patch].every(t => Number.isSafeInteger(Number(t))))
-      return false;
-    if (year === undefined || month === undefined || day === undefined)
-      return true;
-
-    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-
-    return date.getUTCFullYear() === Number(year) && date.getUTCMonth() === Number(month) - 1 && date.getUTCDate() === Number(day);
   }
 
   private static selectPackages(names: readonly string[]): readonly PackageInfo[] {
@@ -189,10 +180,6 @@ export class Build extends Script {
 
   private static versionMissing(option: string): string {
     return `Option ${option} takes a version as its next value, such as ${option} 0.0.5 or ${option} 0.0.5-nightly.20261102.`;
-  }
-
-  private static versionInvalid(text: string): string {
-    return `"${text}" is not a version: a version is major.minor.patch, such as 0.0.5, or a nightly version, such as 0.0.5-nightly.20261102.`;
   }
 
   private static packageDuplicated(name: string): string {
