@@ -25,7 +25,7 @@ class RecordingOutput implements IStepOutput {
 @TestClass
 export class PipelinesProgramTests {
   @TestData("")
-  @TestData("tag")
+  @TestData("release")
   @TestMethod
   public async writesTheUsageOfEveryStepWhenNoStepHasTheNameAsync(text: string): Promise<void> {
     const values = text.length === 0 ? [] : [text];
@@ -35,7 +35,7 @@ export class PipelinesProgramTests {
 
     Assert.areEqual(1, exitCode);
     Assert.areEqual(
-      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry>\"]",
+      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | tag <version> <commit>\"]",
       JSON.stringify(output.lines));
   }
 
@@ -43,6 +43,7 @@ export class PipelinesProgramTests {
   @TestData("archive", "<folder> <version> <commit> <scope>")
   @TestData("publish", "<folder> <version> <commit> <scope> <registry> <access>")
   @TestData("nightly", "<commit> <registry>")
+  @TestData("tag", "<version> <commit>")
   @TestMethod
   public async runsTheStepItsFirstValueNamesAsync(stepName: string, usage: string): Promise<void> {
     const output = new RecordingOutput();
