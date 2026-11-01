@@ -6,10 +6,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-export class VersionException extends Error {
-  public override readonly name: string = "VersionException";
+import type { ExceptionOptions } from "@noldova/context.exceptions";
 
-  public constructor(message: string) {
-    super(message);
+import { Resources } from "../resources.js";
+import { PipelineException } from "./pipeline.exception.js";
+
+export class VersionException extends PipelineException {
+  public constructor(message: string = Resources.versionInvalid, options?: ExceptionOptions) {
+    super(message, options);
   }
 }
