@@ -10,7 +10,7 @@ Development tools from Noldova.
 | `@noldova/tools.pipelines.github` | Runs those steps on GitHub Actions: the command line a workflow calls, GitHub's environment, tags and annotations |
 
 [documents/ARCHITECTURE.md](documents/ARCHITECTURE.md) lists what each package owns.
-`@noldova/tools.pipelines` lives in `src/noldova.tools.pipelines`, and its README says how to install and use it; `@noldova/tools.pipelines.github` comes with its first code.
+Each package lives in `src/`, in a folder named after it, such as `src/noldova.tools.pipelines` for `@noldova/tools.pipelines`, and its README says how to install and use it.
 
 ## Build and test
 
