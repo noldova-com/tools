@@ -176,6 +176,23 @@ jobs:
           fi
           echo 'The build and the tests changed no tracked file.'
 
+      - name: Check that a second build packs the same archives
+        run: |
+          shopt -s failglob
+          git worktree add --quiet --detach "$RUNNER_TEMP/rebuild" HEAD
+          (cd "$RUNNER_TEMP/rebuild" && npm run build)
+          (cd _packages && sha512sum *.tgz) > "$RUNNER_TEMP/first.sha512"
+          (cd "$RUNNER_TEMP/rebuild/_packages" && sha512sum *.tgz) > "$RUNNER_TEMP/second.sha512"
+          echo 'The first build:'
+          cat "$RUNNER_TEMP/first.sha512"
+          echo 'The second build:'
+          cat "$RUNNER_TEMP/second.sha512"
+          if ! cmp --quiet "$RUNNER_TEMP/first.sha512" "$RUNNER_TEMP/second.sha512"; then
+            echo '::error::A second build of the same commit, in another folder, must pack byte-identical archives, so that rerunning a release publishes nothing new.'
+            exit 1
+          fi
+          echo 'A second build of the same commit, in another folder, packed byte-identical archives.'
+
   all-targets:
     name: All targets
     needs: [versions, build-and-test]
