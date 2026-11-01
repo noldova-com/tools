@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { JsonReader } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { CommandLine, type IStep, type IStepOutput, ProcessException, StepResult } from "@noldova/tools.pipelines";
 
@@ -68,13 +69,13 @@ export class CommandLineTests {
     Assert.areEqual("[\"failure: Commit 225059f… is not on origin/main.\"]", JSON.stringify(output.lines));
   }
 
-  @TestData("[]")
-  @TestData("[\"publish\"]")
-  @TestData("[\"Source\", \"0.0.4\"]")
-  @TestData("[\"\"]")
+  @TestData("{ \"values\": [] }")
+  @TestData("{ \"values\": [\"publish\"] }")
+  @TestData("{ \"values\": [\"Source\", \"0.0.4\"] }")
+  @TestData("{ \"values\": [\"\"] }")
   @TestMethod
   public async writesTheUsageWhenNoStepHasTheNameAsync(valuesJson: string): Promise<void> {
-    const values: readonly string[] = JSON.parse(valuesJson);
+    const values = JsonReader.parse(valuesJson).readStringArray("values");
     const output = new RecordingOutput();
     const source = new RecordingStep("source", "<version> <commit>", StepResult.succeeded("Source checked."));
     const check = new RecordingStep("check", "<folder> <version> <commit>", StepResult.succeeded("Archives checked."));

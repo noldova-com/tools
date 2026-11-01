@@ -30,6 +30,7 @@ class PipelinesRun {
 export class PipelinesBinTests {
   private static readonly BIN_PATH: string = fileURLToPath(import.meta.resolve("@noldova/tools.pipelines.github/bin/pipelines.js"));
   private static readonly DIRECTORY_PREFIX: string = "tools-pipelines-github-";
+  private static readonly TIMEOUT_MILLISECONDS: number = 60_000;
 
   @TestMethod
   public writesTheUsageAsAnErrorAnnotationWithoutAStep(): void {
@@ -81,11 +82,12 @@ export class PipelinesBinTests {
   }
 
   private static git(directory: string, ...values: string[]): string {
-    return execFileSync("git", values, { cwd: directory, encoding: "utf8" });
+    return execFileSync("git", values, { cwd: directory, encoding: "utf8", timeout: PipelinesBinTests.TIMEOUT_MILLISECONDS });
   }
 
   private static run(directory: string, values: readonly string[], environment: Readonly<Record<string, string>> = {}): PipelinesRun {
-    const result = spawnSync(process.execPath, [PipelinesBinTests.BIN_PATH, ...values], { cwd: directory, encoding: "utf8", env: { ...process.env, ...environment } });
+    const result = spawnSync(process.execPath, [PipelinesBinTests.BIN_PATH, ...values], { cwd: directory, encoding: "utf8", env: { ...process.env, ...environment }, timeout: PipelinesBinTests.TIMEOUT_MILLISECONDS });
+    Assert.isUndefined(result.error, result.error?.message);
 
     return new PipelinesRun(result.status, result.stdout, result.stderr);
   }

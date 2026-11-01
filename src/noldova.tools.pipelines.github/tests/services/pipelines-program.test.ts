@@ -24,11 +24,11 @@ class RecordingOutput implements IStepOutput {
 
 @TestClass
 export class PipelinesProgramTests {
-  @TestData("[]")
-  @TestData("[\"tag\"]")
+  @TestData("")
+  @TestData("tag")
   @TestMethod
-  public async writesTheUsageOfEveryStepWhenNoStepHasTheNameAsync(valuesJson: string): Promise<void> {
-    const values: readonly string[] = JSON.parse(valuesJson);
+  public async writesTheUsageOfEveryStepWhenNoStepHasTheNameAsync(text: string): Promise<void> {
+    const values = text.length === 0 ? [] : [text];
     const output = new RecordingOutput();
 
     const exitCode = await new PipelinesProgram(output).runAsync(values);
