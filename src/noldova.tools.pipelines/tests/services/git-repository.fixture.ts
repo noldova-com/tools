@@ -15,6 +15,8 @@ export class GitRepositoryFixture implements Disposable {
   private static readonly DIRECTORY_PREFIX: string = "tools-pipelines-";
   private static readonly MAIN_REFERENCE: string = "refs/remotes/origin/main";
   private static readonly PROGRAM: string = "git";
+  private static readonly STAGING_FOLDER: string = ".staging";
+  private static readonly TAR_PROGRAM: string = "tar";
   private static readonly TEXT_ENCODING: BufferEncoding = "utf8";
 
   public readonly directory: string;
@@ -48,6 +50,21 @@ export class GitRepositoryFixture implements Disposable {
     this.run("commit", "--quiet", "--no-verify", "--allow-empty", "--message", "Commit");
 
     return this.run("rev-parse", "HEAD").trim();
+  }
+
+  // tar is given paths inside the repository, since GNU tar reads a path with a colon, such as a Windows drive, as a remote host.
+  public pack(archivePath: string, files: Readonly<Record<string, string>>): string {
+    const stagingPath = path.join(this.directory, GitRepositoryFixture.STAGING_FOLDER);
+    for (const [filePath, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(stagingPath, filePath)), { recursive: true });
+      fs.writeFileSync(path.join(stagingPath, filePath), content);
+    }
+
+    fs.mkdirSync(path.dirname(path.join(this.directory, archivePath)), { recursive: true });
+    execFileSync(GitRepositoryFixture.TAR_PROGRAM, ["-czf", archivePath, "-C", GitRepositoryFixture.STAGING_FOLDER, ...fs.readdirSync(stagingPath)], { cwd: this.directory });
+    fs.rmSync(stagingPath, { recursive: true, force: true });
+
+    return path.join(this.directory, archivePath);
   }
 
   public setMain(commit: string): void {

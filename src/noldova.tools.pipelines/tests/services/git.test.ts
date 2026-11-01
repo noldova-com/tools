@@ -106,6 +106,25 @@ export class GitTests {
   }
 
   @TestMethod
+  public async listsTheFilesInAFolderAndItsFoldersAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ "README.md": "# Example\n", "src/a/package.json": "{}", "src/a/tests/package.json": "{}", "src/b.json": "{}", "srcs/c.json": "{}" });
+    const git = GitTests.createGit(repository);
+
+    Assert.areEqual("src/a/package.json,src/a/tests/package.json,src/b.json", (await git.listFilesAsync(commit, "src")).join(","));
+    Assert.areEqual(0, (await git.listFilesAsync(commit, "missing")).length);
+  }
+
+  @TestMethod
+  public async readsTheCommitTheCheckoutIsAtAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.commit({ "version.json": "{}" });
+    const second = repository.commit({ "README.md": "# Example\n" });
+
+    Assert.areEqual(second, await GitTests.createGit(repository).readHeadAsync());
+  }
+
+  @TestMethod
   public async readsAFileAsTheCommitHoldsItAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const first = repository.commit({ "version.json": "{\n  \"version\": \"0.0.3\"\n}\n" });
