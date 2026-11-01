@@ -114,25 +114,13 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ needs.versions.outputs.retention-days }}
 
-  approve:
-    name: Approve the release
+  publish:
+    name: Publish to npm
     needs: [versions, check]
     if: github.ref == 'refs/heads/main'
     runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
-    timeout-minutes: 5
-    environment: release
-    permissions: {}
-    steps:
-      - name: Record the approval
-        run: echo "Release $RELEASE_VERSION of commit $RELEASE_COMMIT is approved."
-
-  publish:
-    name: Publish to npm
-    needs: [versions, check, approve]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
     timeout-minutes: 20
-    environment: npm
+    environment: release
     permissions:
       contents: read
       id-token: write

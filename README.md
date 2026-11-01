@@ -62,8 +62,7 @@ It runs only from `main`, on GitHub-hosted runners, with the tool built from the
 | Job | What it does |
 |---|---|
 | Check and build | With read access only: checks that the commit is on `main`, builds the packages, checks the source with `pipelines source` and the archives with `pipelines archive`, and keeps the archives for the next jobs. |
-| Approve the release | Waits in the `release` environment for a reviewer's approval. |
-| Publish to npm | In the `npm` environment, which npm's trusted publishing names: installs the tool from the checked archives and publishes them with `pipelines publish` to `https://registry.npmjs.org/`, public, with provenance; a version the registry already holds from the same archive is skipped, so rerunning the failed jobs publishes nothing twice. |
+| Publish to npm | Waits in the `release` environment, which npm's trusted publishing names, for a reviewer's approval; then installs the tool from the checked archives and publishes them with `pipelines publish` to `https://registry.npmjs.org/`, public, with provenance; a version the registry already holds from the same archive is skipped, so rerunning the failed jobs publishes nothing twice. |
 | Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag`, and passes when the tag is already there. |
 
 ## Contributing
