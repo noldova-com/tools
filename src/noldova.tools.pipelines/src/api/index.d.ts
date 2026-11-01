@@ -881,8 +881,8 @@ export declare class SourceStep implements IStep {
  * that are not `"private": true`. It succeeds only when the checkout is at
  * the commit, and the folder holds exactly one archive for each package at
  * the version, named as `npm pack` names it, whose `package/package.json`
- * has the package's name, inside the scope, and the version, is not
- * `"private": true`, and lists any expected package under `dependencies` at
+ * has the package's name, inside the scope, the version, and the commit as
+ * its `gitHead`, is not `"private": true`, and lists any expected package under `dependencies` at
  * exactly the version.
  */
 export declare class ArchiveStep implements IStep {
@@ -930,10 +930,11 @@ export declare class ArchiveStep implements IStep {
    * archive missing, a file that is not an expected archive, an archive
    * `tar` cannot read the manifest of, with `tar`'s exit code and message,
    * and a manifest with another name, a name outside the scope, another
-   * version, `"private": true`, or an expected package under `dependencies`
+   * version, no `gitHead` or another one, `"private": true`, or an expected package under `dependencies`
    * at anything but exactly the version. It rejects with `JsonException`,
    * from `@noldova/context.json`, if a `package.json` the step reads is not
-   * a JSON object, lacks a `name` or `version` text where it needs one, or
+   * a JSON object, lacks a `name` or `version` text where it needs one, has
+   * a `gitHead` that is not a text, or
    * has a `private` that is not `true` or `false` or `dependencies` that are
    * not an object of texts, and with {@link ProcessException} if git or
    * `tar` cannot start or git fails otherwise.
