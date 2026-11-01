@@ -54,6 +54,18 @@ Every pull request into `main` must pass its checks before it merges.
 | Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow: one job, on the GitHub-hosted runner the shared settings name for Linux x64, with the Node.js and npm versions they name; `.gitattributes` holds `* text=auto eol=lf`, and every tracked text file uses LF line endings and ends with exactly one newline; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package, `npm test` runs every test with the coverage gate, and both leave every tracked file unchanged. |
 | All targets | Passes only when "Versions / Versions" and "Linux x64" pass. |
 
+## Releases
+
+A maintainer releases both packages with the "Release" workflow, `.github/workflows/release.yml`, started by hand from `main` with the version, which `version.json` holds at the commit, and the full id of the commit on `main`.
+It runs only from `main`, on GitHub-hosted runners, with the tool built from the commit itself:
+
+| Job | What it does |
+|---|---|
+| Check and build | With read access only: checks that the commit is on `main`, builds the packages, checks the source with `pipelines source` and the archives with `pipelines archive`, and keeps the archives for the next jobs. |
+| Approve the release | Waits in the `release` environment for a reviewer's approval. |
+| Publish to npm | In the `npm` environment, which npm's trusted publishing names: installs the tool from the checked archives and publishes them with `pipelines publish` to `https://registry.npmjs.org/`, public, with provenance; a version the registry already holds from the same archive is skipped, so rerunning the failed jobs publishes nothing twice. |
+| Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag`, and passes when the tag is already there. |
+
 ## Contributing
 
 Report bugs and ideas in this repository's issues; pull requests come from the maintainers.
