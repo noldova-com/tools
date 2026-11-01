@@ -24,7 +24,8 @@ npm run build
 npm test
 ```
 
-`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing` and `@noldova/context.json`, which the build and the packages read JSON with, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
+`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing`, `@noldova/context.json`, which the build and the packages read JSON with, and the published `@noldova/tools.pipelines` 0.0.1 as `tools.pipelines.published`, whose `Version` checks the `--version` option, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
+Under that name it stays apart from the `@noldova/tools.pipelines` that the build installs into `node_modules`.
 Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.1" }`, or from the `--version` option, such as for a nightly version:
 
 ```bash
