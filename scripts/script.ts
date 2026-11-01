@@ -78,19 +78,29 @@ export abstract class Script {
       const output: string[] = [];
       const standardOutput: string[] = [];
       let standardOutputLength = 0;
+      let outputLimitExceeded = false;
       child.stdout?.on("data", (t: Buffer) => {
-        output.push(t.toString());
+        if (outputLimitExceeded)
+          return;
+
         standardOutputLength += t.length;
-        if (outputLimit !== null && standardOutputLength <= outputLimit)
+        if (outputLimit !== null && standardOutputLength > outputLimit) {
+          outputLimitExceeded = true;
+          child.kill();
+          return;
+        }
+
+        output.push(t.toString());
+        if (outputLimit !== null)
           standardOutput.push(t.toString());
       });
       child.stderr?.on("data", (t: Buffer) => output.push(t.toString()));
 
       child.on("close", t => {
-        if (t !== 0)
-          reject(new CommandFailedException(Script.commandFailed(command, t, output.join(""))));
-        else if (outputLimit !== null && standardOutputLength > outputLimit)
+        if (outputLimit !== null && outputLimitExceeded)
           reject(new CommandFailedException(Script.outputTooLong(command, outputLimit)));
+        else if (t !== 0)
+          reject(new CommandFailedException(Script.commandFailed(command, t, output.join(""))));
         else
           resolve(standardOutput.join(""));
       });

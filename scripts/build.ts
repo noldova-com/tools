@@ -25,8 +25,8 @@ export class Build extends Script {
   private static readonly CLEAN_INSTALL_ARGUMENTS: readonly string[] = ["ci", "--ignore-scripts", "--no-audit", "--no-fund"];
   private static readonly GIT_HEAD_ARGUMENTS: readonly string[] = ["rev-parse", "--verify", "HEAD"];
   private static readonly GIT_HEAD_FIELD: string = "gitHead";
+  private static readonly GIT_PREFIX_ARGUMENTS: readonly string[] = ["rev-parse", "--show-prefix"];
   private static readonly GIT_PROGRAM: string = "git";
-  private static readonly GIT_ROOT_ARGUMENTS: readonly string[] = ["rev-parse", "--show-toplevel"];
   private static readonly INSTALL_ARGUMENTS: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
   private static readonly INSTALLING_PACKAGES: string = "Installing the locked npm packages…";
   private static readonly LICENSE_FILE_NAME: string = "LICENSE";
@@ -56,9 +56,9 @@ export class Build extends Script {
   }
 
   private async readHeadCommitAsync(): Promise<string> {
-    const root = (await this.readProcessOutputAsync(Build.GIT_PROGRAM, Build.GIT_ROOT_ARGUMENTS, process.cwd())).trim();
-    if (path.relative(root, process.cwd()).length !== 0)
-      throw new CommandFailedException(Build.checkoutRootDiffers(process.cwd(), root));
+    const prefix = (await this.readProcessOutputAsync(Build.GIT_PROGRAM, Build.GIT_PREFIX_ARGUMENTS, process.cwd())).trim();
+    if (prefix.length !== 0)
+      throw new CommandFailedException(Build.checkoutRootMissing(process.cwd()));
 
     return (await this.readProcessOutputAsync(Build.GIT_PROGRAM, Build.GIT_HEAD_ARGUMENTS, process.cwd())).trim();
   }
@@ -179,8 +179,8 @@ export class Build extends Script {
     return `No ${Build.PACKAGE_MANIFEST_FILE_NAME} at "${manifestPath}".`;
   }
 
-  private static checkoutRootDiffers(directory: string, root: string): string {
-    return `The build runs at the root of its git checkout, ${root}, not at ${directory}.`;
+  private static checkoutRootMissing(directory: string): string {
+    return `${directory} is not the root of a git checkout.`;
   }
 
   private static optionDuplicated(option: string): string {
