@@ -41,7 +41,7 @@ export class PipelinesBinTests {
     Assert.areEqual(1, run.exitCode);
     Assert.areEqual("", run.standardOutput);
     Assert.areEqual(
-      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry>\n",
+      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | tag <version> <commit>\n",
       run.standardError);
   }
 
@@ -60,6 +60,17 @@ export class PipelinesBinTests {
     Assert.areEqual(0, run.exitCode);
     Assert.areEqual(`Commit ${commit} is on origin/main, and its version.json holds 0.0.4.\n`, run.standardOutput);
     Assert.areEqual("", run.standardError);
+  }
+
+  @TestMethod
+  public failsTheTagStepWithoutGitHubsEnvironment(): void {
+    using directory = PipelinesBinTests.createDirectory();
+
+    const run = PipelinesBinTests.run(directory.path, ["tag", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"], { GITHUB_API_URL: "" });
+
+    Assert.areEqual(1, run.exitCode);
+    Assert.areEqual("", run.standardOutput);
+    Assert.areEqual("::error::The environment variable GITHUB_API_URL is not set; the tag step needs it to reach GitHub.\n", run.standardError);
   }
 
   @TestMethod

@@ -494,6 +494,58 @@ export declare interface IStepOutput {
 }
 
 /**
+ * How the {@link TagStep} reads and creates a tag on the pipeline's host,
+ * which implements it, such as through the host's API.
+ */
+export declare interface ITagHost {
+  /**
+   * Reads the commit a tag points to, following an annotated tag to its
+   * commit.
+   *
+   * @param tag The tag's name, such as `v0.0.4`.
+   * @returns A promise of the commit's full id, `""` when the host has no
+   * such tag, or a failed {@link StepResult} that says why the host could not
+   * answer.
+   * @example
+   * ```ts
+   * import type { ITagHost } from "@noldova/tools.pipelines";
+   *
+   * const tags = new Map<string, string>();
+   * const host: ITagHost = {
+   *   readTagAsync: async tag => tags.get(tag) ?? "",
+   *   createTagAsync: async (tag, commit) => tags.has(tag) ? false : (tags.set(tag, commit), true)
+   * };
+   * await host.readTagAsync("v0.0.4"); // ""
+   * ```
+   */
+  readTagAsync(tag: string): Promise<string | StepResult>;
+
+  /**
+   * Creates a tag at a commit, unless the host already has a tag of that
+   * name; it never moves a tag.
+   *
+   * @param tag The tag's name, such as `v0.0.4`.
+   * @param commit The commit's full id.
+   * @returns A promise of `true` when it created the tag, `false` when the
+   * host already has a tag of that name, such as one another run made, or a
+   * failed {@link StepResult} that says why the host could not create it.
+   * @example
+   * ```ts
+   * import type { ITagHost } from "@noldova/tools.pipelines";
+   *
+   * const tags = new Map<string, string>();
+   * const host: ITagHost = {
+   *   readTagAsync: async tag => tags.get(tag) ?? "",
+   *   createTagAsync: async (tag, commit) => tags.has(tag) ? false : (tags.set(tag, commit), true)
+   * };
+   * await host.createTagAsync("v0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"); // true
+   * await host.createTagAsync("v0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"); // false
+   * ```
+   */
+  createTagAsync(tag: string, commit: string): Promise<boolean | StepResult>;
+}
+
+/**
  * The command-line base a pipeline host builds its command line on: it runs
  * the step its first value names with the values after it, writes the step's
  * message, and gives the exit code.
@@ -1184,6 +1236,71 @@ export declare class NightlyStep implements IStep {
    * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
    * const result = await step.runAsync(["225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "https://registry.npmjs.org/"]);
    * result.message; // "0.0.5-nightly.20261102", or "" when nothing changed
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step a release ends with: it tags the released commit `v<version>`,
+ * through the host's {@link ITagHost}, and never moves a tag.
+ */
+export declare class TagStep implements IStep {
+  /**
+   * The step's name, `"tag"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<version> <commit>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step over a host's tags.
+   *
+   * @param tagHost How the step reads and creates a tag on the host.
+   * @example
+   * ```ts
+   * import { type ITagHost, TagStep } from "@noldova/tools.pipelines";
+   *
+   * const tags = new Map<string, string>();
+   * const host: ITagHost = {
+   *   readTagAsync: async tag => tags.get(tag) ?? "",
+   *   createTagAsync: async (tag, commit) => tags.has(tag) ? false : (tags.set(tag, commit), true)
+   * };
+   * const step = new TagStep(host);
+   * step.name; // "tag"
+   * ```
+   */
+  public constructor(tagHost: ITagHost);
+
+  /**
+   * Tags a release's commit with its version.
+   *
+   * @param values The release version, such as `0.0.4`, and the commit's
+   * full id, 40 lowercase hexadecimal digits.
+   * @returns A promise of the result. It fails, before asking the host, for
+   * values other than two, a version that is not a version, a nightly
+   * version, which gets no tag, or a commit that is not a full id. When the
+   * host has no `v<version>`, it creates it and succeeds, such as
+   * `Tagged commit 225059f… as v0.0.4.`; when the host already has it, such
+   * as from another run that made it first, it succeeds if the tag points to
+   * the commit, `v0.0.4 already points to commit 225059f….`, and fails,
+   * naming both commits, if it points to another. A failed answer of the host
+   * is the result as the host gives it.
+   * @example
+   * ```ts
+   * import { type ITagHost, TagStep } from "@noldova/tools.pipelines";
+   *
+   * const tags = new Map<string, string>();
+   * const host: ITagHost = {
+   *   readTagAsync: async tag => tags.get(tag) ?? "",
+   *   createTagAsync: async (tag, commit) => tags.has(tag) ? false : (tags.set(tag, commit), true)
+   * };
+   * const step = new TagStep(host);
+   * (await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message; // "Tagged commit 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 as v0.0.4."
+   * (await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message; // "v0.0.4 already points to commit 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8."
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;
