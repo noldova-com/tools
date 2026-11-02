@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { setTimeout as delayAsync } from "node:timers/promises";
+
 import { type IRegistryHost, StepResult } from "@noldova/tools.pipelines";
 
 import { Resources } from "../resources.js";
@@ -14,13 +16,15 @@ import { GitHubApi } from "./github-api.js";
 export class GitHubPackages implements IRegistryHost {
   private readonly environment: Readonly<Record<string, string | undefined>>;
   private readonly timeoutMilliseconds: number;
+  private readonly waitAsync: (milliseconds: number) => Promise<void>;
   private readonly versionIds: Map<string, Map<string, number>> = new Map();
 
   public readonly registry: string = Resources.packagesRegistry;
 
-  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds) {
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync) {
     this.environment = environment;
     this.timeoutMilliseconds = timeoutMilliseconds;
+    this.waitAsync = waitAsync;
   }
 
   public async readVersionsAsync(packageName: string): Promise<readonly string[] | StepResult> {
@@ -90,7 +94,7 @@ export class GitHubPackages implements IRegistryHost {
     if (missing !== undefined)
       return StepResult.failed(Resources.formatPruneVariableMissing(missing));
 
-    const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.tokenVariable), this.timeoutMilliseconds);
+    const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.tokenVariable), this.timeoutMilliseconds, this.waitAsync);
 
     return [api, Resources.formatVersionsResource(packageName)];
   }

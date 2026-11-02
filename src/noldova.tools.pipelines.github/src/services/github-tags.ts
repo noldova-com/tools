@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { setTimeout as delayAsync } from "node:timers/promises";
+
 import { type ITagHost, StepResult } from "@noldova/tools.pipelines";
 
 import { GitHubAnswer } from "../models/github-answer.js";
@@ -16,10 +18,12 @@ import { GitHubApi } from "./github-api.js";
 export class GitHubTags implements ITagHost {
   private readonly environment: Readonly<Record<string, string | undefined>>;
   private readonly timeoutMilliseconds: number;
+  private readonly waitAsync: (milliseconds: number) => Promise<void>;
 
-  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds) {
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync) {
     this.environment = environment;
     this.timeoutMilliseconds = timeoutMilliseconds;
+    this.waitAsync = waitAsync;
   }
 
   public async readTagAsync(tag: string): Promise<string | StepResult> {
@@ -80,6 +84,6 @@ export class GitHubTags implements ITagHost {
   }
 
   private async requestAsync(connection: GitHubConnection, method: string, path: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer> {
-    return new GitHubApi(connection.apiUrl, connection.token, this.timeoutMilliseconds).requestAsync(method, Resources.formatResource(connection.repository, path), body);
+    return new GitHubApi(connection.apiUrl, connection.token, this.timeoutMilliseconds, this.waitAsync).requestAsync(method, Resources.formatResource(connection.repository, path), body);
   }
 }

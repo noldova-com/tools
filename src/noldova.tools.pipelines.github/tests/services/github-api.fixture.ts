@@ -17,16 +17,18 @@ export class GitHubApiAnswer {
   public readonly body: string;
   public readonly contentType: string;
   public readonly isHeld: boolean;
+  public readonly retryAfter: string;
 
-  public constructor(status: number, body: string, contentType: string = "application/json; charset=utf-8", isHeld: boolean = false) {
+  public constructor(status: number, body: string, contentType: string = "application/json; charset=utf-8", isHeld: boolean = false, retryAfter: string = "") {
     this.status = status;
     this.body = body;
     this.contentType = contentType;
     this.isHeld = isHeld;
+    this.retryAfter = retryAfter;
   }
 
-  public static json(status: number, value: unknown): GitHubApiAnswer {
-    return new GitHubApiAnswer(status, JSON.stringify(value));
+  public static json(status: number, value: unknown, retryAfter: string = ""): GitHubApiAnswer {
+    return new GitHubApiAnswer(status, JSON.stringify(value), undefined, false, retryAfter);
   }
 }
 
@@ -71,7 +73,11 @@ export class GitHubApiFixture implements AsyncDisposable {
         if (answer.isHeld)
           return;
 
-        response.writeHead(answer.status, { "Connection": "close", ...(answer.contentType.length === 0 ? {} : { "Content-Type": answer.contentType }) });
+        response.writeHead(answer.status, {
+          "Connection": "close",
+          ...(answer.contentType.length === 0 ? {} : { "Content-Type": answer.contentType }),
+          ...(answer.retryAfter.length === 0 ? {} : { "Retry-After": answer.retryAfter })
+        });
         response.end(answer.body);
       });
     });
