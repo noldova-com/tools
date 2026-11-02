@@ -8,10 +8,11 @@
 
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { StepResult } from "@noldova/tools.pipelines";
+import { ArchiveStep, Git, ProcessRunner, PruneStep, StepResult, Tar } from "@noldova/tools.pipelines";
 import { GitHubPackages } from "@noldova/tools.pipelines.github";
 
 import { GitHubApiAnswer, GitHubApiFixture } from "./github-api.fixture.js";
+import { GitCloneFixture } from "./git-clone.fixture.js";
 
 @TestClass
 export class GitHubPackagesTests {
@@ -213,6 +214,63 @@ export class GitHubPackagesTests {
       GitHubPackagesTests.readFailure(deleted));
   }
 
+  @TestData(true)
+  @TestData(false)
+  @TestMethod
+  public async reportsARepeatedDeleteAnswered404AsAlreadyDeletedAsync(isTimeout: boolean): Promise<void> {
+    const waits: number[] = [];
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]), GitHubApiAnswer.json(200, [])],
+      [`DELETE ${GitHubPackagesTests.VERSIONS}/11`]: [isTimeout ? GitHubApiAnswer.HELD : GitHubApiAnswer.json(502, { message: "Bad gateway" }), GitHubApiAnswer.json(404, { message: "Not Found" })]
+    });
+
+    const deleted = await GitHubPackagesTests.createPackages(api, waits).deleteVersionAsync(GitHubPackagesTests.PACKAGE, "0.0.1");
+
+    Assert.areEqual(false, deleted);
+    Assert.areEqual(JSON.stringify(["GET", "DELETE", "DELETE", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
+    Assert.areEqual("5000", waits.join(","));
+  }
+
+  @TestMethod
+  public async readsThePageAGitHubOutageInterruptedAgainAsync(): Promise<void> {
+    const waits: number[] = [];
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(503, { message: "Unavailable" }), GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }])]
+    });
+
+    const versions = await GitHubPackagesTests.createPackages(api, waits).readVersionsAsync(GitHubPackagesTests.PACKAGE);
+
+    Assert.areEqual("0.0.1", GitHubPackagesTests.readVersions(versions).join(","));
+    Assert.areEqual("5000", waits.join(","));
+  }
+
+  @TestMethod
+  public async failsNamingTheRequestWhenListingIsNotAnsweredDeletingNothingAsync(): Promise<void> {
+    using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.HELD });
+
+    const result = await GitHubPackagesTests.createStep(clone, api).runAsync(["0.0.4", clone.commit, "@noldova-com", "https://npm.pkg.github.com/", "1"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("GitHub gave no answer to GET orgs/noldova-com/packages/npm/tools.pipelines/versions?per_page=100&page=1: The operation was aborted due to timeout", result.message);
+    Assert.areEqual(JSON.stringify(["GET", "GET", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
+  }
+
+  @TestMethod
+  public async keepsTheDeletedLinesWhenADeleteIsNotAnsweredAsync(): Promise<void> {
+    using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 14, name: "0.0.4" }, { id: 13, name: "0.0.3" }, { id: 12, name: "0.0.2" }]),
+      [`DELETE ${GitHubPackagesTests.VERSIONS}/13`]: new GitHubApiAnswer(204, "", ""),
+      [`DELETE ${GitHubPackagesTests.VERSIONS}/12`]: GitHubApiAnswer.HELD
+    });
+
+    const result = await GitHubPackagesTests.createStep(clone, api).runAsync(["0.0.4", clone.commit, "@noldova-com", "https://npm.pkg.github.com/", "1"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova-com/tools.pipelines@0.0.3 deleted.\nGitHub gave no answer to DELETE orgs/noldova-com/packages/npm/tools.pipelines/versions/12: The operation was aborted due to timeout", result.message);
+  }
+
   @TestMethod
   public async failsWithTheListsAnswerWhenListingBeforeADeleteFailsAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({});
@@ -225,8 +283,17 @@ export class GitHubPackagesTests {
     Assert.areEqual(1, api.requests.length);
   }
 
-  private static createPackages(api: GitHubApiFixture): GitHubPackages {
-    return new GitHubPackages({ GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN });
+  private static createPackages(api: GitHubApiFixture, waits: number[] = []): GitHubPackages {
+    return new GitHubPackages({ GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN }, undefined, async milliseconds => {
+      waits.push(milliseconds);
+    }, () => api.createAttemptSignal());
+  }
+
+  private static createStep(clone: GitCloneFixture, api: GitHubApiFixture): PruneStep {
+    const processRunner = new ProcessRunner();
+    const git = new Git(processRunner, clone.directory);
+
+    return new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), GitHubPackagesTests.createPackages(api));
   }
 
   private static readVersions(result: readonly string[] | StepResult): readonly string[] {

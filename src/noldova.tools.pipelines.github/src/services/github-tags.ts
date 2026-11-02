@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { setTimeout as delayAsync } from "node:timers/promises";
+
 import { type ITagHost, StepResult } from "@noldova/tools.pipelines";
 
 import { GitHubAnswer } from "../models/github-answer.js";
@@ -16,10 +18,14 @@ import { GitHubApi } from "./github-api.js";
 export class GitHubTags implements ITagHost {
   private readonly environment: Readonly<Record<string, string | undefined>>;
   private readonly timeoutMilliseconds: number;
+  private readonly waitAsync: (milliseconds: number) => Promise<void>;
+  private readonly createSignal: (timeoutMilliseconds: number) => AbortSignal;
 
-  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds) {
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync, createSignal: (timeoutMilliseconds: number) => AbortSignal = GitHubApi.createTimeoutSignal) {
     this.environment = environment;
     this.timeoutMilliseconds = timeoutMilliseconds;
+    this.waitAsync = waitAsync;
+    this.createSignal = createSignal;
   }
 
   public async readTagAsync(tag: string): Promise<string | StepResult> {
@@ -28,6 +34,8 @@ export class GitHubTags implements ITagHost {
       return connection;
 
     const reference = await this.requestAsync(connection, Resources.readMethod, Resources.formatTagReferencePath(tag));
+    if (reference instanceof StepResult)
+      return reference;
     if (reference.status === Resources.notFoundStatus)
       return "";
     if (reference.status !== Resources.foundStatus)
@@ -36,6 +44,8 @@ export class GitHubTags implements ITagHost {
     let target = reference.readBody().readObject(Resources.objectField);
     while (target.readString(Resources.typeField) === Resources.annotatedTagType) {
       const tagObject = await this.requestAsync(connection, Resources.readMethod, Resources.formatTagObjectPath(target.readString(Resources.shaField)));
+      if (tagObject instanceof StepResult)
+        return tagObject;
       if (tagObject.status !== Resources.foundStatus)
         return tagObject.toFailure();
 
@@ -55,6 +65,8 @@ export class GitHubTags implements ITagHost {
       return connection;
 
     const answer = await this.requestAsync(connection, Resources.createMethod, Resources.referencesPath, { ref: Resources.formatTagReference(tag), sha: commit });
+    if (answer instanceof StepResult)
+      return answer;
     if (answer.status === Resources.createdStatus)
       return true;
     if (answer.status !== Resources.unprocessableStatus)
@@ -79,7 +91,7 @@ export class GitHubTags implements ITagHost {
     return this.environment[name] ?? "";
   }
 
-  private async requestAsync(connection: GitHubConnection, method: string, path: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer> {
-    return new GitHubApi(connection.apiUrl, connection.token, this.timeoutMilliseconds).requestAsync(method, Resources.formatResource(connection.repository, path), body);
+  private async requestAsync(connection: GitHubConnection, method: string, path: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer | StepResult> {
+    return new GitHubApi(connection.apiUrl, connection.token, this.timeoutMilliseconds, this.waitAsync, this.createSignal).requestAsync(method, Resources.formatResource(connection.repository, path), body);
   }
 }
