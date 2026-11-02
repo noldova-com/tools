@@ -70,3 +70,14 @@ jobs:
             exit 1
           fi
           echo "The build refused --version 01.0.0 with the published Version's message."
+
+      - name: Check that the refused build left the checkout unchanged
+        shell: bash
+        run: |
+          changes="$(git status --porcelain)"
+          if [[ -n "$changes" ]]; then
+            printf '%s\n' "$changes"
+            echo '::error::The refused build changed or added files in the checkout.'
+            exit 1
+          fi
+          echo 'The checkout has no changed or untracked file.'
