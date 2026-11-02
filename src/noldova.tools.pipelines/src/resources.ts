@@ -55,6 +55,7 @@ export class Resources {
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
   public static readonly npmProgram: string = "npm";
   public static readonly npmPublishValues: readonly string[] = ["publish"];
+  public static readonly npmRegistryHostName: string = "registry.npmjs.org";
   public static readonly npmRegistryValues: readonly string[] = ["--registry"];
   public static readonly npmTagValues: readonly string[] = ["--tag"];
   public static readonly npmViewValues: readonly string[] = ["view"];
@@ -316,6 +317,10 @@ export class Resources {
     return `"${text}" is not a number of versions to keep: it is a whole number above 0 without a leading zero, such as 5.`;
   }
 
+  public static formatPruneRegistryNpm(registry: string): string {
+    return `The prune step never deletes a version on npm's registry, ${registry}.`;
+  }
+
   public static formatPruneRegistryUnsupported(registry: string, hostRegistry: string): string {
     return `The prune step deletes versions only on ${hostRegistry}, not on ${registry}.`;
   }
@@ -332,6 +337,10 @@ export class Resources {
 
   public static formatPruneNothing(keepVersions: number): string {
     return `No package has more than ${keepVersions} release versions on the registry, so nothing is deleted.`;
+  }
+
+  public static formatPruneDeleteRejected(specifier: string, message: string): string {
+    return `Deleting ${specifier} failed: ${message}`;
   }
 
   public static formatVersionDeleted(specifier: string): string {

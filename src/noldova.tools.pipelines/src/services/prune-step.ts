@@ -47,6 +47,8 @@ export class PruneStep implements IStep {
       return StepResult.failed(Resources.formatScopeInvalid(scope));
     if (!Npm.isRegistry(registry))
       return StepResult.failed(Resources.formatRegistryInvalid());
+    if (new URL(registry).hostname === Resources.npmRegistryHostName)
+      return StepResult.failed(Resources.formatPruneRegistryNpm(registry));
     if (new URL(registry).href !== new URL(this.registryHost.registry).href)
       return StepResult.failed(Resources.formatPruneRegistryUnsupported(registry, this.registryHost.registry));
 
@@ -90,7 +92,7 @@ export class PruneStep implements IStep {
 
     const lines: string[] = [];
     for (const [packageName, old] of deletions) {
-      const deleted = await this.registryHost.deleteVersionAsync(packageName, old);
+      const deleted = await this.deleteVersionAsync(packageName, old);
       if (deleted instanceof StepResult)
         return StepResult.failed([...lines, deleted.message].join(Resources.lineSeparator));
 
@@ -99,6 +101,18 @@ export class PruneStep implements IStep {
     }
 
     return StepResult.succeeded(lines.join(Resources.lineSeparator));
+  }
+
+  private async deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult> {
+    try {
+      return await this.registryHost.deleteVersionAsync(packageName, version);
+    }
+    catch (error: unknown) {
+      if (!(error instanceof Error))
+        throw error;
+
+      return StepResult.failed(Resources.formatPruneDeleteRejected(Resources.formatSpecifier(packageName, version), error.message));
+    }
   }
 
   private static sortReleases(versions: readonly string[]): readonly Version[] {

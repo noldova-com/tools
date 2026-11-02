@@ -68,6 +68,7 @@ It runs in a checkout of the commit, and reads `GITHUB_API_URL`, which GitHub Ac
 
 The job needs `permissions: packages: write`, and, since the step deletes, an environment whose reviewers approve each run.
 The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as GitHub refusing to delete a package's last version.
+A 404 to a delete counts as a version already deleted only when GitHub's list no longer has it; otherwise the step fails.
 
 ### From code
 

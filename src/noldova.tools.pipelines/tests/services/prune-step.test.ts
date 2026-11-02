@@ -14,13 +14,16 @@ import { GitRepositoryFixture } from "./git-repository.fixture.js";
 class FakeRegistryHost implements IRegistryHost {
   private readonly versions: Readonly<Record<string, readonly string[] | StepResult>>;
   private readonly deletes: Readonly<Record<string, boolean | StepResult>>;
+  private readonly rejections: Readonly<Record<string, unknown>>;
 
-  public readonly registry: string = "https://npm.pkg.github.com/";
+  public readonly registry: string;
   public readonly calls: string[] = [];
 
-  public constructor(versions: Readonly<Record<string, readonly string[] | StepResult>>, deletes: Readonly<Record<string, boolean | StepResult>> = {}) {
+  public constructor(versions: Readonly<Record<string, readonly string[] | StepResult>>, deletes: Readonly<Record<string, boolean | StepResult>> = {}, rejections: Readonly<Record<string, unknown>> = {}, registry: string = "https://npm.pkg.github.com/") {
     this.versions = versions;
     this.deletes = deletes;
+    this.rejections = rejections;
+    this.registry = registry;
   }
 
   public async readVersionsAsync(packageName: string): Promise<readonly string[] | StepResult> {
@@ -30,6 +33,10 @@ class FakeRegistryHost implements IRegistryHost {
 
   public async deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult> {
     this.calls.push(`delete ${packageName}@${version}`);
+    const rejection = this.rejections[`${packageName}@${version}`];
+    if (rejection !== undefined)
+      return await Promise.reject(rejection as Error);
+
     return this.deletes[`${packageName}@${version}`] ?? true;
   }
 }
@@ -59,7 +66,9 @@ export class PruneStepTests {
   @TestData("0.0.4 225059f @noldova https://npm.pkg.github.com/ 5", "\"225059f\" is not a commit: a commit is given by its full id, 40 lowercase hexadecimal digits.")
   @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 noldova https://npm.pkg.github.com/ 5", "\"noldova\" is not a scope: a scope is @ and a lowercase name, such as @noldova.")
   @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova http://npm.pkg.github.com/ 5", "The registry is not an https URL without credentials, a query or a fragment, such as https://registry.npmjs.org/.")
-  @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova https://registry.npmjs.org/ 5", "The prune step deletes versions only on https://npm.pkg.github.com/, not on https://registry.npmjs.org/.")
+  @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova https://registry.npmjs.org/ 5", "The prune step never deletes a version on npm's registry, https://registry.npmjs.org/.")
+  @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova https://REGISTRY.npmjs.org/path 5", "The prune step never deletes a version on npm's registry, https://REGISTRY.npmjs.org/path.")
+  @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova https://registry.example.com/ 5", "The prune step deletes versions only on https://npm.pkg.github.com/, not on https://registry.example.com/.")
   @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova https://npm.pkg.github.com/ 0", "\"0\" is not a number of versions to keep: it is a whole number above 0 without a leading zero, such as 5.")
   @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova https://npm.pkg.github.com/ 05", "\"05\" is not a number of versions to keep: it is a whole number above 0 without a leading zero, such as 5.")
   @TestData("0.0.4 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 @noldova https://npm.pkg.github.com/ -1", "\"-1\" is not a number of versions to keep: it is a whole number above 0 without a leading zero, such as 5.")
@@ -74,6 +83,17 @@ export class PruneStepTests {
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(expected, result.message);
+    Assert.areEqual(0, host.calls.length);
+  }
+
+  @TestMethod
+  public async refusesNpmsRegistryEvenWhenTheHostNamesItAsync(): Promise<void> {
+    const host = new FakeRegistryHost({}, {}, {}, "https://registry.npmjs.org/");
+
+    const result = await PruneStepTests.createStep(".", host).runAsync(["0.0.4", PruneStepTests.COMMIT, "@noldova", "https://registry.npmjs.org/", "5"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("The prune step never deletes a version on npm's registry, https://registry.npmjs.org/.", result.message);
     Assert.areEqual(0, host.calls.length);
   }
 
@@ -225,6 +245,32 @@ export class PruneStepTests {
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual("@other/c is outside the scope @noldova.", result.message);
     Assert.areEqual(0, host.calls.length);
+  }
+
+  @TestMethod
+  public async keepsTheDeletedLinesWhenADeleteRejectsAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PruneStepTests.FILES);
+    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3", "0.0.2"], "@noldova/b": ["0.0.4", "0.0.3"] }, {}, { "@noldova/a@0.0.2": new TypeError("fetch failed") });
+
+    const result = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/a@0.0.3 deleted.\nDeleting @noldova/a@0.0.2 failed: fetch failed", result.message);
+    Assert.areEqual(
+      ["read @noldova/a", "read @noldova/b", "delete @noldova/a@0.0.3", "delete @noldova/a@0.0.2"].join("\n"),
+      host.calls.join("\n"));
+  }
+
+  @TestMethod
+  public async passesOnADeleteThatRejectsWithSomethingElseAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PruneStepTests.FILES);
+    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3"], "@noldova/b": ["0.0.4"] }, {}, { "@noldova/a@0.0.3": "not an error" });
+
+    const rejection = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]).then(() => null, (error: unknown) => error);
+
+    Assert.areEqual("not an error", rejection);
   }
 
   private static createStep(directory: string, host: IRegistryHost): PruneStep {

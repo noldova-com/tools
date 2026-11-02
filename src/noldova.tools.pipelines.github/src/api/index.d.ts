@@ -135,11 +135,12 @@ export declare class GitHubPackages implements IRegistryHost {
    * @param packageName The package's name, `@<owner>/<name>`.
    * @param version The version's text, as the list gave it.
    * @returns A promise of `true` when GitHub deleted the version, `false`
-   * when the list has no such version or GitHub answers 404, as after
-   * another run deleted it, or a failed {@link StepResult} as
-   * {@link GitHubPackages.readVersionsAsync} gives one, or when GitHub
-   * answers the delete with another status than 204, such as when it
-   * refuses to delete a package's last version. It rejects as
+   * when the list has no such version, or GitHub answers 404 and a new list
+   * no longer has it, as after another run deleted it, or a failed
+   * {@link StepResult} as {@link GitHubPackages.readVersionsAsync} gives
+   * one, when GitHub answers 404 and a new list still has the version, or
+   * when GitHub answers the delete with another status than 204, such as
+   * when it refuses to delete a package's last version. It rejects as
    * {@link GitHubPackages.readVersionsAsync} does.
    * @example
    * ```ts

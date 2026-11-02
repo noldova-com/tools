@@ -149,7 +149,7 @@ It fails with one line naming the packages when only some have a nightly version
 ### The prune step
 
 `prune <version> <commit> <scope> <registry> <keep-versions>` runs after a release on a registry that keeps only its newest versions: it deletes each package's older release versions, keeping the newest `<keep-versions>`, a whole number above 0.
-It lists and deletes versions through the host's `IRegistryHost`, which a host's package implements for its own registry, and runs only on that registry; npm's public registry has none, so a version published there stays.
+It lists and deletes versions through the host's `IRegistryHost`, which a host's package implements for its own registry, and runs only on that registry; it refuses npm's public registry whatever the host names, so a version published there stays.
 Since the step deletes, a pipeline runs it only from a release job that an environment's reviewers approve.
 
 ```ts
@@ -168,10 +168,10 @@ const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5
 result.message; // "@noldova/a@0.0.2 deleted." when the commit holds only @noldova/a
 ```
 
-- It fails, asking the registry nothing, unless the version is a release version, the commit is its full id and in the clone, the scope holds every package the archive step expects at the commit, the registry is the host's, and the number to keep is one.
+- It fails, asking the registry nothing, unless the version is a release version, the commit is its full id and in the clone, the scope holds every package the archive step expects at the commit, the registry is the host's and not npm's, and the number to keep is one.
 - It lists every package's versions before it deletes any, and fails, deleting nothing, with one line for each package whose versions the host can't list and each whose newest release version isn't the version.
 - It deletes each package's release versions after the newest it keeps, with one line for each, and succeeds with one line saying nothing is deleted when no package has more; a version another run deleted first is reported, not a failure.
-- It stops at the first delete the host refuses, with the lines before it and the host's answer.
+- It stops at the first delete that fails, with the lines before it and the host's answer, or a line naming the version with the error's message when the delete rejects, such as for a lost connection.
 - It counts and deletes only release versions: a nightly version, or any other version, stays.
 
 ### The tag step

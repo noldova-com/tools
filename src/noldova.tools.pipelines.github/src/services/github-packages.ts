@@ -48,12 +48,19 @@ export class GitHubPackages implements IRegistryHost {
 
     const [api, resource] = target;
     const answer = await api.requestAsync(Resources.deleteMethod, Resources.formatVersionResource(resource, id));
-    if (answer.status !== Resources.deletedStatus && answer.status !== Resources.notFoundStatus)
+    if (answer.status === Resources.deletedStatus) {
+      ids.delete(version);
+
+      return true;
+    }
+    if (answer.status !== Resources.notFoundStatus)
       return answer.toFailure();
 
-    ids.delete(version);
+    const listed = await this.readIdsAsync(packageName, api, resource);
+    if (listed instanceof StepResult)
+      return listed;
 
-    return answer.status === Resources.deletedStatus;
+    return listed.has(version) ? StepResult.failed(Resources.formatVersionStillListed(packageName, version)) : false;
   }
 
   private async readIdsAsync(packageName: string, api: GitHubApi, resource: string): Promise<Map<string, number> | StepResult> {

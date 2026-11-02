@@ -164,12 +164,39 @@ export class GitHubPackagesTests {
 
   @TestMethod
   public async answersFalseWhenGitHubNoLongerHasTheVersionAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]) });
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]), GitHubApiAnswer.json(200, [{ id: 12, name: "0.0.2" }])]
+    });
 
     const deleted = await GitHubPackagesTests.createPackages(api).deleteVersionAsync(GitHubPackagesTests.PACKAGE, "0.0.1");
 
     Assert.areEqual(false, deleted);
-    Assert.areEqual(JSON.stringify(["GET", "DELETE"]), JSON.stringify(api.requests.map(t => t.method)));
+    Assert.areEqual(JSON.stringify(["GET", "DELETE", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
+  }
+
+  @TestMethod
+  public async failsWhenGitHubAnswers404ButStillListsTheVersionAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]) });
+
+    const deleted = await GitHubPackagesTests.createPackages(api).deleteVersionAsync(GitHubPackagesTests.PACKAGE, "0.0.1");
+
+    Assert.areEqual(
+      "GitHub answered 404 to deleting @noldova-com/tools.pipelines@0.0.1 but still lists it, so it is not deleted; the token may not be allowed to delete it.",
+      GitHubPackagesTests.readFailure(deleted));
+    Assert.areEqual(JSON.stringify(["GET", "DELETE", "GET"]), JSON.stringify(api.requests.map(t => t.method)));
+  }
+
+  @TestMethod
+  public async failsWithTheListsAnswerWhenListingAfterA404FailsAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]), GitHubApiAnswer.json(403, { message: "Forbidden" })]
+    });
+
+    const deleted = await GitHubPackagesTests.createPackages(api).deleteVersionAsync(GitHubPackagesTests.PACKAGE, "0.0.1");
+
+    Assert.areEqual(
+      "GitHub answered GET orgs/noldova-com/packages/npm/tools.pipelines/versions?per_page=100&page=1 with 403: Forbidden",
+      GitHubPackagesTests.readFailure(deleted));
   }
 
   @TestMethod

@@ -553,7 +553,8 @@ export declare interface ITagHost {
 export declare interface IRegistryHost {
   /**
    * The registry the host lists and deletes versions on, an `https` URL such
-   * as `https://npm.pkg.github.com/`; the prune step runs only for it.
+   * as `https://npm.pkg.github.com/`; the prune step runs only for it, and
+   * never for npm's registry, `https://registry.npmjs.org/`.
    */
   readonly registry: string;
 
@@ -1334,8 +1335,9 @@ export declare class NightlyStep implements IStep {
  * The step that keeps a registry's newest versions after a release:
  * `prune <version> <commit> <scope> <registry> <keep-versions>`. Through
  * the host's {@link IRegistryHost}, it deletes each package's older release
- * versions, keeping the newest; it runs only on the host's registry, and
- * deletes nothing unless the release is every package's newest.
+ * versions, keeping the newest; it runs only on the host's registry, never
+ * on npm's, and deletes nothing unless the release is every package's
+ * newest.
  */
 export declare class PruneStep implements IStep {
   /**
@@ -1379,14 +1381,15 @@ export declare class PruneStep implements IStep {
    * @param values The release version just published, such as `0.0.4`; the
    * commit's full id, 40 lowercase hexadecimal digits; the scope, such as
    * `@noldova`; the registry, an `https` URL without credentials, a query or
-   * a fragment, which must be the host's; and how many release versions to
-   * keep, a whole number above 0 without a leading zero, such as `5`.
+   * a fragment, which must be the host's and not npm's; and how many release
+   * versions to keep, a whole number above 0 without a leading zero, such as
+   * `5`.
    * @returns A promise of the result. It fails with the first of these that
    * is wrong, asking the registry nothing: not five values, a version that
    * is not a version, a nightly version, a commit that is not a full id, a
-   * scope that is not `@` and a lowercase name, a registry that is not one
-   * or is not the host's, a number to keep that is not one, a commit the
-   * clone does not hold, a commit without a package to publish, and a
+   * scope that is not `@` and a lowercase name, a registry that is not one,
+   * is npm's or is not the host's, a number to keep that is not one, a commit
+   * the clone does not hold, a commit without a package to publish, and a
    * package outside the scope. Otherwise it lists every package's versions
    * first, and fails, deleting nothing, with one line for each package whose
    * versions the host could not list and each whose newest release version
@@ -1396,9 +1399,11 @@ export declare class PruneStep implements IStep {
    * `@noldova/tools.pipelines@0.0.1 was already deleted.`, or with one line
    * saying nothing is deleted when no package has more. It stops at the
    * first delete that fails, with the lines before it and the host's
-   * answer. Versions that are not release versions, such as nightly ones,
-   * are neither counted nor deleted. It rejects as
-   * {@link ArchiveStep.readPackageNamesAsync} does.
+   * answer, or, when the delete rejects with an `Error`, a line naming the
+   * version with the error's message. Versions that are not release
+   * versions, such as nightly ones, are neither counted nor deleted. It
+   * rejects as {@link ArchiveStep.readPackageNamesAsync} and the host's
+   * list do, and as a delete does that rejects with anything but an `Error`.
    * @example
    * ```ts
    * import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";

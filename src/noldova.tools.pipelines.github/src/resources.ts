@@ -64,6 +64,10 @@ export class Resources {
     return `${packageName} has no scope; a package on GitHub Packages is named @<owner>/<name>.`;
   }
 
+  public static formatVersionStillListed(packageName: string, version: string): string {
+    return `GitHub answered 404 to deleting ${packageName}@${version} but still lists it, so it is not deleted; the token may not be allowed to delete it.`;
+  }
+
   public static formatVersionsResource(packageName: string): string {
     return packageName.replace(Resources.packageNamePattern, (_, owner: string, name: string) => `orgs/${owner}/packages/npm/${encodeURIComponent(name)}/versions`);
   }
