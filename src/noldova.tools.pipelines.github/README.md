@@ -38,6 +38,7 @@ A job installs the package at an exact version, without install scripts, and cal
 | `reproducible` | `<folder>` |
 
 `@noldova/tools.pipelines`'s README says what each step checks and does.
+The reproducible step makes its temporary folder in `RUNNER_TEMP`, which the runner empties after each job, cancelled ones included.
 
 - A step that succeeds writes its message to standard output and exits with code `0`; an empty message, such as the nightly step's when nothing changed, writes nothing.
 - A step that fails writes its message as one error annotation, which the run's summary shows, and exits with code `1`; so does a first value that names no step, with the usage line of every step.

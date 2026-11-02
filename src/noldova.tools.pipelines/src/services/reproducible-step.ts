@@ -20,23 +20,26 @@ import type { Npm } from "./npm.js";
 export class ReproducibleStep implements IStep {
   private readonly git: Git;
   private readonly npm: Npm;
+  private readonly temporaryRoot: string;
 
   public readonly name: string = Resources.reproducibleStepName;
   public readonly usage: string = Resources.reproducibleStepUsage;
 
-  public constructor(git: Git, npm: Npm) {
+  public constructor(git: Git, npm: Npm, temporaryRoot?: string) {
     this.git = git;
     this.npm = npm;
+    this.temporaryRoot = temporaryRoot === undefined || temporaryRoot.length === 0 ? os.tmpdir() : temporaryRoot;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [folder, ...rest] = values;
     if (folder === undefined || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
-    if (path.isAbsolute(folder))
-      return StepResult.failed(Resources.formatFolderNotRelative(folder));
 
     const folderPath = path.join(this.git.workingDirectory, folder);
+    const fromCheckout = path.relative(path.resolve(this.git.workingDirectory), path.resolve(folderPath));
+    if (path.isAbsolute(folder) || fromCheckout.length === 0 || fromCheckout.split(path.sep)[0] === Resources.parentFolderName)
+      return StepResult.failed(Resources.formatFolderOutsideCheckout(folder));
     if (fs.statSync(folderPath, { throwIfNoEntry: false })?.isDirectory() !== true)
       return StepResult.failed(Resources.formatFolderMissing(folder));
 
@@ -45,7 +48,7 @@ export class ReproducibleStep implements IStep {
       return StepResult.failed(Resources.formatArchivesMissing(folder));
 
     const commit = await this.git.readHeadAsync();
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), Resources.reproducibleFolderPrefix));
+    const directory = fs.mkdtempSync(path.join(this.temporaryRoot, Resources.reproducibleFolderPrefix));
     try {
       await this.git.addWorktreeAsync(directory, commit);
       try {

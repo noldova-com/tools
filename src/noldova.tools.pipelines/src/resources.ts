@@ -87,6 +87,7 @@ export class Resources {
   public static readonly npmVersionValues: readonly string[] = ["--version"];
   public static readonly npmViewValues: readonly string[] = ["view"];
   public static readonly packagesFolderPath: string = "src";
+  public static readonly parentFolderName: string = "..";
   public static readonly patchPartName: string = "patch";
   public static readonly pathSeparator: string = "/";
   public static readonly privateField: string = "private";
@@ -204,8 +205,8 @@ export class Resources {
     return `npm ${found} runs this step, not ${expected}; install npm ${expected} before it.`;
   }
 
-  public static formatFolderNotRelative(folder: string): string {
-    return `The folder ${folder} must be a path inside the checkout, such as _packages, not an absolute path.`;
+  public static formatFolderOutsideCheckout(folder: string): string {
+    return `The folder ${folder} must be a folder inside the checkout, given from its root, such as _packages.`;
   }
 
   public static formatArchivesMissing(folder: string): string {

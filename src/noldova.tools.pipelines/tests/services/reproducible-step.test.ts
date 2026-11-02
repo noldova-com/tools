@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
@@ -82,6 +83,42 @@ export class ReproducibleStepTests {
     Assert.isFalse(fs.existsSync(npm.directories[0] ?? ""));
   }
 
+  @TestMethod
+  public async makesItsFolderUnderTheTemporaryRootGivenAsync(): Promise<void> {
+    using repository = ReproducibleStepTests.createRepository();
+    repository.write({ "_packages/noldova-a-0.0.4.tgz": "a" });
+    const npm = new BuildingNpm({ "_packages/noldova-a-0.0.4.tgz": "a" });
+    const root = GitRepositoryFixture.createDirectory();
+    try {
+      const step = new ReproducibleStep(new Git(new ProcessRunner(), repository.directory), npm, root);
+
+      const result = await step.runAsync(["_packages"]);
+
+      Assert.isTrue(result.isSuccessful, result.message);
+      Assert.areEqual(root, path.dirname(npm.directories[0] ?? ""));
+      Assert.isTrue(path.basename(npm.directories[0] ?? "").startsWith("pipelines-reproducible-"));
+      Assert.areEqual(0, fs.readdirSync(root).length);
+    }
+    finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  @TestData("unset")
+  @TestData("")
+  @TestMethod
+  public async makesItsFolderUnderTheSystemsTemporaryFolderWithoutARootAsync(root: string): Promise<void> {
+    using repository = ReproducibleStepTests.createRepository();
+    repository.write({ "_packages/noldova-a-0.0.4.tgz": "a" });
+    const npm = new BuildingNpm({ "_packages/noldova-a-0.0.4.tgz": "a" });
+    const git = new Git(new ProcessRunner(), repository.directory);
+    const step = root === "unset" ? new ReproducibleStep(git, npm) : new ReproducibleStep(git, npm, root);
+
+    await step.runAsync(["_packages"]);
+
+    Assert.areEqual(os.tmpdir(), path.dirname(npm.directories[0] ?? ""));
+  }
+
   @TestData("")
   @TestData("_packages more")
   @TestMethod
@@ -94,14 +131,22 @@ export class ReproducibleStepTests {
     Assert.areEqual("The reproducible step takes <folder>.", result.message);
   }
 
+  @TestData("absolute")
+  @TestData("../x")
+  @TestData("..")
+  @TestData(".")
+  @TestData("")
+  @TestData("_packages/../..")
   @TestMethod
-  public async failsForAnAbsoluteFolderAsync(): Promise<void> {
-    const folder = path.resolve("_packages");
+  public async failsForAFolderThatIsNotInsideTheCheckoutAsync(given: string): Promise<void> {
+    const folder = given === "absolute" ? path.resolve("_packages") : given;
+    const npm = new BuildingNpm({});
 
-    const result = await new ReproducibleStep(new Git(new ProcessRunner(), "."), new BuildingNpm({})).runAsync([folder]);
+    const result = await new ReproducibleStep(new Git(new ProcessRunner(), "."), npm).runAsync([folder]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual(`The folder ${folder} must be a path inside the checkout, such as _packages, not an absolute path.`, result.message);
+    Assert.areEqual(`The folder ${folder} must be a folder inside the checkout, given from its root, such as _packages.`, result.message);
+    Assert.areEqual(0, npm.directories.length);
   }
 
   @TestMethod

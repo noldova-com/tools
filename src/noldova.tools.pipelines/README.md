@@ -257,6 +257,8 @@ result.message; // "A second build of commit 225059f…, in another folder, pack
 - It succeeds listing each archive with its SHA-512, and fails with one line for each archive that differs or is in only one build.
 - It fails when `<folder>` is missing or holds no archive, and when the second build fails, with npm's exit code and error output.
 - It removes the worktree and its folder whether it succeeds or fails.
+- It makes its temporary folder in the root its constructor is given, or in `os.tmpdir()`; give a root the pipeline host empties after each job, so a cancelled run leaves nothing behind.
+- `<folder>` must be inside the checkout: an absolute path, `..` or the checkout itself fails.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 

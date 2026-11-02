@@ -1860,6 +1860,9 @@ export declare class ReproducibleStep implements IStep {
    * @param git The reader of the clone, whose working directory is the
    * checkout's root.
    * @param npm What runs the second build.
+   * @param temporaryRoot The folder the step makes its temporary folder in,
+   * such as one the pipeline host empties after each job, so a run that is
+   * cancelled leaves nothing behind. Omitted or empty, it is `os.tmpdir()`.
    * @example
    * ```ts
    * import { Git, Npm, ProcessRunner, ReproducibleStep } from "@noldova/tools.pipelines";
@@ -1869,7 +1872,7 @@ export declare class ReproducibleStep implements IStep {
    * step.name; // "reproducible"
    * ```
    */
-  public constructor(git: Git, npm: Npm);
+  public constructor(git: Git, npm: Npm, temporaryRoot?: string);
 
   /**
    * Builds the commit again and compares the archives.
@@ -1877,8 +1880,9 @@ export declare class ReproducibleStep implements IStep {
    * @param values The folder the build packs its archives into, as a path
    * from the checkout's root, such as `_packages`.
    * @returns A promise of the result: succeeded, listing each archive with
-   * its SHA-512, or failed for any number of values but one, for an absolute
-   * folder, a missing folder or one without archives, a second build that
+   * its SHA-512, or failed for any number of values but one, for a folder
+   * that is absolute, outside the checkout or the checkout itself, a missing
+   * folder or one without archives, a second build that
    * fails, with npm's exit code and error output, or with one line for each
    * archive that differs or is in only one build. It removes the worktree and
    * its folder whether it succeeds or fails, and rejects with
