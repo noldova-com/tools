@@ -65,7 +65,6 @@ export class NpmTests {
     Assert.areEqual(expected, processRunner.calls.join("\n"));
   }
 
-
   @TestMethod
   public async rejectsWhenReadingItsVersionFailsAsync(): Promise<void> {
     const npm = new Npm(new RecordingProcessRunner(new ProcessResult(1, "", "npm error broken\n")), "release");
