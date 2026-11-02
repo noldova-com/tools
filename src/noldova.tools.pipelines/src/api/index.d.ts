@@ -864,22 +864,25 @@ export declare class Git {
   public listTrackedFilesAsync(): Promise<readonly TrackedFile[]>;
 
   /**
-   * Reads the last bytes of a file as the checkout holds it.
+   * Reads the last bytes of a file as the checkout holds it, which can
+   * differ from the committed content when the file was changed after the
+   * checkout.
    *
    * @param filePath The file's path from the working directory.
    * @param byteCount How many bytes to read from the file's end.
    * @returns A promise of the file's last `byteCount` bytes, or all of them
-   * for a shorter file. It rejects with the file system's error if the file
-   * cannot be read, such as when the checkout does not hold it.
+   * for a shorter file; `null` when the checkout has no file at the path,
+   * such as after the file was deleted. It rejects with the file system's
+   * error if the file cannot be read otherwise.
    * @example
    * ```ts
    * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
    *
    * const git = new Git(new ProcessRunner(), process.cwd());
-   * (await git.readCheckoutFileEndAsync("README.md", 2)).toString("utf8"); // ".\n"
+   * (await git.readCheckoutFileEndAsync("README.md", 2))?.toString("utf8"); // ".\n"
    * ```
    */
-  public readCheckoutFileEndAsync(filePath: string, byteCount: number): Promise<Buffer>;
+  public readCheckoutFileEndAsync(filePath: string, byteCount: number): Promise<Buffer | null>;
 
   /**
    * Reads a file as a commit holds it.
@@ -1628,11 +1631,13 @@ export declare class LineEndingsStep implements IStep {
    * when values are given, when git lists no tracked file, or with one line
    * for each thing that is wrong, naming the file and the fix: a
    * `.gitattributes` without the line, a file whose committed content has
-   * CRLF or mixed line endings, a file that does not end with a newline, and
-   * a file that ends with a blank line. It reads the files' ends from the
-   * checkout, and rejects with {@link ProcessException} if git cannot start
-   * or fails otherwise, such as outside a clone, and with the file system's
-   * error if a tracked file is missing from the checkout.
+   * CRLF or mixed line endings, a file the checkout does not hold, a file
+   * that does not end with a newline, and a file that ends with a blank
+   * line. The line endings come from the committed content, and the files'
+   * ends from the checkout, so a pipeline runs the step on a checkout as
+   * committed, before anything changes it. It rejects with
+   * {@link ProcessException} if git cannot start or fails otherwise, such as
+   * outside a clone.
    * @example
    * ```ts
    * import { Git, LineEndingsStep, ProcessRunner } from "@noldova/tools.pipelines";

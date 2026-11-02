@@ -208,7 +208,8 @@ result.message; // ".gitattributes holds \"* text=auto eol=lf\", and the 12 trac
 ```
 
 - `.gitattributes` at the checkout's root holds the line `* text=auto eol=lf`.
-- Every tracked text file's committed content uses LF line endings, and the file ends with exactly one newline.
+- Every tracked text file's committed content uses LF line endings, and the file in the checkout ends with exactly one newline; a tracked file the checkout doesn't hold is a failure.
+- It reads the files' ends from the checkout, so a pipeline runs it on a checkout as committed, before the build.
 - It skips symbolic links, submodules, files git sees as binary and files `.gitattributes` marks `-text` or `binary`.
 - It fails with one line for each thing that is wrong, naming the file and the fix, and fails when git lists no tracked file.
 

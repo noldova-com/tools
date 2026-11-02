@@ -162,9 +162,11 @@ export class GitTests {
     repository.write({ "a.txt": "abc\n", "b.txt": "b", "empty.txt": "" });
     const git = GitTests.createGit(repository);
 
-    Assert.areEqual("c\n", (await git.readCheckoutFileEndAsync("a.txt", 2)).toString("utf8"));
-    Assert.areEqual("b", (await git.readCheckoutFileEndAsync("b.txt", 2)).toString("utf8"));
-    Assert.areEqual(0, (await git.readCheckoutFileEndAsync("empty.txt", 2)).length);
+    Assert.areEqual("c\n", (await git.readCheckoutFileEndAsync("a.txt", 2))?.toString("utf8"));
+    Assert.areEqual("b", (await git.readCheckoutFileEndAsync("b.txt", 2))?.toString("utf8"));
+    Assert.areEqual(0, (await git.readCheckoutFileEndAsync("empty.txt", 2))?.length);
+    Assert.isNull(await git.readCheckoutFileEndAsync("missing.txt", 2));
+    Assert.isNull(await git.readCheckoutFileEndAsync(".git", 2));
   }
 
   @TestMethod

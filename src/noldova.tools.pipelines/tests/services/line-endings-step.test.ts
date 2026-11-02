@@ -152,12 +152,15 @@ export class LineEndingsStepTests {
   }
 
   @TestMethod
-  public async rejectsForATrackedFileMissingFromTheCheckoutAsync(): Promise<void> {
+  public async failsForATrackedFileMissingFromTheCheckoutAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     repository.commit({ ".gitattributes": LineEndingsStepTests.ATTRIBUTES, "a.txt": "a\n" });
     fs.rmSync(path.join(repository.directory, "a.txt"));
 
-    await Assert.throwsAsync(() => LineEndingsStepTests.createStep(repository).runAsync([]), Error);
+    const result = await LineEndingsStepTests.createStep(repository).runAsync([]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("\"a.txt\" is tracked but not a file in the checkout; restore it, or remove it from git.", result.message);
   }
 
   @TestMethod

@@ -159,6 +159,10 @@ export class Resources {
     return `${JSON.stringify(filePath)} mixes CRLF and LF line endings; convert them to LF.`;
   }
 
+  public static formatCheckoutFileMissing(filePath: string): string {
+    return `${JSON.stringify(filePath)} is tracked but not a file in the checkout; restore it, or remove it from git.`;
+  }
+
   public static formatFinalNewlineMissing(filePath: string): string {
     return `${JSON.stringify(filePath)} does not end with a newline; add one.`;
   }

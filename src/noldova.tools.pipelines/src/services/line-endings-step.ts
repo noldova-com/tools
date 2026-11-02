@@ -63,6 +63,8 @@ export class LineEndingsStep implements IStep {
       return Resources.formatMixedLineEndings(file.filePath);
 
     const end = await this.git.readCheckoutFileEndAsync(file.filePath, Resources.fileEndByteCount);
+    if (end === null)
+      return Resources.formatCheckoutFileMissing(file.filePath);
     if (end.at(-1) !== Resources.newlineByte)
       return Resources.formatFinalNewlineMissing(file.filePath);
     if (end.length === Resources.fileEndByteCount && end.at(-2) === Resources.newlineByte)

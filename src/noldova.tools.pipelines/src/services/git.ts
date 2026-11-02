@@ -56,8 +56,12 @@ export class Git {
     return output.split(Resources.gitFileSeparator).filter(t => t.length > 0).map(t => Git.readTrackedFile(t));
   }
 
-  public async readCheckoutFileEndAsync(filePath: string, byteCount: number): Promise<Buffer> {
-    const file = await fs.promises.open(path.join(this.workingDirectory, filePath));
+  public async readCheckoutFileEndAsync(filePath: string, byteCount: number): Promise<Buffer | null> {
+    const fullPath = path.join(this.workingDirectory, filePath);
+    if (fs.statSync(fullPath, { throwIfNoEntry: false })?.isFile() !== true)
+      return null;
+
+    const file = await fs.promises.open(fullPath);
     try {
       const { size } = await file.stat();
       const length = Math.min(size, byteCount);
