@@ -35,7 +35,7 @@ export class PipelinesProgramTests {
 
     Assert.areEqual(1, exitCode);
     Assert.areEqual(
-      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged\"]",
+      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder>\"]",
       JSON.stringify(output.lines));
   }
 
@@ -46,6 +46,7 @@ export class PipelinesProgramTests {
   @TestData("prune", "<version> <commit> <scope> <registry> <keep-versions>")
   @TestData("tag", "<version> <commit>")
   @TestData("toolchain", "<node-version> [<npm-version>]")
+  @TestData("reproducible", "<folder>")
   @TestMethod
   public async runsTheStepItsFirstValueNamesAsync(stepName: string, usage: string): Promise<void> {
     const output = new RecordingOutput();

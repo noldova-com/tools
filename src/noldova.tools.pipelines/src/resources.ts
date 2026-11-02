@@ -11,6 +11,7 @@ import type { BinaryToTextEncoding } from "node:crypto";
 export class Resources {
   public static readonly accessLevels: readonly string[] = ["public", "restricted"];
   public static readonly archiveLicensePath: string = "package/LICENSE";
+  public static readonly archiveFileExtension: string = ".tgz";
   public static readonly archiveManifestPath: string = "package/package.json";
   public static readonly archiveStepName: string = "archive";
   public static readonly archiveStepUsage: string = "<folder> <version> <commit> <scope>";
@@ -22,6 +23,7 @@ export class Resources {
   public static readonly failureExitCode: number = 1;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
   public static readonly fileEndByteCount: number = 2;
+  public static readonly gitAddWorktreeValues: readonly string[] = ["worktree", "add", "--quiet", "--detach", "--end-of-options"];
   public static readonly gitAttributesFilePath: string = ".gitattributes";
   public static readonly gitAttributesLine: string = "* text=auto eol=lf";
   public static readonly gitCheckoutRevision: string = "HEAD";
@@ -44,10 +46,12 @@ export class Resources {
   public static readonly gitReadFileValues: readonly string[] = ["cat-file", "blob", "--end-of-options"];
   public static readonly gitReadHeadValues: readonly string[] = ["rev-parse", "--verify", "--end-of-options"];
   public static readonly gitReadTypeValues: readonly string[] = ["cat-file", "-t", "--end-of-options"];
+  public static readonly gitRemoveWorktreeValues: readonly string[] = ["worktree", "remove", "--force", "--end-of-options"];
   public static readonly gitSymbolicLinkMode: string = "120000";
   public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet", "--end-of-options"];
   public static readonly integrityAlgorithm: string = "sha512";
   public static readonly integrityEncoding: BinaryToTextEncoding = "base64";
+  public static readonly integrityPrefix: string = "sha512-";
   public static readonly keepVersionsPattern: RegExp = /^[1-9][0-9]*$/;
   public static readonly latestTag: string = "latest";
   public static readonly licenseField: string = "license";
@@ -71,6 +75,7 @@ export class Resources {
   public static readonly nightlyTag: string = "nightly";
   public static readonly nodeVersionPrefix: string = "v";
   public static readonly npmAccessValues: readonly string[] = ["--access"];
+  public static readonly npmBuildValues: readonly string[] = ["run", "build"];
   public static readonly npmIntegrityField: string = "dist.integrity";
   public static readonly npmNotFoundCode: string = "E404";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
@@ -93,6 +98,9 @@ export class Resources {
   public static readonly publishStepUsage: string = "<folder> <version> <commit> <scope> <registry> <access>";
   public static readonly publishWaitMilliseconds: number = 600_000;
   public static readonly registryProtocol: string = "https:";
+  public static readonly reproducibleFolderPrefix: string = "pipelines-reproducible-";
+  public static readonly reproducibleStepName: string = "reproducible";
+  public static readonly reproducibleStepUsage: string = "<folder>";
   public static readonly scopePattern: RegExp = /^@[a-z0-9][a-z0-9._~-]*$/;
   public static readonly sourceStepName: string = "source";
   public static readonly sourceStepUsage: string = "<version> <commit>";
@@ -119,6 +127,7 @@ export class Resources {
   public static readonly versionInvalid: string = "The text is not a version.";
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
+  public static readonly windowsNpmBuildValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd run build"];
   public static readonly windowsNpmVersionValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd --version"];
   public static readonly windowsPlatform: string = "win32";
   public static readonly windowsShellProgram: string = "cmd.exe";
@@ -193,6 +202,42 @@ export class Resources {
 
   public static formatNpmVersionDiffers(found: string, expected: string): string {
     return `npm ${found} runs this step, not ${expected}; install npm ${expected} before it.`;
+  }
+
+  public static formatFolderNotRelative(folder: string): string {
+    return `The folder ${folder} must be a path inside the checkout, such as _packages, not an absolute path.`;
+  }
+
+  public static formatArchivesMissing(folder: string): string {
+    return `${folder} holds no ${Resources.archiveFileExtension} archive to compare; build and pack the packages before this step.`;
+  }
+
+  public static formatSecondBuildFailed(exitCode: number | null, errorOutput: string): string {
+    return Resources.formatFailureLine(`The second build, npm ${Resources.npmBuildValues.join(Resources.valueSeparator)} in a worktree of the same commit, exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatArchiveDiffers(name: string, first: string, second: string): string {
+    return `${name} differs between the two builds: ${first} and ${second}.`;
+  }
+
+  public static formatArchiveOnlyInFirstBuild(name: string): string {
+    return `${name} is only in the first build.`;
+  }
+
+  public static formatArchiveOnlyInSecondBuild(name: string): string {
+    return `${name} is only in the second build.`;
+  }
+
+  public static formatBuildsDiffer(findings: readonly string[]): string {
+    return [...findings, "A second build of the same commit, in another folder, must pack byte-identical archives, so that rerunning a release publishes nothing new: make the build depend on neither its folder nor the time."].join(Resources.lineSeparator);
+  }
+
+  public static formatBuildsIdentical(commit: string, archives: readonly string[]): string {
+    return [`A second build of commit ${commit}, in another folder, packed the same ${archives.length} archives byte for byte:`, ...archives].join(Resources.lineSeparator);
+  }
+
+  public static formatArchiveIntegrity(name: string, integrity: string): string {
+    return `${name} ${integrity}`;
   }
 
   public static formatToolchainChecked(nodeVersion: string, npmVersion: string | null): string {

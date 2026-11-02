@@ -65,6 +65,18 @@ export class NpmTests {
     Assert.areEqual(expected, processRunner.calls.join("\n"));
   }
 
+  @TestData("linux", "second: npm run build")
+  @TestData("win32", "second: cmd.exe /d /s /c npm.cmd run build")
+  @TestMethod
+  public async buildsInTheDirectoryGivenAsTheirPlatformRunsItAsync(platform: string, expected: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "", ""));
+
+    const result = await new Npm(processRunner, "release", platform).buildAsync("second");
+
+    Assert.isTrue(result.isSuccessful);
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
+  }
+
   @TestMethod
   public async rejectsWhenReadingItsVersionFailsAsync(): Promise<void> {
     const npm = new Npm(new RecordingProcessRunner(new ProcessResult(1, "", "npm error broken\n")), "release");
