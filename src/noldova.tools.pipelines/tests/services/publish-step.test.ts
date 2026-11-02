@@ -300,7 +300,7 @@ export class PublishStepTests {
 
   private static packArchives(repository: GitRepositoryFixture, version: string = "0.0.4"): string {
     for (const name of ["a", "b"])
-      repository.pack(`archives/noldova-${name}-${version}.tgz`, { "package/package.json": `{ "name": "@noldova/${name}", "version": "${version}", "gitHead": "${repository.readHead()}" }` });
+      repository.pack(`archives/noldova-${name}-${version}.tgz`, { "package/package.json": `{ "name": "@noldova/${name}", "version": "${version}", "gitHead": "${repository.readHead()}", "license": "MIT" }`, "package/LICENSE": "MIT License" });
 
     return path.join(repository.directory, "archives");
   }

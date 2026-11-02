@@ -23,4 +23,8 @@ export class Tar {
   public async readFileAsync(archivePath: string, filePath: string): Promise<ProcessResult> {
     return await this.processRunner.runAsync(Resources.tarProgram, [...Resources.tarReadFileValues, path.basename(archivePath), filePath], path.dirname(archivePath));
   }
+
+  public async listFilesAsync(archivePath: string): Promise<ProcessResult> {
+    return await this.processRunner.runAsync(Resources.tarProgram, [...Resources.tarListFilesValues, path.basename(archivePath)], path.dirname(archivePath));
+  }
 }
