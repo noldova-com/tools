@@ -9,12 +9,12 @@ This document holds only what is this repository's own; a rule here that is stri
 
 | Package | Owns |
 |---|---|
-| `@noldova/tools.pipelines` | The steps that work the same on any pipeline host: git checks of the commit and its version, checks of the packed archives, npm publishing and the wait until the registry serves a version, versions, and the command-line base the steps share |
-| `@noldova/tools.pipelines.github` | Running those steps on GitHub Actions: the command line a workflow calls, reading GitHub's environment, tags through GitHub's REST API, and GitHub's annotations |
+| `@noldova/tools.pipelines` | The steps that work the same on any pipeline host: git checks of the commit and its version, checks of the packed archives, npm publishing and the wait until the registry serves a version, keeping a registry's newest versions, versions, and the command-line base the steps share |
+| `@noldova/tools.pipelines.github` | Running those steps on GitHub Actions: the command line a workflow calls, reading GitHub's environment, tags and GitHub Packages' versions through GitHub's REST API, and GitHub's annotations |
 
 - `tools.pipelines.github` depends on `tools.pipelines`, never the reverse.
 - `tools.pipelines` names no pipeline host.
-  What a step needs from the host, such as where it runs or how a tag is made, it asks through an interface it declares and the host's package implements.
+  What a step needs from the host, such as where it runs, how a tag is made or how a registry's version is deleted, it asks through an interface it declares and the host's package implements.
 - Another host gets its own package beside GitHub's, built on the same steps.
 - Neither package names a product or a repository that uses it.
   What differs between repositories, such as their packages and where their version is kept, comes in as settings.
@@ -26,4 +26,5 @@ This document holds only what is this repository's own; a rule here that is stri
 - Each step checks before it acts.
   When a check fails, the step stops with a message that says what is wrong and exits with code 1, without a stack trace.
   A check is for what a person sets, such as the version and the commit a release is given; a fault, such as git failing to start or a file every build reads being malformed, throws and ends the run with its stack trace.
-- No step deletes or overwrites a published version.
+- No step overwrites a published version.
+  Only the prune step deletes one, on a registry whose host's package lets it, never on npm's public registry, and only the release versions older than the newest it keeps.
