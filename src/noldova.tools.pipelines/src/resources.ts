@@ -10,10 +10,12 @@ import type { BinaryToTextEncoding } from "node:crypto";
 
 export class Resources {
   public static readonly accessLevels: readonly string[] = ["public", "restricted"];
+  public static readonly archiveLicensePath: string = "package/LICENSE";
   public static readonly archiveManifestPath: string = "package/package.json";
   public static readonly archiveStepName: string = "archive";
   public static readonly archiveStepUsage: string = "<folder> <version> <commit> <scope>";
   public static readonly commitPattern: RegExp = /^[0-9a-f]{40}$/;
+  public static readonly credentialFilePattern: RegExp = /(?:^|\/)(?:\.npmrc|\.netrc|\.env(?:\.[^/]+)?|id_rsa|id_ed25519|[^/]+\.(?:pem|key|p12|pfx))$/i;
   public static readonly dependenciesField: string = "dependencies";
   public static readonly failureExitCode: number = 1;
   public static readonly gitFileSeparator: string = "\0";
@@ -31,6 +33,7 @@ export class Resources {
   public static readonly integrityAlgorithm: string = "sha512";
   public static readonly integrityEncoding: BinaryToTextEncoding = "base64";
   public static readonly latestTag: string = "latest";
+  public static readonly licenseField: string = "license";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly lineSeparator: string = "\n";
   public static readonly mainBranch: string = "origin/main";
@@ -72,6 +75,7 @@ export class Resources {
   public static readonly tagStepName: string = "tag";
   public static readonly tagStepUsage: string = "<version> <commit>";
   public static readonly tarProgram: string = "tar";
+  public static readonly tarListFilesValues: readonly string[] = ["-tzf"];
   public static readonly tarReadFileValues: readonly string[] = ["-xzOf"];
   public static readonly testsFolderName: string = "tests";
   public static readonly textEncoding: BufferEncoding = "utf8";
@@ -191,6 +195,22 @@ export class Resources {
 
   public static formatArchivePrivate(archiveName: string): string {
     return `${archiveName}: it is marked private.`;
+  }
+
+  public static formatArchiveListUnreadable(archiveName: string, exitCode: number | null, errorOutput: string): string {
+    return Resources.formatFailureLine(`${archiveName}: ${Resources.tarProgram} could not list its files and exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatArchiveCredentialFile(archiveName: string, filePath: string): string {
+    return `${archiveName}: it holds ${filePath}, a file of a kind that holds credentials, which is never published.`;
+  }
+
+  public static formatArchiveLicenseMissing(archiveName: string): string {
+    return `${archiveName}: it has no ${Resources.archiveLicensePath}.`;
+  }
+
+  public static formatLicenseMissing(archiveName: string): string {
+    return `${archiveName}: its package.json has no ${Resources.licenseField}.`;
   }
 
   public static formatDependencyDiffers(archiveName: string, dependency: string, found: string, version: string): string {

@@ -28,6 +28,29 @@ export class TarTests {
   }
 
   @TestMethod
+  public async listsTheFilesOfAnArchiveAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const archivePath = repository.pack("archives/example-0.0.4.tgz", { "package/package.json": "{ \"name\": \"example\" }", "package/dist/index.js": "" });
+
+    const result = await new Tar(new ProcessRunner()).listFilesAsync(archivePath);
+
+    Assert.isTrue(result.isSuccessful);
+    Assert.areEqual("package/,package/dist/,package/dist/index.js,package/package.json", result.output.split(/\r?\n/).filter(t => t.length > 0).sort().join(","));
+  }
+
+  @TestMethod
+  public async failsToListAFileThatIsNotAnArchiveAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const archivePath = path.join(repository.directory, "example-0.0.4.tgz");
+    fs.writeFileSync(archivePath, "not an archive");
+
+    const result = await new Tar(new ProcessRunner()).listFilesAsync(archivePath);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.isTrue(result.errorOutput.trim().length > 0);
+  }
+
+  @TestMethod
   public async failsForAFileTheArchiveDoesNotHoldAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const archivePath = repository.pack("archives/example-0.0.4.tgz", { "package/README.md": "# Example" });

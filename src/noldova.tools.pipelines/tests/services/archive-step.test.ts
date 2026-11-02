@@ -29,6 +29,20 @@ class FixedTar extends Tar {
   }
 }
 
+class UnlistableTar extends Tar {
+  private readonly result: ProcessResult;
+
+  public constructor(result: ProcessResult) {
+    super(new ProcessRunner());
+
+    this.result = result;
+  }
+
+  public override async listFilesAsync(): Promise<ProcessResult> {
+    return this.result;
+  }
+}
+
 @TestClass
 export class ArchiveStepTests {
   private static readonly COMMIT: string = "0000000000000000000000000000000000000000";
@@ -40,8 +54,9 @@ export class ArchiveStepTests {
     "src/noldova.b/package.json": "{ \"name\": \"@noldova/b\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/a\": \"__VERSION__\" } }",
     "src/noldova.c/package.json": "{ \"name\": \"@noldova/c\", \"version\": \"__VERSION__\", \"private\": true }"
   };
-  private static readonly MANIFEST_A: string = "{ \"name\": \"@noldova/a\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\" }";
-  private static readonly MANIFEST_B: string = "{ \"name\": \"@noldova/b\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\", \"private\": false, \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@example/d\": \"^1.0.0\" } }";
+  private static readonly MANIFEST_A: string = "{ \"name\": \"@noldova/a\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\", \"license\": \"MIT\" }";
+  private static readonly MANIFEST_B: string = "{ \"name\": \"@noldova/b\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\", \"license\": \"MIT\", \"private\": false, \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@example/d\": \"^1.0.0\" } }";
+  private static readonly LICENSE: Readonly<Record<string, string>> = { "package/LICENSE": "MIT License" };
 
   @TestMethod
   public namesItselfAndItsValues(): void {
@@ -180,7 +195,7 @@ export class ArchiveStepTests {
   public async failsWithEveryArchiveTheFolderLacksOrShouldNotHoldAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(ArchiveStepTests.PACKAGES);
-    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(ArchiveStepTests.MANIFEST_A, commit) });
+    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(ArchiveStepTests.MANIFEST_A, commit), ...ArchiveStepTests.LICENSE });
     repository.pack("archives/noldova-a-0.0.3.tgz", { "package/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"0.0.3\" }" });
     fs.writeFileSync(path.join(repository.directory, "archives", "notes.txt"), "notes");
     const folder = path.join(repository.directory, "archives");
@@ -214,6 +229,7 @@ export class ArchiveStepTests {
         "noldova-a-0.0.4.tgz: its version is 0.0.3, not 0.0.4.",
         `noldova-a-0.0.4.tgz: it has no gitHead, which should be ${commit}.`,
         "noldova-a-0.0.4.tgz: it is marked private.",
+        "noldova-a-0.0.4.tgz: its package.json has no license.",
         "noldova-a-0.0.4.tgz: its dependency @noldova/b is ^0.0.4, not exactly 0.0.4."
       ].join("\n"),
       result.message);
@@ -306,6 +322,95 @@ export class ArchiveStepTests {
       result.message);
   }
 
+  @TestData(".npmrc")
+  @TestData("dist/.npmrc")
+  @TestData(".netrc")
+  @TestData(".env")
+  @TestData(".env.production")
+  @TestData("config/.ENV.local")
+  @TestData("id_rsa")
+  @TestData("keys/id_ed25519")
+  @TestData("cert.pem")
+  @TestData("signing.KEY")
+  @TestData("store.p12")
+  @TestData("store.pfx")
+  @TestMethod
+  public async failsForAFileOfAKindThatHoldsCredentialsAsync(filePath: string): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B, { [`package/${filePath}`]: "" });
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`noldova-a-0.0.4.tgz: it holds package/${filePath}, a file of a kind that holds credentials, which is never published.`, result.message);
+  }
+
+  @TestMethod
+  public async succeedsForFilesThatOnlyLookLikeCredentialFilesAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const files = ["env.ts", ".env-example", "npmrc.md", "keys.md", "monkey.js", "id_rsa.pub", "pem/README.md", "notes.keys", "dist/.envrc"];
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B, Object.fromEntries(files.map(t => [`package/${t}`, ""])));
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+  }
+
+  @TestMethod
+  public async failsForAnArchiveWithoutItsLicenseFileAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+    repository.pack("archives/noldova-b-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(ArchiveStepTests.MANIFEST_B, commit), "package/dist/LICENSE": "MIT License" });
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("noldova-b-0.0.4.tgz: it has no package/LICENSE.", result.message);
+  }
+
+  @TestData("{ \"name\": \"@noldova/a\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\" }")
+  @TestData("{ \"name\": \"@noldova/a\", \"version\": \"0.0.4\", \"gitHead\": \"__COMMIT__\", \"license\": \"\" }")
+  @TestMethod
+  public async failsForAManifestWithoutALicenseAsync(manifest: string): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, manifest, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("noldova-a-0.0.4.tgz: its package.json has no license.", result.message);
+  }
+
+  @TestMethod
+  public async rejectsALicenseThatIsNotATextAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A.replace("\"MIT\"", "{ \"type\": \"MIT\" }"), ArchiveStepTests.MANIFEST_B);
+
+    const exception = await Assert.throwsAsync(() => ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]), JsonException);
+
+    Assert.isTrue(exception.path.startsWith("noldova-a-0.0.4.tgz/package/package.json"), exception.path);
+  }
+
+  @TestMethod
+  public async failsWithTarsMessageWhenItCannotListAnArchivesFilesAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new UnlistableTar(new ProcessResult(2, "", "tar: Unexpected end of archive\n")));
+
+    const result = await step.runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      "noldova-a-0.0.4.tgz: tar could not list its files and exited with code 2: tar: Unexpected end of archive\nnoldova-b-0.0.4.tgz: tar could not list its files and exited with code 2: tar: Unexpected end of archive",
+      result.message);
+  }
+
   @TestMethod
   public async rejectsAManifestInAnArchiveThatIsNotJsonAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
@@ -334,10 +439,10 @@ export class ArchiveStepTests {
     return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner));
   }
 
-  private static packArchives(repository: GitRepositoryFixture, manifestA: string, manifestB: string): string {
+  private static packArchives(repository: GitRepositoryFixture, manifestA: string, manifestB: string, filesA: Readonly<Record<string, string>> = {}): string {
     const commit = repository.readHead();
-    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(manifestA, commit) });
-    repository.pack("archives/noldova-b-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(manifestB, commit) });
+    repository.pack("archives/noldova-a-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(manifestA, commit), ...ArchiveStepTests.LICENSE, ...filesA });
+    repository.pack("archives/noldova-b-0.0.4.tgz", { "package/package.json": ArchiveStepTests.withCommit(manifestB, commit), ...ArchiveStepTests.LICENSE });
 
     return path.join(repository.directory, "archives");
   }
