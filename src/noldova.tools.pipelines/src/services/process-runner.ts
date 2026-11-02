@@ -15,9 +15,10 @@ import { ProcessResult } from "../models/process-result.js";
 import { Resources } from "../resources.js";
 
 export class ProcessRunner {
-  public async runAsync(program: string, values: readonly string[], workingDirectory: string): Promise<ProcessResult> {
+  public async runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>): Promise<ProcessResult> {
     return await new Promise((resolve, reject) => {
-      const child = spawn(program, values, { cwd: workingDirectory, shell: false, stdio: ["ignore", "pipe", "pipe"] });
+      const env = environment === undefined ? undefined : Object.fromEntries(Object.entries({ ...process.env, ...environment }).filter(([, value]) => value !== undefined));
+      const child = spawn(program, values, { cwd: workingDirectory, shell: false, stdio: ["ignore", "pipe", "pipe"], ...(env === undefined ? {} : { env }) });
       const output: Buffer[] = [];
       const errorOutput: Buffer[] = [];
       let startError: Error | undefined;

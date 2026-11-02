@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings`, `unchanged` and `reproducible`.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings`, `unchanged`, `reproducible` and `dependents`.
 
 ## Install
 
@@ -259,6 +259,30 @@ result.message; // "A second build of commit 225059f…, in another folder, pack
 - It removes the worktree and its folder whether it succeeds or fails.
 - It makes its temporary folder in the root its constructor is given, or in `os.tmpdir()`; give a root the pipeline host empties after each job, so a cancelled run leaves nothing behind.
 - `<folder>` must be inside the checkout: an absolute path, `..` or the checkout itself fails.
+
+### The dependents step
+
+`dependents <version> <commit>` runs after a release, in a checkout of the released commit, and proposes the release to every repository that pins its packages exactly at an older version.
+It lists, checks out, pushes to and proposes in the repositories through the host's `IUpdateHost`, which a host's package implements, such as through the host's API.
+
+```ts
+import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+
+declare const host: IUpdateHost;
+const processRunner = new ProcessRunner();
+const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+const step = new DependentsStep(archiveStep, host, processRunner, new Npm(processRunner, process.cwd()));
+const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"]);
+result.message; // "Looked for exact pins of @noldova/a, @noldova/b older than 0.0.4 in 2 repositories: …"
+```
+
+- It fails, before asking the host, unless the version is a release version and the commit is its full id; a nightly version moves nothing.
+- It reads the packages the commit releases as the archive step does, and checks out each repository the host lists into a new temporary folder.
+- In each tracked `package.json`, it moves every value that names one of those packages at an exact version older than the release, such as `"0.0.3"`; a range, such as `"^0.0.3"`, and a newer or equal version stay.
+- When it moved any, it refreshes every tracked `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, without the host's credential variables, commits, pushes the branch `pipelines/update-<source>` and proposes it with the moved pins and the release's notes; a repository that pins none is left as it is.
+- When the branch exists, it replaces it only while the branch is at a commit of its own, with its title and the same committer; a branch with anyone else's commit is left as it is, and that repository fails, so nobody's work is lost.
+- It succeeds with one line for each repository, and fails, after trying every other repository, with the line of each that failed; an error in one repository, such as git failing, is that repository's line.
+- It removes its temporary folder whether it succeeds or fails, and makes it in the root its constructor is given, or in `os.tmpdir()`.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 

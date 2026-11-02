@@ -13,6 +13,6 @@ import * as api from "@noldova/tools.pipelines.github";
 export class PipelinesGitHubApiTests {
   @TestMethod
   public exportsTheCompleteCatalog(): void {
-    Assert.areEqual("GitHubPackages,GitHubStepOutput,GitHubTags,PipelinesProgram", Object.keys(api).sort().join(","));
+    Assert.areEqual("GitHubPackages,GitHubStepOutput,GitHubTags,GitHubUpdates,PipelinesProgram", Object.keys(api).sort().join(","));
   }
 }
