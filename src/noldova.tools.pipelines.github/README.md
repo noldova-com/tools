@@ -72,10 +72,11 @@ A 404 to a delete counts as a version already deleted only when GitHub's list no
 
 ### When GitHub is briefly unavailable
 
-The prune and tag steps send a request again, up to two more times, when GitHub answers 502, 503 or 504, waiting 5 and then 15 seconds, or doesn't answer within a minute.
+The prune and tag steps send a request again, up to two more times, waiting 5 and then 15 seconds, when GitHub answers 502, 503 or 504, doesn't answer within a minute, or the connection fails.
 A failing answer with a `Retry-After` header of up to 60 seconds is sent again too, after that wait, such as a 403 for a rate limit.
-Any other answer comes back at once, such as a 403 or 404 without that header, or any answer with a longer `Retry-After`; so does a connection that fails.
-The last answer or timeout is what the step reports.
+Any other answer comes back at once, such as a 403 or 404 without that header, or any answer with a longer `Retry-After`.
+The last answer, timeout or failed connection is what the step reports, naming the request.
+These retries count per request, and nothing bounds a step's requests together, so the job's `timeout-minutes` is the bound; since a request can be sent twice, a rerun is safe.
 
 A create or delete that GitHub carried out but whose answer was lost is sent again, and is done, not a failure: the tag step finds the tag at the commit after GitHub refuses the second create, and the prune step reports the version as already deleted after a 404 and a new list without it.
 

@@ -196,15 +196,58 @@ export class GitHubTagsTests {
   }
 
   @TestMethod
-  public async rejectsWithTimeoutErrorWhenGitHubAnswersNoAttemptInTimeAsync(): Promise<void> {
+  public async failsNamingTheRequestWhenGitHubAnswersNoAttemptInTimeAsync(): Promise<void> {
     const waits: number[] = [];
     await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.HELD });
 
-    const error = await Assert.throwsAsync(() => GitHubTagsTests.createTags(api, waits, 100).readTagAsync("v0.0.4"), DOMException);
+    const result = await new TagStep(GitHubTagsTests.createTags(api, waits)).runAsync(["0.0.4", GitHubTagsTests.COMMIT]);
 
-    Assert.areEqual("TimeoutError", error.name);
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("GitHub gave no answer to GET repos/noldova-com/tools/git/ref/tags/v0.0.4: The operation was aborted due to timeout", result.message);
+    Assert.isFalse(result.message.includes(GitHubTagsTests.TOKEN));
     Assert.areEqual(3, api.requests.length);
     Assert.areEqual("5000,15000", waits.join(","));
+  }
+
+  @TestMethod
+  public async endsAnAttemptAtTheTimeoutItIsGivenAsync(): Promise<void> {
+    const waits: number[] = [];
+    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.HELD });
+    const environment = { GITHUB_API_URL: api.url, GITHUB_REPOSITORY: "noldova-com/tools", GITHUB_TOKEN: GitHubTagsTests.TOKEN };
+    const tags = new GitHubTags(environment, 1, async milliseconds => {
+      waits.push(milliseconds);
+    });
+
+    const result = await tags.readTagAsync("v0.0.4");
+
+    Assert.areEqual("GitHub gave no answer to GET repos/noldova-com/tools/git/ref/tags/v0.0.4: The operation was aborted due to timeout", GitHubTagsTests.readFailure(result));
+    Assert.areEqual("5000,15000", waits.join(","));
+  }
+
+  @TestMethod
+  public async failsNamingTheRequestWhenReadingAnAnnotatedTagIsNotAnsweredAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.json(200, { object: { type: "tag", sha: GitHubTagsTests.TAG_OBJECT } }),
+      [`GET /repos/noldova-com/tools/git/tags/${GitHubTagsTests.TAG_OBJECT}`]: GitHubApiAnswer.HELD
+    });
+
+    const result = await GitHubTagsTests.createTags(api).readTagAsync("v0.0.4");
+
+    Assert.areEqual(`GitHub gave no answer to GET repos/noldova-com/tools/git/tags/${GitHubTagsTests.TAG_OBJECT}: The operation was aborted due to timeout`, GitHubTagsTests.readFailure(result));
+  }
+
+  @TestMethod
+  public async failsNamingTheRequestWhenCreatingATagIsNotAnsweredAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.json(404, { message: "Not Found" }),
+      [GitHubTagsTests.CREATE]: GitHubApiAnswer.HELD
+    });
+
+    const result = await new TagStep(GitHubTagsTests.createTags(api)).runAsync(["0.0.4", GitHubTagsTests.COMMIT]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("GitHub gave no answer to POST repos/noldova-com/tools/git/refs: The operation was aborted due to timeout", result.message);
+    Assert.areEqual(JSON.stringify(["GET", "POST", "POST", "POST"]), JSON.stringify(api.requests.map(t => t.method)));
   }
 
   @TestMethod
@@ -212,7 +255,7 @@ export class GitHubTagsTests {
     const waits: number[] = [];
     await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.REFERENCE]: [GitHubApiAnswer.HELD, GitHubApiAnswer.json(200, { object: { type: "commit", sha: GitHubTagsTests.COMMIT } })] });
 
-    const commit = await GitHubTagsTests.createTags(api, waits, 100).readTagAsync("v0.0.4");
+    const commit = await GitHubTagsTests.createTags(api, waits).readTagAsync("v0.0.4");
 
     Assert.areEqual(GitHubTagsTests.COMMIT, commit);
     Assert.areEqual(2, api.requests.length);
@@ -332,13 +375,44 @@ export class GitHubTagsTests {
   }
 
   @TestMethod
-  public async doesNotSendARequestAgainWhenGitHubCannotBeReachedAsync(): Promise<void> {
+  public async failsNamingTheRequestWhenGitHubCannotBeReachedAsync(): Promise<void> {
     const waits: number[] = [];
     const api = await GitHubApiFixture.startAsync({});
     const tags = GitHubTagsTests.createTags(api, waits);
     await api[Symbol.asyncDispose]();
 
-    await Assert.throwsAsync(() => tags.readTagAsync("v0.0.4"), TypeError);
+    const result = await tags.readTagAsync("v0.0.4");
+
+    const failure = GitHubTagsTests.readFailure(result);
+    Assert.isTrue(failure.startsWith("GitHub gave no answer to GET repos/noldova-com/tools/git/ref/tags/v0.0.4: "), failure);
+    Assert.isTrue(failure.includes("ECONNREFUSED"), failure);
+    Assert.areEqual("5000,15000", waits.join(","));
+  }
+
+  @TestMethod
+  public async sendsARequestAgainWhenTheConnectionIsLostAsync(): Promise<void> {
+    const waits: number[] = [];
+    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.REFERENCE]: [GitHubApiAnswer.RESET, GitHubApiAnswer.json(200, { object: { type: "commit", sha: GitHubTagsTests.COMMIT } })] });
+
+    const commit = await GitHubTagsTests.createTags(api, waits).readTagAsync("v0.0.4");
+
+    Assert.areEqual(GitHubTagsTests.COMMIT, commit);
+    Assert.areEqual(2, api.requests.length);
+    Assert.areEqual("5000", waits.join(","));
+  }
+
+  @TestMethod
+  public async passesOnAnErrorThatIsNotALostRequestAsync(): Promise<void> {
+    const waits: number[] = [];
+    await using api = await GitHubApiFixture.startAsync({});
+    const environment = { GITHUB_API_URL: api.url, GITHUB_REPOSITORY: "noldova-com/tools", GITHUB_TOKEN: GitHubTagsTests.TOKEN };
+    const tags = new GitHubTags(environment, undefined, async milliseconds => {
+      waits.push(milliseconds);
+    }, () => {
+      throw new RangeError("Broken");
+    });
+
+    await Assert.throwsAsync(() => tags.readTagAsync("v0.0.4"), RangeError);
 
     Assert.areEqual(0, waits.length);
   }
@@ -353,7 +427,7 @@ export class GitHubTagsTests {
       [GitHubTagsTests.CREATE]: [isTimeout ? GitHubApiAnswer.HELD : GitHubApiAnswer.json(502, { message: "Bad gateway" }), GitHubApiAnswer.json(422, { message: "Reference already exists" })]
     });
 
-    const result = await new TagStep(GitHubTagsTests.createTags(api, waits, 100)).runAsync(["0.0.4", GitHubTagsTests.COMMIT]);
+    const result = await new TagStep(GitHubTagsTests.createTags(api, waits)).runAsync(["0.0.4", GitHubTagsTests.COMMIT]);
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(`v0.0.4 already points to commit ${GitHubTagsTests.COMMIT}.`, result.message);
@@ -377,12 +451,12 @@ export class GitHubTagsTests {
     Assert.areEqual(0, api.requests.length);
   }
 
-  private static createTags(api: GitHubApiFixture, waits: number[] = [], timeoutMilliseconds: number = 60_000): GitHubTags {
+  private static createTags(api: GitHubApiFixture, waits: number[] = []): GitHubTags {
     const environment = { GITHUB_API_URL: api.url, GITHUB_REPOSITORY: "noldova-com/tools", GITHUB_TOKEN: GitHubTagsTests.TOKEN };
 
-    return new GitHubTags(environment, timeoutMilliseconds, async milliseconds => {
+    return new GitHubTags(environment, undefined, async milliseconds => {
       waits.push(milliseconds);
-    });
+    }, () => api.createAttemptSignal());
   }
 
   private static readFailure(result: string | boolean | StepResult): string {

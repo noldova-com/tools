@@ -17,14 +17,16 @@ export class GitHubPackages implements IRegistryHost {
   private readonly environment: Readonly<Record<string, string | undefined>>;
   private readonly timeoutMilliseconds: number;
   private readonly waitAsync: (milliseconds: number) => Promise<void>;
+  private readonly createSignal: (timeoutMilliseconds: number) => AbortSignal;
   private readonly versionIds: Map<string, Map<string, number>> = new Map();
 
   public readonly registry: string = Resources.packagesRegistry;
 
-  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync) {
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync, createSignal: (timeoutMilliseconds: number) => AbortSignal = GitHubApi.createTimeoutSignal) {
     this.environment = environment;
     this.timeoutMilliseconds = timeoutMilliseconds;
     this.waitAsync = waitAsync;
+    this.createSignal = createSignal;
   }
 
   public async readVersionsAsync(packageName: string): Promise<readonly string[] | StepResult> {
@@ -52,6 +54,8 @@ export class GitHubPackages implements IRegistryHost {
 
     const [api, resource] = target;
     const answer = await api.requestAsync(Resources.deleteMethod, Resources.formatVersionResource(resource, id));
+    if (answer instanceof StepResult)
+      return answer;
     if (answer.status === Resources.deletedStatus) {
       ids.delete(version);
 
@@ -71,6 +75,8 @@ export class GitHubPackages implements IRegistryHost {
     const ids = new Map<string, number>();
     for (let page = 1; ; page++) {
       const answer = await api.requestAsync(Resources.readMethod, Resources.formatVersionsPage(resource, page));
+      if (answer instanceof StepResult)
+        return answer;
       if (answer.status !== Resources.foundStatus)
         return answer.toFailure();
 
@@ -94,7 +100,7 @@ export class GitHubPackages implements IRegistryHost {
     if (missing !== undefined)
       return StepResult.failed(Resources.formatPruneVariableMissing(missing));
 
-    const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.tokenVariable), this.timeoutMilliseconds, this.waitAsync);
+    const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.tokenVariable), this.timeoutMilliseconds, this.waitAsync, this.createSignal);
 
     return [api, Resources.formatVersionsResource(packageName)];
   }

@@ -12,19 +12,22 @@ import { setTimeout } from "node:timers/promises";
 
 export class GitHubApiAnswer {
   public static readonly HELD: GitHubApiAnswer = new GitHubApiAnswer(0, "", "", true);
+  public static readonly RESET: GitHubApiAnswer = new GitHubApiAnswer(0, "", "", false, "", true);
 
   public readonly status: number;
   public readonly body: string;
   public readonly contentType: string;
   public readonly isHeld: boolean;
   public readonly retryAfter: string;
+  public readonly isReset: boolean;
 
-  public constructor(status: number, body: string, contentType: string = "application/json; charset=utf-8", isHeld: boolean = false, retryAfter: string = "") {
+  public constructor(status: number, body: string, contentType: string = "application/json; charset=utf-8", isHeld: boolean = false, retryAfter: string = "", isReset: boolean = false) {
     this.status = status;
     this.body = body;
     this.contentType = contentType;
     this.isHeld = isHeld;
     this.retryAfter = retryAfter;
+    this.isReset = isReset;
   }
 
   public static json(status: number, value: unknown, retryAfter: string = ""): GitHubApiAnswer {
@@ -55,6 +58,7 @@ export class GitHubApiFixture implements AsyncDisposable {
   private readonly server: http.Server;
   private readonly answers: Map<string, GitHubApiAnswer[]>;
   private readonly tcpResourcesBefore: readonly string[] = GitHubApiFixture.listTcpResources();
+  private attempt: AbortController = new AbortController();
 
   public readonly requests: GitHubApiRequest[] = [];
 
@@ -70,8 +74,14 @@ export class GitHubApiFixture implements AsyncDisposable {
 
         const queued = this.answers.get(`${method} ${url}`) ?? [];
         const answer = (queued.length > 1 ? queued.shift() : queued[0]) ?? GitHubApiAnswer.json(404, { message: "Not Found" });
-        if (answer.isHeld)
+        if (answer.isReset) {
+          response.destroy();
           return;
+        }
+        if (answer.isHeld) {
+          this.attempt.abort(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+          return;
+        }
 
         response.writeHead(answer.status, {
           "Connection": "close",
@@ -96,6 +106,13 @@ export class GitHubApiFixture implements AsyncDisposable {
     await new Promise<void>(resolve => fixture.server.listen(0, GitHubApiFixture.HOST, resolve));
 
     return fixture;
+  }
+
+  // The signal of the next attempt, which a held answer ends as a timeout does, so no test depends on how fast the other answers come.
+  public createAttemptSignal(): AbortSignal {
+    this.attempt = new AbortController();
+
+    return this.attempt.signal;
   }
 
   public async [Symbol.asyncDispose](): Promise<void> {

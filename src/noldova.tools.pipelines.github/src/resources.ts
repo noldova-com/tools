@@ -112,6 +112,10 @@ export class Resources {
     return `GitHub answered ${method} ${resource} with ${status}: ${message}`;
   }
 
+  public static formatApiUnanswered(method: string, resource: string, reason: string): string {
+    return `GitHub gave no answer to ${method} ${resource}: ${reason}`;
+  }
+
   public static formatTagTargetInvalid(tag: string, type: string): string {
     return `${tag} points to a ${type}, not a commit.`;
   }
