@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
@@ -29,6 +30,28 @@ class FixedProcessRunner extends ProcessRunner {
 
 @TestClass
 export class GitTests {
+  @TestMethod
+  public async commitsEveryChangeToATrackedFileAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const first = repository.commit({ "a.txt": "a\n", "b.txt": "b\n" });
+    repository.write({ "a.txt": "changed\n", "c.txt": "untracked\n" });
+
+    await GitTests.createGit(repository).commitAllAsync("Change a");
+
+    Assert.areNotEqual(first, repository.readHead());
+    Assert.areEqual("?? c.txt\n", execFileSync("git", ["status", "--porcelain"], { cwd: repository.directory, encoding: "utf8" }));
+  }
+
+  @TestMethod
+  public async rejectsACommitWithNothingToCommitAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.commit({ "a.txt": "a\n" });
+
+    const exception = await Assert.throwsAsync(() => GitTests.createGit(repository).commitAllAsync("Nothing"), ProcessException);
+
+    Assert.areEqual("git", exception.program);
+  }
+
   @TestMethod
   public async findsACommitByItsIdAndByAReferenceAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();

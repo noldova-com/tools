@@ -45,6 +45,13 @@ export class ProcessRunnerTests {
   }
 
   @TestMethod
+  public async givesTheProgramTheVariablesOnTopOfItsOwnAsync(): Promise<void> {
+    const result = await new ProcessRunner().runAsync(process.execPath, ["-e", "process.stdout.write([process.env.TOOLS_PIPELINES_GIVEN, typeof process.env.PATH].join(' '));"], ".", { TOOLS_PIPELINES_GIVEN: "given" });
+
+    Assert.areEqual("given string", result.output);
+  }
+
+  @TestMethod
   public async readsTheOutputAsUtf8Async(): Promise<void> {
     const result = await new ProcessRunner().runAsync(process.execPath, ["-e", "process.stdout.write('caf\\u00e9 \\u2713');"], ".");
 

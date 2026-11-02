@@ -33,6 +33,10 @@ export class Git {
     await this.readAsync([...Resources.gitRemoveWorktreeValues, directory]);
   }
 
+  public async commitAllAsync(message: string): Promise<void> {
+    await this.readAsync([...Resources.gitCommitAllValues, message]);
+  }
+
   public async hasCommitAsync(revision: string): Promise<boolean> {
     return await this.verifyAsync(Resources.formatGitCommitRevision(revision));
   }

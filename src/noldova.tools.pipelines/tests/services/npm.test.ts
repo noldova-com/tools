@@ -77,6 +77,18 @@ export class NpmTests {
     Assert.areEqual(expected, processRunner.calls.join("\n"));
   }
 
+  @TestData("linux", "locked: npm install --package-lock-only --ignore-scripts --no-audit --no-fund")
+  @TestData("win32", "locked: cmd.exe /d /s /c npm.cmd install --package-lock-only --ignore-scripts --no-audit --no-fund")
+  @TestMethod
+  public async refreshesTheLockFileInTheDirectoryGivenAsTheirPlatformRunsItAsync(platform: string, expected: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(1, "", "npm error"));
+
+    const result = await new Npm(processRunner, "release", platform).lockAsync("locked");
+
+    Assert.areEqual(1, result.exitCode);
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
+  }
+
   @TestMethod
   public async rejectsWhenReadingItsVersionFailsAsync(): Promise<void> {
     const npm = new Npm(new RecordingProcessRunner(new ProcessResult(1, "", "npm error broken\n")), "release");

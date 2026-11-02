@@ -9,4 +9,5 @@
 export { GitHubPackages } from "../services/github-packages.js";
 export { GitHubStepOutput } from "../services/github-step-output.js";
 export { GitHubTags } from "../services/github-tags.js";
+export { GitHubUpdates } from "../services/github-updates.js";
 export { PipelinesProgram } from "../services/pipelines-program.js";

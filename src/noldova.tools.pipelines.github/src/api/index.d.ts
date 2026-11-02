@@ -6,7 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type { IRegistryHost, IStepOutput, ITagHost, StepResult } from "@noldova/tools.pipelines";
+import type { IRegistryHost, IStepOutput, ITagHost, IUpdateHost, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
 
 /**
  * Writes a step's messages as a GitHub Actions job reads them: a success to
@@ -250,6 +250,113 @@ export declare class GitHubTags implements ITagHost {
    * ```
    */
   public createTagAsync(tag: string, commit: string): Promise<boolean | StepResult>;
+}
+
+/**
+ * The {@link IUpdateHost} on GitHub Actions: it reaches the repositories the
+ * job's token may, which for a GitHub App's installation token are the
+ * repositories the App is installed on. It reads `GITHUB_API_URL`,
+ * `GITHUB_SERVER_URL`, `GITHUB_REPOSITORY`, the repository that released, and
+ * `GITHUB_TOKEN`, the token, which needs read and write access to contents,
+ * issues and pull requests in every repository it updates.
+ *
+ * Git gets the token only through its environment, as an `AUTHORIZATION`
+ * header for the server, never in a command line or a URL; the commits'
+ * author and committer are what git's own variables, such as
+ * `GIT_AUTHOR_NAME`, name. Requests to the API are retried as
+ * {@link GitHubTags}' are.
+ */
+export declare class GitHubUpdates implements IUpdateHost {
+  /**
+   * Creates the host over an environment, which it reads at each call.
+   *
+   * @param environment The environment variables, such as `process.env`.
+   * @param processRunner What runs git. Omitted, a new {@link ProcessRunner}.
+   * @param timeoutMilliseconds How long it waits for each answer of the API.
+   * Omitted, it waits a minute.
+   * @param waitAsync How it waits before sending a request again, given the
+   * milliseconds. Omitted, it uses a timer.
+   * @param createSignal How it makes the signal that ends each attempt, given
+   * the timeout. Omitted, the signal is `AbortSignal.timeout`'s.
+   * @example
+   * ```ts
+   * import { GitHubUpdates } from "@noldova/tools.pipelines.github";
+   *
+   * const updates = new GitHubUpdates(process.env);
+   * ```
+   */
+  public constructor(environment: Readonly<Record<string, string | undefined>>, processRunner?: ProcessRunner, timeoutMilliseconds?: number, waitAsync?: (milliseconds: number) => Promise<void>, createSignal?: (timeoutMilliseconds: number) => AbortSignal);
+
+  /**
+   * Reads the name of the repository that released, after its owner.
+   *
+   * @returns The name, such as `tools` for
+   * `noldova-com/tools`, or a failed {@link StepResult} naming the
+   * first of the four environment variables that is missing or empty.
+   */
+  public readSourceName(): string | StepResult;
+
+  /**
+   * Lists the repositories the token reaches, through
+   * `installation/repositories`, page by page, leaving out archived ones and
+   * the one that released.
+   *
+   * @returns A promise of their full names, sorted, or a failed
+   * {@link StepResult}: for a missing variable, or with the request, the
+   * status and GitHub's message when GitHub refuses, such as when the token
+   * isn't an installation's.
+   */
+  public listRepositoriesAsync(): Promise<readonly string[] | StepResult>;
+
+  /**
+   * Reads the release notes from the pull request that merged the commit:
+   * its section whose heading is `Release notes for <version>`, at any
+   * heading level, up to the next heading of that level or higher.
+   *
+   * @param version The version.
+   * @param commit The commit.
+   * @returns A promise of the section, `""` when no pull request merged the
+   * commit or its description has no such section, or a failed
+   * {@link StepResult}.
+   */
+  public readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
+
+  /**
+   * Clones the repository's default branch, one commit deep, into the
+   * directory.
+   *
+   * @param repository The repository's full name.
+   * @param directory The directory, which doesn't exist yet.
+   * @returns A promise of `null` once cloned, or a failed {@link StepResult}
+   * with git's exit code and error output.
+   */
+  public checkOutAsync(repository: string, directory: string): Promise<StepResult | null>;
+
+  /**
+   * Force-pushes the clone's `HEAD` to the branch.
+   *
+   * @param repository The repository's full name.
+   * @param directory The clone's directory.
+   * @param branch The branch.
+   * @returns A promise of `null` once pushed, or a failed {@link StepResult}
+   * with git's exit code and error output.
+   */
+  public pushAsync(repository: string, directory: string, branch: string): Promise<StepResult | null>;
+
+  /**
+   * Opens an issue with the title and a pull request from the branch into the
+   * default branch whose description ends with `Closes #<issue>`, or, when a
+   * pull request from the branch is open, gives it and the issue its
+   * description names the title, and the pull request the description.
+   *
+   * @param repository The repository's full name.
+   * @param branch The pushed branch.
+   * @param title The title.
+   * @param body The description, before its linked issue.
+   * @returns A promise of the pull request's address, or a failed
+   * {@link StepResult} with the request, the status and GitHub's message.
+   */
+  public proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult>;
 }
 
 /**
