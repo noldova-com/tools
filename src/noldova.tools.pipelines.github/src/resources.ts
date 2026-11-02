@@ -8,6 +8,36 @@
 
 export class Resources {
   public static readonly acceptHeader: string = "Accept";
+  public static readonly archivedField: string = "archived";
+  public static readonly bodyField: string = "body";
+  public static readonly defaultBranchField: string = "default_branch";
+  public static readonly fullNameField: string = "full_name";
+  public static readonly gitCloneValues: readonly string[] = ["clone", "--quiet", "--depth", "1", "--no-tags", "--"];
+  public static readonly gitConfigCount: string = "1";
+  public static readonly gitConfigCountVariable: string = "GIT_CONFIG_COUNT";
+  public static readonly gitConfigKeyVariable: string = "GIT_CONFIG_KEY_0";
+  public static readonly gitConfigValueVariable: string = "GIT_CONFIG_VALUE_0";
+  public static readonly gitProgram: string = "git";
+  public static readonly gitFetchValues: readonly string[] = ["fetch", "--quiet", "--depth", "1", "--no-tags"];
+  public static readonly gitListRemoteValues: readonly string[] = ["ls-remote", "--exit-code", "--heads"];
+  public static readonly gitNoMatchExitCode: number = 2;
+  public static readonly gitOptionsEnd: string = "--";
+  public static readonly gitPushValues: readonly string[] = ["push", "--quiet"];
+  public static readonly gitReferenceSeparatorPattern: RegExp = /\s/;
+  public static readonly gitTerminalPromptOff: string = "0";
+  public static readonly gitTerminalPromptVariable: string = "GIT_TERMINAL_PROMPT";
+  public static readonly headingPattern: RegExp = /^#{1,6}\s/;
+  public static readonly htmlUrlField: string = "html_url";
+  public static readonly lineBreakPattern: RegExp = /\r?\n/;
+  public static readonly linkedIssuePattern: RegExp = /^Closes #([0-9]+)$/m;
+  public static readonly mergeCommitField: string = "merge_commit_sha";
+  public static readonly notHashPattern: RegExp = /[^#]/;
+  public static readonly numberField: string = "number";
+  public static readonly repositoriesField: string = "repositories";
+  public static readonly repositoriesPageSize: number = 100;
+  public static readonly repositorySeparator: string = "/";
+  public static readonly serverUrlVariable: string = "GITHUB_SERVER_URL";
+  public static readonly updateMethod: string = "PATCH";
   public static readonly annotatedTagType: string = "tag";
   public static readonly annotationEscapes: readonly (readonly [string, string])[] = [["%", "%25"], ["\r", "%0D"], ["\n", "%0A"]];
   public static readonly answerNotJson: string = "GitHub's answer is not JSON.";
@@ -63,6 +93,84 @@ export class Resources {
 
   public static formatVariableMissing(name: string): string {
     return `The environment variable ${name} is not set; the tag step needs it to reach GitHub.`;
+  }
+
+  public static formatDependentsVariableMissing(name: string): string {
+    return `The environment variable ${name} is not set; the dependents step needs it to reach GitHub.`;
+  }
+
+  public static formatInstallationRepositoriesPage(page: number): string {
+    return `installation/repositories?per_page=${Resources.repositoriesPageSize}&page=${page}`;
+  }
+
+  public static formatCommitPullsResource(repository: string, commit: string): string {
+    return Resources.formatResource(repository, `commits/${commit}/pulls`);
+  }
+
+  public static formatOpenPullsResource(repository: string, owner: string, branch: string): string {
+    return Resources.formatResource(repository, `pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`);
+  }
+
+  public static formatPullsResource(repository: string): string {
+    return Resources.formatResource(repository, "pulls");
+  }
+
+  public static formatPullResource(repository: string, number: string): string {
+    return Resources.formatResource(repository, `pulls/${number}`);
+  }
+
+  public static formatIssuesResource(repository: string): string {
+    return Resources.formatResource(repository, "issues");
+  }
+
+  public static formatIssueResource(repository: string, number: string): string {
+    return Resources.formatResource(repository, `issues/${number}`);
+  }
+
+  public static formatRepositoryResource(repository: string): string {
+    return `repos/${repository}`;
+  }
+
+  public static formatIssueBody(branch: string): string {
+    return `A release moved packages this repository pins exactly; the pull request from \`${branch}\` moves the pins.`;
+  }
+
+  public static formatProposalBody(body: string, issue: string | undefined): string {
+    return issue === undefined ? body : [body, "", "## Linked issue", "", `Closes #${issue}`].join(Resources.lineSeparator);
+  }
+
+  public static formatCloneUrl(serverUrl: string, repository: string): string {
+    return `${serverUrl}/${repository}.git`;
+  }
+
+  public static formatPushReference(branch: string): string {
+    return `HEAD:${Resources.formatBranchReference(branch)}`;
+  }
+
+  public static formatBranchReference(branch: string): string {
+    return `refs/heads/${branch}`;
+  }
+
+  public static formatForceWithLease(branch: string, commit: string): string {
+    return `--force-with-lease=${Resources.formatBranchReference(branch)}:${commit}`;
+  }
+
+  public static formatExtraHeaderKey(serverUrl: string): string {
+    return `http.${serverUrl}/.extraheader`;
+  }
+
+  public static formatBasicAuthorization(token: string): string {
+    return `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  }
+
+  public static formatGitFailed(values: readonly string[], exitCode: number | null, errorOutput: string): string {
+    const detail = errorOutput.split(Resources.lineBreakPattern).map(t => t.trim()).filter(t => t.length > 0).join(" ");
+
+    return `git ${values[0]} exited with code ${exitCode}${detail.length === 0 ? "." : `: ${detail}`}`;
+  }
+
+  public static createNotesHeadingPattern(version: string): RegExp {
+    return new RegExp(`^#{1,6}\\s+Release notes for ${version.replaceAll(".", "\\.")}\\s*$`, "i");
   }
 
   public static formatPruneVariableMissing(name: string): string {

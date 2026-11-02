@@ -20,11 +20,15 @@ export class Resources {
   public static readonly credentialFilePattern: RegExp = /(?:^|\/)(?:\.npmrc|\.netrc|\.env(?:\.[^/]+)?|id_rsa|id_dsa|id_ecdsa|id_ed25519|[^/]*\.(?:pem|key|p12|pfx))$/i;
   public static readonly crlfLineEndings: string = "crlf";
   public static readonly dependenciesField: string = "dependencies";
+  public static readonly dependentsFolderPrefix: string = "pipelines-dependents-";
+  public static readonly dependentsStepName: string = "dependents";
+  public static readonly dependentsStepUsage: string = "<version> <commit>";
   public static readonly failureExitCode: number = 1;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
   public static readonly fileEndByteCount: number = 2;
   public static readonly gitAddWorktreeValues: readonly string[] = ["worktree", "add", "--quiet", "--detach", "--end-of-options"];
   public static readonly gitAttributesFilePath: string = ".gitattributes";
+  public static readonly gitCommitAllValues: readonly string[] = ["commit", "--quiet", "--all", "--no-verify", "--message"];
   public static readonly gitAttributesLine: string = "* text=auto eol=lf";
   public static readonly gitCheckoutRevision: string = "HEAD";
   public static readonly gitEntrySeparator: string = "\t";
@@ -44,7 +48,9 @@ export class Resources {
   public static readonly gitNotFoundExitCode: number = 1;
   public static readonly gitProgram: string = "git";
   public static readonly gitReadFileValues: readonly string[] = ["cat-file", "blob", "--end-of-options"];
+  public static readonly gitReadCommitterValues: readonly string[] = ["log", "-1", "--format=%ce", "--end-of-options"];
   public static readonly gitReadHeadValues: readonly string[] = ["rev-parse", "--verify", "--end-of-options"];
+  public static readonly gitReadSubjectValues: readonly string[] = ["log", "-1", "--format=%s", "--end-of-options"];
   public static readonly gitReadTypeValues: readonly string[] = ["cat-file", "-t", "--end-of-options"];
   public static readonly gitRemoveWorktreeValues: readonly string[] = ["worktree", "remove", "--force", "--end-of-options"];
   public static readonly gitSymbolicLinkMode: string = "120000";
@@ -59,6 +65,7 @@ export class Resources {
   public static readonly lineEndingsStepUsage: string = "";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly lineSeparator: string = "\n";
+  public static readonly lockFileName: string = "package-lock.json";
   public static readonly mainBranch: string = "origin/main";
   public static readonly mainReference: string = "refs/remotes/origin/main";
   public static readonly majorPartName: string = "major";
@@ -77,6 +84,7 @@ export class Resources {
   public static readonly npmAccessValues: readonly string[] = ["--access"];
   public static readonly npmBuildValues: readonly string[] = ["run", "build"];
   public static readonly npmIntegrityField: string = "dist.integrity";
+  public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmNotFoundCode: string = "E404";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
   public static readonly npmProgram: string = "npm";
@@ -129,6 +137,7 @@ export class Resources {
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
   public static readonly windowsNpmBuildValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd run build"];
+  public static readonly windowsNpmLockValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd install --package-lock-only --ignore-scripts --no-audit --no-fund"];
   public static readonly windowsNpmVersionValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd --version"];
   public static readonly windowsPlatform: string = "win32";
   public static readonly windowsShellProgram: string = "cmd.exe";
@@ -419,6 +428,67 @@ export class Resources {
 
   public static formatTagName(version: string): string {
     return `${Resources.tagPrefix}${version}`;
+  }
+
+  public static formatDependentsVersionNotRelease(version: string): string {
+    return `${version} is a nightly version; only a release version moves the repositories that pin its packages.`;
+  }
+
+  public static formatDependentsSummary(packageNames: readonly string[], version: string, repositoryCount: number): string {
+    return `Looked for exact pins of ${packageNames.join(", ")} older than ${version} in ${repositoryCount} repositories:`;
+  }
+
+  public static formatRepositoryUnpinned(repository: string, version: string): string {
+    return `${repository}: pins none of them below ${version}.`;
+  }
+
+  public static formatRepositoryProposed(repository: string, url: string, moveCount: number): string {
+    return `${repository}: moved ${moveCount} pins in ${url}`;
+  }
+
+  public static formatRepositoryFailed(repository: string, message: string): string {
+    return `${repository}: ${message}`;
+  }
+
+  public static formatLockFailed(lockFilePath: string, exitCode: number | null, errorOutput: string): string {
+    return Resources.formatFailureLine(`Refreshing ${lockFilePath}, npm ${Resources.npmLockValues.join(Resources.valueSeparator)}, exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatPinMoved(filePath: string, packageName: string, from: string, to: string): string {
+    return `\`${filePath}\`: \`${packageName}\` from ${from} to ${to}`;
+  }
+
+  public static formatUpdateTitle(source: string, version: string): string {
+    return `${Resources.formatUpdateTitlePrefix(source)}${version}`;
+  }
+
+  public static formatUpdateTitlePrefix(source: string): string {
+    return `Move the pins of ${source}'s packages to `;
+  }
+
+  public static formatBranchNotOwn(branch: string, commit: string): string {
+    return `${branch} is at ${commit}, a commit this step didn't make, so it is left as it is; merge or close its pull request, or move its changes elsewhere.`;
+  }
+
+  public static formatUpdateBranch(source: string): string {
+    return `pipelines/update-${source}`;
+  }
+
+  public static formatUpdateBody(source: string, version: string, commit: string, moves: readonly string[], lockFilePaths: readonly string[], notes: string): string {
+    return [
+      "## Summary",
+      "",
+      `${source} released ${version} from commit ${commit}; this moves every exact pin of its packages that was older.`,
+      "",
+      ...moves.map(t => `- ${t}`),
+      ...lockFilePaths.map(t => `- \`${t}\`: refreshed with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\``),
+      "",
+      notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes for ${version}" section.` : notes
+    ].join(Resources.lineSeparator);
+  }
+
+  public static createPinPattern(packageName: string): RegExp {
+    return new RegExp(`("${packageName.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}"\\s*:\\s*")([^"]*)(")`, "g");
   }
 
   public static formatTagVersionNotRelease(version: string): string {

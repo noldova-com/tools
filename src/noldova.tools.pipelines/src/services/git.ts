@@ -33,6 +33,10 @@ export class Git {
     await this.readAsync([...Resources.gitRemoveWorktreeValues, directory]);
   }
 
+  public async commitAllAsync(message: string): Promise<void> {
+    await this.readAsync([...Resources.gitCommitAllValues, message]);
+  }
+
   public async hasCommitAsync(revision: string): Promise<boolean> {
     return await this.verifyAsync(Resources.formatGitCommitRevision(revision));
   }
@@ -89,6 +93,14 @@ export class Git {
 
   public async readHeadAsync(): Promise<string> {
     return (await this.readAsync([...Resources.gitReadHeadValues, Resources.gitHeadRevision])).trim();
+  }
+
+  public async readCommitterAsync(revision: string): Promise<string> {
+    return (await this.readAsync([...Resources.gitReadCommitterValues, revision])).trim();
+  }
+
+  public async readSubjectAsync(revision: string): Promise<string> {
+    return (await this.readAsync([...Resources.gitReadSubjectValues, revision])).trim();
   }
 
   private async readAsync(values: readonly string[]): Promise<string> {

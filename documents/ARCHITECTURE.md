@@ -29,3 +29,4 @@ This document holds only what is this repository's own; a rule here that is stri
 - No step overwrites a published version.
   Only the prune step deletes one, and only on GitHub Packages: the release versions older than the newest it keeps.
   A version on npm's registry is never deleted.
+- Only the dependents step writes to other repositories: its own branch, `pipelines/update-<repository>`, and the issue and pull request that propose it, never their default branch.

@@ -586,6 +586,102 @@ export declare interface ITagHost {
 }
 
 /**
+ * How the {@link DependentsStep} reaches the repositories that may pin a
+ * release's packages, on the pipeline's host, which implements it, such as
+ * through the host's API and git.
+ */
+export declare interface IUpdateHost {
+  /**
+   * The environment variables that hold the host's credentials, such as
+   * `GITHUB_TOKEN`; the step keeps them from npm when it refreshes a
+   * repository's lock files.
+   */
+  readonly credentialVariables: readonly string[];
+
+  /**
+   * Reads the name of the repository that released, which names the branch
+   * of each update.
+   *
+   * @returns The name, such as `tools`, or a failed
+   * {@link StepResult} that says what the host lacks to name it.
+   */
+  readSourceName(): string | StepResult;
+
+  /**
+   * Lists the repositories the host may update, leaving out the one that
+   * released.
+   *
+   * @returns A promise of the repositories' full names, such as
+   * `noldova-com/example`, or a failed {@link StepResult} that says why
+   * the host could not answer.
+   */
+  listRepositoriesAsync(): Promise<readonly string[] | StepResult>;
+
+  /**
+   * Reads the release notes of a version, from the change that merged its
+   * commit.
+   *
+   * @param version The version, such as `0.0.4`.
+   * @param commit The commit the version was released from.
+   * @returns A promise of the notes' section, starting with its heading, `""`
+   * when no change merged the commit or the one that did has none, or a failed {@link StepResult} that says why
+   * the host could not answer.
+   */
+  readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
+
+  /**
+   * Checks out a repository's default branch into a new directory, as a git
+   * clone the step can commit in.
+   *
+   * @param repository The repository's full name.
+   * @param directory The directory, which doesn't exist yet.
+   * @returns A promise of `null` once it is checked out, or a failed
+   * {@link StepResult} that says why not.
+   */
+  checkOutAsync(repository: string, directory: string): Promise<StepResult | null>;
+
+  /**
+   * Fetches the commit a branch of the repository is at into the clone, so
+   * the step can read who made it.
+   *
+   * @param repository The repository's full name.
+   * @param directory The clone's directory.
+   * @param branch The branch, such as `pipelines/update-tools`.
+   * @returns A promise of the commit's full id, `null` when the repository
+   * has no such branch, or a failed {@link StepResult} that says why not.
+   */
+  fetchBranchAsync(repository: string, directory: string, branch: string): Promise<string | null | StepResult>;
+
+  /**
+   * Pushes the clone's checked-out commit to a branch of the repository.
+   *
+   * @param repository The repository's full name.
+   * @param directory The clone's directory.
+   * @param branch The branch, such as `pipelines/update-tools`.
+   * @param replaced `null` to create the branch, which fails if it exists,
+   * or the commit {@link fetchBranchAsync} found it at, to replace it only
+   * while it is still at that commit.
+   * @returns A promise of `null` once it is pushed, or a failed
+   * {@link StepResult} that says why not.
+   */
+  pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null>;
+
+  /**
+   * Proposes a pushed branch for merging into the default branch: opens the
+   * change and what links it, or, when one is open for the branch already,
+   * replaces its title and description.
+   *
+   * @param repository The repository's full name.
+   * @param branch The pushed branch.
+   * @param title The change's title.
+   * @param body The change's description, in Markdown.
+   * @returns A promise of the change's address, or a failed
+   * {@link StepResult} that says why not.
+   */
+  proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult>;
+}
+
+/**
  * How the {@link PruneStep} lists and deletes a package's versions on a
  * registry, which the registry's host implements, such as through the
  * host's API.
@@ -713,6 +809,10 @@ export declare class ProcessRunner {
    * @param values The values passed to the program, each as one argument,
    * never read by a shell.
    * @param workingDirectory The directory the program runs in.
+   * @param environment Variables the program gets on top of this process's
+   * own, such as a credential only it may read, where a variable set to
+   * `undefined` is kept from it; omitted, it gets this process's variables
+   * alone.
    * @returns A promise of the program's exit code and of what it wrote. A
    * program that fails still resolves, with its exit code; the promise
    * rejects with {@link ProcessException} only when the program cannot
@@ -725,7 +825,7 @@ export declare class ProcessRunner {
    * result.isSuccessful; // true where git is installed
    * ```
    */
-  public runAsync(program: string, values: readonly string[], workingDirectory: string): Promise<ProcessResult>;
+  public runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>): Promise<ProcessResult>;
 }
 
 /**
@@ -770,6 +870,23 @@ export declare class Git {
    * ```
    */
   public addWorktreeAsync(directory: string, commit: string): Promise<void>;
+
+  /**
+   * Commits every change to a tracked file, without running the clone's
+   * hooks, as the author and committer git's settings or environment name.
+   *
+   * @param message The commit's message.
+   * @returns A promise that resolves once the commit is made. It rejects with
+   * {@link ProcessException} if git cannot start or fails, such as when
+   * nothing changed.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Git(new ProcessRunner(), "/tmp/example").commitAllAsync("Move the pins of tools's packages to 0.0.4");
+   * ```
+   */
+  public commitAllAsync(message: string): Promise<void>;
 
   /**
    * Removes a worktree and its directory, with the files a build wrote in
@@ -958,6 +1075,38 @@ export declare class Git {
    * ```
    */
   public readHeadAsync(): Promise<string>;
+
+  /**
+   * Reads the email address of a commit's committer.
+   *
+   * @param revision The commit, such as its id or `HEAD`.
+   * @returns A promise of the address. It rejects with
+   * {@link ProcessException} if git cannot start or fails, such as for a
+   * revision the clone doesn't hold.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Git(new ProcessRunner(), process.cwd()).readCommitterAsync("HEAD"); // "noreply@github.com"
+   * ```
+   */
+  public readCommitterAsync(revision: string): Promise<string>;
+
+  /**
+   * Reads a commit's subject, the first line of its message.
+   *
+   * @param revision The commit, such as its id or `HEAD`.
+   * @returns A promise of the subject. It rejects with
+   * {@link ProcessException} if git cannot start or fails, such as for a
+   * revision the clone doesn't hold.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Git(new ProcessRunner(), process.cwd()).readSubjectAsync("HEAD"); // "Move the pins of tools's packages to 0.0.4"
+   * ```
+   */
+  public readSubjectAsync(revision: string): Promise<string>;
 }
 
 /**
@@ -1131,6 +1280,27 @@ export declare class Npm {
    * ```
    */
   public buildAsync(directory: string): Promise<ProcessResult>;
+
+  /**
+   * Refreshes a directory's `package-lock.json` from its `package.json`
+   * files, with `npm install --package-lock-only --ignore-scripts --no-audit
+   * --no-fund`, or on Windows the same through `cmd.exe /d /s /c`, a fixed
+   * command; it installs nothing and runs no script.
+   *
+   * @param directory The directory that holds the `package-lock.json`.
+   * @param hiddenVariables The environment variables npm doesn't get, such
+   * as a credential meant for something else; omitted, it gets them all.
+   * @returns A promise of npm's exit code and of what it wrote; a refresh
+   * that fails still resolves. It rejects with {@link ProcessException} if
+   * the program cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * (await new Npm(new ProcessRunner(), process.cwd()).lockAsync("/tmp/example")).isSuccessful; // true when the lock file is refreshed
+   * ```
+   */
+  public lockAsync(directory: string, hiddenVariables?: readonly string[]): Promise<ProcessResult>;
 
   /**
    * Reads the version of the npm that runs, with `npm --version`, or on
@@ -1895,6 +2065,84 @@ export declare class ReproducibleStep implements IStep {
    * const processRunner = new ProcessRunner();
    * const step = new ReproducibleStep(new Git(processRunner, process.cwd()), new Npm(processRunner, process.cwd()));
    * (await step.runAsync(["_packages"])).isSuccessful; // true when the second build packs the same archives
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that moves the repositories that pin a release's packages:
+ * `dependents <version> <commit>`. Run from a checkout of the released
+ * commit after the release publishes, it reads the packages the commit
+ * releases, as the {@link ArchiveStep} does, and checks out each repository
+ * the {@link IUpdateHost} lists. In a repository whose tracked `package.json`
+ * files pin any of those packages exactly at an older version, it moves each
+ * such pin to the version, refreshes every tracked `package-lock.json` with
+ * {@link Npm.lockAsync}, without the host's credential variables, commits,
+ * pushes the branch `pipelines/update-<source>` and proposes it, with the
+ * moved pins and the release's notes in its description. When the branch
+ * exists, it replaces it only when the branch is at a commit of its own, made
+ * by the same committer with its title, and otherwise fails that repository,
+ * so nobody's commits are lost. A repository that pins none of them is left
+ * as it is.
+ */
+export declare class DependentsStep implements IStep {
+  /**
+   * The step's name, `"dependents"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<version> <commit>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param archiveStep What reads the packages the commit releases, over the
+   * checkout of that commit.
+   * @param updateHost What lists, checks out, pushes to and proposes in the
+   * repositories.
+   * @param processRunner What runs git in each repository's clone.
+   * @param npm What refreshes the lock files.
+   * @param temporaryRoot The folder the step makes its temporary folder in,
+   * such as one the pipeline host empties after each job. Omitted or empty,
+   * it is `os.tmpdir()`.
+   * @example
+   * ```ts
+   * import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * declare const host: IUpdateHost;
+   * const processRunner = new ProcessRunner();
+   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new DependentsStep(archiveStep, host, processRunner, new Npm(processRunner, process.cwd()));
+   * step.name; // "dependents"
+   * ```
+   */
+  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string);
+
+  /**
+   * Moves the pins in every repository that has them.
+   *
+   * @param values The version, a release version such as `0.0.4`, and the
+   * full id of the commit it was released from.
+   * @returns A promise of the result, with a line for each repository: the
+   * proposal's address and how many pins moved, that it pins none, or why it
+   * failed. It fails for any number of values but two, a version that isn't
+   * one or is a nightly, a commit that isn't a full id, a commit that
+   * releases no package, what the host can't answer, and when any
+   * repository fails, after trying every other; an error in one repository,
+   * such as git failing, is that repository's line. It removes its temporary
+   * folder whether it succeeds or fails, and rejects with
+   * {@link ProcessException} if git cannot start or fails while it reads the
+   * released commit.
+   * @example
+   * ```ts
+   * (await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message;
+   * // Looked for exact pins of @noldova/tools.pipelines, @noldova/tools.pipelines.github older than 0.0.4 in 2 repositories:
+   * // noldova-com/example: moved 2 pins in https://github.com/noldova-com/example/pull/7
+   * // noldova-com/sample: pins none of them below 0.0.4.
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;
