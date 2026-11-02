@@ -77,6 +77,13 @@ export declare class GitHubStepOutput implements IStepOutput {
  * `https://api.github.com`, and `GITHUB_TOKEN`, a token that may delete the
  * packages, with `packages: write`, which the workflow passes in. It sends
  * the token only to that API and never writes it anywhere.
+ *
+ * A request GitHub answers 502, 503 or 504, doesn't answer within the
+ * timeout, or loses the connection of, is sent again up to two more times,
+ * after 5 and then 15 seconds. A failing answer with a `Retry-After` header
+ * of up to 60 seconds is too, after that wait; one with a longer
+ * `Retry-After` is not, whatever its status. The last answer, timeout or
+ * lost connection is what the call gives.
  */
 export declare class GitHubPackages implements IRegistryHost {
   /**
@@ -91,6 +98,10 @@ export declare class GitHubPackages implements IRegistryHost {
    * @param environment The environment variables, such as `process.env`.
    * @param timeoutMilliseconds How long it waits for each answer of the API.
    * Omitted, it waits a minute.
+   * @param waitAsync How it waits before sending a request again, given the
+   * milliseconds. Omitted, it uses a timer.
+   * @param createSignal How it makes the signal that ends each attempt, given
+   * the timeout. Omitted, the signal is `AbortSignal.timeout`'s.
    * @example
    * ```ts
    * import { GitHubPackages } from "@noldova/tools.pipelines.github";
@@ -99,7 +110,7 @@ export declare class GitHubPackages implements IRegistryHost {
    * packages.registry; // "https://npm.pkg.github.com/"
    * ```
    */
-  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number);
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number, waitAsync?: (milliseconds: number) => Promise<void>, createSignal?: (timeoutMilliseconds: number) => AbortSignal);
 
   /**
    * Lists every version of a package, reading GitHub's list a hundred at a
@@ -113,12 +124,10 @@ export declare class GitHubPackages implements IRegistryHost {
    * of the two environment variables is missing or empty, naming it; or
    * when GitHub answers with another status than 200, such as 404 for a
    * package it doesn't have or can't show, with the request, the status and
-   * GitHub's message. It rejects with `JsonException`, from
-   * `@noldova/context.json`, for an answer that is not a JSON list of
-   * versions, each with a whole-number `id` and a `name` text, with a
-   * `DOMException` named `TimeoutError` when GitHub doesn't answer within
-   * the timeout, and with the error `fetch` gives when GitHub can't be
-   * reached.
+   * GitHub's message; or when the last attempt times out or loses its
+   * connection, with the request and the reason. It rejects with
+   * `JsonException`, from `@noldova/context.json`, for an answer that is not
+   * a JSON list of versions, each with a whole-number `id` and a `name` text.
    * @example
    * ```ts
    * import { GitHubPackages } from "@noldova/tools.pipelines.github";
@@ -136,7 +145,8 @@ export declare class GitHubPackages implements IRegistryHost {
    * @param version The version's text, as the list gave it.
    * @returns A promise of `true` when GitHub deleted the version, `false`
    * when the list has no such version, or GitHub answers 404 and a new list
-   * no longer has it, as after another run deleted it, or a failed
+   * no longer has it, as after another run or an earlier attempt whose answer
+   * was lost deleted it, or a failed
    * {@link StepResult} as {@link GitHubPackages.readVersionsAsync} gives
    * one, when GitHub answers 404 and a new list still has the version, or
    * when GitHub answers the delete with another status than 204, such as
@@ -164,6 +174,13 @@ export declare class GitHubPackages implements IRegistryHost {
  * such as `noldova-com/tools`; and `GITHUB_TOKEN`, a token that may write
  * the repository's contents, such as the job's own. It sends the token only
  * to that API and never writes it anywhere.
+ *
+ * A request GitHub answers 502, 503 or 504, doesn't answer within the
+ * timeout, or loses the connection of, is sent again up to two more times,
+ * after 5 and then 15 seconds. A failing answer with a `Retry-After` header
+ * of up to 60 seconds is too, after that wait; one with a longer
+ * `Retry-After` is not, whatever its status. The last answer, timeout or
+ * lost connection is what the call gives.
  */
 export declare class GitHubTags implements ITagHost {
   /**
@@ -172,6 +189,10 @@ export declare class GitHubTags implements ITagHost {
    * @param environment The environment variables, such as `process.env`.
    * @param timeoutMilliseconds How long it waits for each answer of the API.
    * Omitted, it waits a minute.
+   * @param waitAsync How it waits before sending a request again, given the
+   * milliseconds. Omitted, it uses a timer.
+   * @param createSignal How it makes the signal that ends each attempt, given
+   * the timeout. Omitted, the signal is `AbortSignal.timeout`'s.
    * @example
    * ```ts
    * import { GitHubTags } from "@noldova/tools.pipelines.github";
@@ -179,7 +200,7 @@ export declare class GitHubTags implements ITagHost {
    * const tags = new GitHubTags(process.env);
    * ```
    */
-  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number);
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number, waitAsync?: (milliseconds: number) => Promise<void>, createSignal?: (timeoutMilliseconds: number) => AbortSignal);
 
   /**
    * Reads the commit a tag points to, following an annotated tag to its
@@ -192,11 +213,13 @@ export declare class GitHubTags implements ITagHost {
    * to something other than a commit, such as a tree; or when GitHub answers
    * with another status, with the request, the status and GitHub's message,
    * such as `GitHub answered GET repos/noldova-com/tools/git/ref/tags/v0.0.4
-   * with 403: Resource not accessible by integration`. It rejects with
-   * `JsonException`, from `@noldova/context.json`, for an answer that is not
-   * the JSON GitHub documents, with a `DOMException` named `TimeoutError`
-   * when GitHub doesn't answer within the timeout, and with the error `fetch`
-   * gives when GitHub can't be reached.
+   * with 403: Resource not accessible by integration`; or when the last
+   * attempt times out or loses its connection, with the request and the
+   * reason, such as `GitHub gave no answer to GET
+   * repos/noldova-com/tools/git/ref/tags/v0.0.4: The operation was aborted
+   * due to timeout`. It rejects with `JsonException`, from
+   * `@noldova/context.json`, for an answer that is not the JSON GitHub
+   * documents.
    * @example
    * ```ts
    * import { GitHubTags } from "@noldova/tools.pipelines.github";
@@ -214,7 +237,8 @@ export declare class GitHubTags implements ITagHost {
    * @param commit The commit's full id.
    * @returns A promise of `true` when GitHub created the tag, or `false` when
    * GitHub refuses it as unprocessable, status 422, and reading the tag then
-   * finds it, such as one another run made. Otherwise it is a failed
+   * finds it, such as one another run made, or an earlier attempt whose
+   * answer was lost. Otherwise it is a failed
    * {@link StepResult}, as {@link GitHubTags.readTagAsync} gives one: with the
    * 422's message when reading finds no tag, and with the read's failure when
    * the read fails. It rejects as {@link GitHubTags.readTagAsync} does.

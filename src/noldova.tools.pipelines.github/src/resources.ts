@@ -12,6 +12,7 @@ export class Resources {
   public static readonly annotationEscapes: readonly (readonly [string, string])[] = [["%", "%25"], ["\r", "%0D"], ["\n", "%0A"]];
   public static readonly answerNotJson: string = "GitHub's answer is not JSON.";
   public static readonly apiMediaType: string = "application/vnd.github+json";
+  public static readonly apiRetryMilliseconds: readonly number[] = [5_000, 15_000];
   public static readonly apiTimeoutMilliseconds: number = 60_000;
   public static readonly apiUrlVariable: string = "GITHUB_API_URL";
   public static readonly apiVersion: string = "2022-11-28";
@@ -23,6 +24,7 @@ export class Resources {
   public static readonly createMethod: string = "POST";
   public static readonly deletedStatus: number = 204;
   public static readonly deleteMethod: string = "DELETE";
+  public static readonly firstFailureStatus: number = 400;
   public static readonly foundStatus: number = 200;
   public static readonly idField: string = "id";
   public static readonly itemsField: string = "items";
@@ -31,6 +33,7 @@ export class Resources {
   public static readonly jsonObjectStart: string = "{";
   public static readonly lineSeparator: string = "\n";
   public static readonly messageField: string = "message";
+  public static readonly millisecondsPerSecond: number = 1_000;
   public static readonly nameField: string = "name";
   public static readonly notFoundStatus: number = 404;
   public static readonly objectField: string = "object";
@@ -40,9 +43,14 @@ export class Resources {
   public static readonly readMethod: string = "GET";
   public static readonly referencesPath: string = "git/refs";
   public static readonly repositoryVariable: string = "GITHUB_REPOSITORY";
+  public static readonly retryAfterHeader: string = "Retry-After";
+  public static readonly retryAfterMaxSeconds: number = 60;
+  public static readonly retryAfterPattern: RegExp = /^[0-9]+$/;
   public static readonly shaField: string = "sha";
+  public static readonly timeoutErrorName: string = "TimeoutError";
   public static readonly tokenVariable: string = "GITHUB_TOKEN";
   public static readonly typeField: string = "type";
+  public static readonly unavailableStatuses: readonly number[] = [502, 503, 504];
   public static readonly unprocessableStatus: number = 422;
   public static readonly versionsPageSize: number = 100;
 
@@ -102,6 +110,10 @@ export class Resources {
 
   public static formatApiFailed(method: string, resource: string, status: number, message: string): string {
     return `GitHub answered ${method} ${resource} with ${status}: ${message}`;
+  }
+
+  public static formatApiUnanswered(method: string, resource: string, reason: string): string {
+    return `GitHub gave no answer to ${method} ${resource}: ${reason}`;
   }
 
   public static formatTagTargetInvalid(tag: string, type: string): string {
