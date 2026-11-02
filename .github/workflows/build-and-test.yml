@@ -28,7 +28,7 @@ jobs:
       contents: read
       packages: read
     with:
-      targets: linux-x64 windows-x64
+      targets: linux-x64
       publishes: true
       tool-from-source: true
 
@@ -37,7 +37,7 @@ jobs:
     uses: noldova-com/.github/.github/workflows/versions.yml@03e1936493a45d8c0dd8e80bc247980a116fa9a6 # trial, before v2.1.0
     permissions: {}
     with:
-      targets: linux-x64 windows-x64
+      targets: linux-x64
 
   version-check:
     name: Version check
