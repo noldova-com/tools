@@ -118,6 +118,8 @@ export class ArchiveStep implements IStep {
     }
     if (ArchiveStep.isPrivate(manifest))
       findings.push(Resources.formatArchivePrivate(archiveName));
+    if (!manifest.hasField(Resources.licenseField) || manifest.readString(Resources.licenseField).length === 0)
+      findings.push(Resources.formatLicenseMissing(archiveName));
 
     if (manifest.hasField(Resources.dependenciesField)) {
       const dependencies = manifest.readObject(Resources.dependenciesField);
@@ -127,6 +129,24 @@ export class ArchiveStep implements IStep {
           findings.push(Resources.formatDependencyDiffers(archiveName, dependency, range, version));
       }
     }
+
+    findings.push(...await this.checkFilesAsync(archivePath));
+
+    return findings;
+  }
+
+  private async checkFilesAsync(archivePath: string): Promise<readonly string[]> {
+    const archiveName = path.basename(archivePath);
+    const result = await this.tar.listFilesAsync(archivePath);
+    if (!result.isSuccessful)
+      return [Resources.formatArchiveListUnreadable(archiveName, result.exitCode, result.errorOutput)];
+
+    const filePaths = result.output.split(Resources.lineBreakPattern).filter(t => t.length > 0);
+    const findings = filePaths
+      .filter(t => Resources.credentialFilePattern.test(t))
+      .map(t => Resources.formatArchiveCredentialFile(archiveName, t));
+    if (!filePaths.includes(Resources.archiveLicensePath))
+      findings.push(Resources.formatArchiveLicenseMissing(archiveName));
 
     return findings;
   }

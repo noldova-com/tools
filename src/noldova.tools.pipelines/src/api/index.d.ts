@@ -761,7 +761,7 @@ export declare class Git {
 }
 
 /**
- * Reads files from `.tgz` archives through the `tar` program.
+ * Reads and lists files in `.tgz` archives through the `tar` program.
  */
 export declare class Tar {
   /**
@@ -798,6 +798,27 @@ export declare class Tar {
    * ```
    */
   public readFileAsync(archivePath: string, filePath: string): Promise<ProcessResult>;
+
+  /**
+   * Lists the paths an archive holds.
+   *
+   * @param archivePath The archive's path, such as
+   * `archives/noldova-tools.pipelines-0.0.4.tgz`.
+   * @returns A promise of how `tar` ended: on success, its output has one
+   * path inside the archive on each line, such as `package/package.json`,
+   * with a folder's path ending in `/` when the archive lists it; when the
+   * archive is not a `.tgz`, it failed, with `tar`'s message. It rejects with
+   * {@link ProcessException} if `tar` cannot start, such as when it is not
+   * installed or the archive's folder does not exist.
+   * @example
+   * ```ts
+   * import { ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const result = await new Tar(new ProcessRunner()).listFilesAsync("archives/noldova-tools.pipelines-0.0.4.tgz");
+   * result.output.split(/\r?\n/).includes("package/LICENSE"); // true when the archive holds its license
+   * ```
+   */
+  public listFilesAsync(archivePath: string): Promise<ProcessResult>;
 }
 
 /**
@@ -975,8 +996,12 @@ export declare class SourceStep implements IStep {
  * the commit, and the folder holds exactly one archive for each package at
  * the version, named as `npm pack` names it, whose `package/package.json`
  * has the package's name, inside the scope, the version, and the commit as
- * its `gitHead`, is not `"private": true`, and lists any expected package under `dependencies` at
- * exactly the version.
+ * its `gitHead`, is not `"private": true`, has a `license`, and lists any expected package under `dependencies` at
+ * exactly the version. Each archive must also hold `package/LICENSE`, and no
+ * file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or
+ * `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name
+ * ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any
+ * folder and whatever its case.
  */
 export declare class ArchiveStep implements IStep {
   /**
@@ -1023,11 +1048,14 @@ export declare class ArchiveStep implements IStep {
    * archive missing, a file that is not an expected archive, an archive
    * `tar` cannot read the manifest of, with `tar`'s exit code and message,
    * and a manifest with another name, a name outside the scope, another
-   * version, no `gitHead` or another one, `"private": true`, or an expected package under `dependencies`
-   * at anything but exactly the version. It rejects with `JsonException`,
+   * version, no `gitHead` or another one, `"private": true`, no `license`
+   * or an empty one, or an expected package under `dependencies`
+   * at anything but exactly the version, an archive `tar` cannot list the
+   * files of, with `tar`'s exit code and message, a file of a kind that holds
+   * credentials, and no `package/LICENSE`. It rejects with `JsonException`,
    * from `@noldova/context.json`, if a `package.json` the step reads is not
    * a JSON object, lacks a `name` or `version` text where it needs one, has
-   * a `gitHead` that is not a text, or
+   * a `gitHead` or a `license` that is not a text, or
    * has a `private` that is not `true` or `false` or `dependencies` that are
    * not an object of texts, and with {@link ProcessException} if git or
    * `tar` cannot start or git fails otherwise.
