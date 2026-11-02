@@ -46,6 +46,7 @@ export class Resources {
   public static readonly retryAfterHeader: string = "Retry-After";
   public static readonly retryAfterMaxSeconds: number = 60;
   public static readonly retryAfterPattern: RegExp = /^[0-9]+$/;
+  public static readonly runnerTemporaryVariable: string = "RUNNER_TEMP";
   public static readonly shaField: string = "sha";
   public static readonly timeoutErrorName: string = "TimeoutError";
   public static readonly tokenVariable: string = "GITHUB_TOKEN";

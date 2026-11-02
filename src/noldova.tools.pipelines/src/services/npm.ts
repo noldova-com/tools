@@ -45,6 +45,12 @@ export class Npm {
     return await this.runAsync(values);
   }
 
+  public async buildAsync(directory: string): Promise<ProcessResult> {
+    return this.platform === Resources.windowsPlatform
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmBuildValues, directory)
+      : await this.processRunner.runAsync(Resources.npmProgram, Resources.npmBuildValues, directory);
+  }
+
   public async readVersionAsync(): Promise<string> {
     const result = this.platform === Resources.windowsPlatform
       ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmVersionValues, this.workingDirectory)

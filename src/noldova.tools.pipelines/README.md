@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings` and `unchanged`.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings`, `unchanged` and `reproducible`.
 
 ## Install
 
@@ -239,6 +239,26 @@ import { Git, ProcessRunner, UnchangedStep } from "@noldova/tools.pipelines";
 const result = await new UnchangedStep(new Git(new ProcessRunner(), process.cwd())).runAsync([]);
 result.message; // "The checkout has no changed or untracked file."
 ```
+
+### The reproducible step
+
+`reproducible <folder>` runs after the build, in the checkout, and checks that a second build of the same commit packs the same archives, so that rerunning a release publishes nothing new.
+
+```ts
+import { Git, Npm, ProcessRunner, ReproducibleStep } from "@noldova/tools.pipelines";
+
+const processRunner = new ProcessRunner();
+const step = new ReproducibleStep(new Git(processRunner, process.cwd()), new Npm(processRunner, process.cwd()));
+const result = await step.runAsync(["_packages"]);
+result.message; // "A second build of commit 225059f…, in another folder, packed the same 2 archives byte for byte: …"
+```
+
+- It adds a worktree of the checkout's commit in a new temporary folder, runs `npm run build` there, and compares the `.tgz` archives in `<folder>`, a path from the checkout's root, with those in the worktree's.
+- It succeeds listing each archive with its SHA-512, and fails with one line for each archive that differs or is in only one build.
+- It fails when `<folder>` is missing or holds no archive, and when the second build fails, with npm's exit code and error output.
+- It removes the worktree and its folder whether it succeeds or fails.
+- It makes its temporary folder in the root its constructor is given, or in `os.tmpdir()`; give a root the pipeline host empties after each job, so a cancelled run leaves nothing behind.
+- `<folder>` must be inside the checkout: an absolute path, `..` or the checkout itself fails.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 

@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines.github
 
 Runs the steps of `@noldova/tools.pipelines` on GitHub Actions.
-This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings and unchanged steps, and the prune and tag steps' access to GitHub's REST API.
+This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings, unchanged and reproducible steps, and the prune and tag steps' access to GitHub's REST API.
 
 ## Install
 
@@ -35,8 +35,10 @@ A job installs the package at an exact version, without install scripts, and cal
 | `toolchain` | `<node-version> [<npm-version>]` |
 | `line-endings` | none |
 | `unchanged` | none |
+| `reproducible` | `<folder>` |
 
 `@noldova/tools.pipelines`'s README says what each step checks and does.
+The reproducible step makes its temporary folder in `RUNNER_TEMP`, which the runner empties after each job, cancelled ones included.
 
 - A step that succeeds writes its message to standard output and exits with code `0`; an empty message, such as the nightly step's when nothing changed, writes nothing.
 - A step that fails writes its message as one error annotation, which the run's summary shows, and exits with code `1`; so does a first value that names no step, with the usage line of every step.
