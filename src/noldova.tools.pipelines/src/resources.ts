@@ -32,6 +32,7 @@ export class Resources {
   public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet", "--end-of-options"];
   public static readonly integrityAlgorithm: string = "sha512";
   public static readonly integrityEncoding: BinaryToTextEncoding = "base64";
+  public static readonly keepVersionsPattern: RegExp = /^[1-9][0-9]*$/;
   public static readonly latestTag: string = "latest";
   public static readonly licenseField: string = "license";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
@@ -62,6 +63,8 @@ export class Resources {
   public static readonly pathSeparator: string = "/";
   public static readonly privateField: string = "private";
   public static readonly processReleaseDelayMilliseconds: number = 0;
+  public static readonly pruneStepName: string = "prune";
+  public static readonly pruneStepUsage: string = "<version> <commit> <scope> <registry> <keep-versions>";
   public static readonly publishRetryMilliseconds: number = 10_000;
   public static readonly publishStepName: string = "publish";
   public static readonly publishStepUsage: string = "<folder> <version> <commit> <scope> <registry> <access>";
@@ -303,6 +306,40 @@ export class Resources {
 
   public static formatTagUnreadable(tag: string): string {
     return `${tag} exists, so it could not be created, but reading it found no tag.`;
+  }
+
+  public static formatPruneVersionNotRelease(version: string): string {
+    return `${version} is a nightly version; the prune step runs after a release, with its version.`;
+  }
+
+  public static formatKeepVersionsInvalid(text: string): string {
+    return `"${text}" is not a number of versions to keep: it is a whole number above 0 without a leading zero, such as 5.`;
+  }
+
+  public static formatPruneRegistryUnsupported(registry: string, hostRegistry: string): string {
+    return `The prune step deletes versions only on ${hostRegistry}, not on ${registry}.`;
+  }
+
+  public static formatPackageOutsideScope(packageName: string, scope: string): string {
+    return `${packageName} is outside the scope ${scope}.`;
+  }
+
+  public static formatPruneNotNewest(packageName: string, version: string, newest: string | null): string {
+    return newest === null
+      ? `${packageName} has no release version on the registry, not even ${version}, so nothing is deleted.`
+      : `${packageName}'s newest release version on the registry is ${newest}, not ${version}, so nothing is deleted.`;
+  }
+
+  public static formatPruneNothing(keepVersions: number): string {
+    return `No package has more than ${keepVersions} release versions on the registry, so nothing is deleted.`;
+  }
+
+  public static formatVersionDeleted(specifier: string): string {
+    return `${specifier} deleted.`;
+  }
+
+  public static formatVersionAlreadyDeleted(specifier: string): string {
+    return `${specifier} was already deleted.`;
   }
 
   public static formatGitCommitRevision(revision: string): string {

@@ -546,6 +546,67 @@ export declare interface ITagHost {
 }
 
 /**
+ * How the {@link PruneStep} lists and deletes a package's versions on a
+ * registry, which the registry's host implements, such as through the
+ * host's API.
+ */
+export declare interface IRegistryHost {
+  /**
+   * The registry the host lists and deletes versions on, an `https` URL such
+   * as `https://npm.pkg.github.com/`; the prune step runs only for it.
+   */
+  readonly registry: string;
+
+  /**
+   * Lists every version of a package the registry has.
+   *
+   * @param packageName The package's name, inside its scope, such as
+   * `@noldova/tools.pipelines`.
+   * @returns A promise of the versions' texts, in any order, including any
+   * that are not release versions, or a failed {@link StepResult} that says
+   * why the host could not list them.
+   * @example
+   * ```ts
+   * import type { IRegistryHost } from "@noldova/tools.pipelines";
+   *
+   * const versions = new Map([["@noldova/a", ["0.0.3", "0.0.4"]]]);
+   * const host: IRegistryHost = {
+   *   registry: "https://npm.pkg.github.com/",
+   *   readVersionsAsync: async packageName => versions.get(packageName) ?? [],
+   *   deleteVersionAsync: async () => true
+   * };
+   * await host.readVersionsAsync("@noldova/a"); // ["0.0.3", "0.0.4"]
+   * ```
+   */
+  readVersionsAsync(packageName: string): Promise<readonly string[] | StepResult>;
+
+  /**
+   * Deletes one version of a package from the registry.
+   *
+   * @param packageName The package's name, inside its scope.
+   * @param version The version's text, as {@link IRegistryHost.readVersionsAsync}
+   * listed it.
+   * @returns A promise of `true` when it deleted the version, `false` when
+   * the registry no longer has it, such as after another run deleted it, or
+   * a failed {@link StepResult} that says why the host could not delete it.
+   * @example
+   * ```ts
+   * import type { IRegistryHost } from "@noldova/tools.pipelines";
+   *
+   * const versions = new Set(["0.0.3", "0.0.4"]);
+   * const host: IRegistryHost = {
+   *   registry: "https://npm.pkg.github.com/",
+   *   readVersionsAsync: async () => [...versions],
+   *   deleteVersionAsync: async (packageName, version) => versions.delete(version)
+   * };
+   * await host.deleteVersionAsync("@noldova/a", "0.0.3"); // true
+   * await host.deleteVersionAsync("@noldova/a", "0.0.3"); // false
+   * ```
+   */
+  deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult>;
+}
+
+/**
  * The command-line base a pipeline host builds its command line on: it runs
  * the step its first value names with the values after it, writes the step's
  * message, and gives the exit code.
@@ -1264,6 +1325,95 @@ export declare class NightlyStep implements IStep {
    * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
    * const result = await step.runAsync(["225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "https://registry.npmjs.org/"]);
    * result.message; // "0.0.5-nightly.20261102", or "" when nothing changed
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that keeps a registry's newest versions after a release:
+ * `prune <version> <commit> <scope> <registry> <keep-versions>`. Through
+ * the host's {@link IRegistryHost}, it deletes each package's older release
+ * versions, keeping the newest; it runs only on the host's registry, and
+ * deletes nothing unless the release is every package's newest.
+ */
+export declare class PruneStep implements IStep {
+  /**
+   * The step's name, `"prune"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes,
+   * `"<version> <commit> <scope> <registry> <keep-versions>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param git The reader of the clone that holds the commit.
+   * @param archiveStep The step whose expected packages the step prunes.
+   * @param registryHost How the step lists and deletes versions on the
+   * registry.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const git = new Git(processRunner, process.cwd());
+   * const host: IRegistryHost = {
+   *   registry: "https://npm.pkg.github.com/",
+   *   readVersionsAsync: async () => [],
+   *   deleteVersionAsync: async () => true
+   * };
+   * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
+   * step.name; // "prune"
+   * ```
+   */
+  public constructor(git: Git, archiveStep: ArchiveStep, registryHost: IRegistryHost);
+
+  /**
+   * Deletes the older release versions of the packages a commit holds.
+   *
+   * @param values The release version just published, such as `0.0.4`; the
+   * commit's full id, 40 lowercase hexadecimal digits; the scope, such as
+   * `@noldova`; the registry, an `https` URL without credentials, a query or
+   * a fragment, which must be the host's; and how many release versions to
+   * keep, a whole number above 0 without a leading zero, such as `5`.
+   * @returns A promise of the result. It fails with the first of these that
+   * is wrong, asking the registry nothing: not five values, a version that
+   * is not a version, a nightly version, a commit that is not a full id, a
+   * scope that is not `@` and a lowercase name, a registry that is not one
+   * or is not the host's, a number to keep that is not one, a commit the
+   * clone does not hold, a commit without a package to publish, and a
+   * package outside the scope. Otherwise it lists every package's versions
+   * first, and fails, deleting nothing, with one line for each package whose
+   * versions the host could not list and each whose newest release version
+   * is not the version. Then it deletes each package's release versions
+   * after the newest it keeps, and succeeds with one line for each, such as
+   * `@noldova/tools.pipelines@0.0.1 deleted.` or
+   * `@noldova/tools.pipelines@0.0.1 was already deleted.`, or with one line
+   * saying nothing is deleted when no package has more. It stops at the
+   * first delete that fails, with the lines before it and the host's
+   * answer. Versions that are not release versions, such as nightly ones,
+   * are neither counted nor deleted. It rejects as
+   * {@link ArchiveStep.readPackageNamesAsync} does.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const git = new Git(processRunner, process.cwd());
+   * const versions = new Set(["0.0.1", "0.0.2", "0.0.3"]);
+   * const host: IRegistryHost = {
+   *   registry: "https://npm.pkg.github.com/",
+   *   readVersionsAsync: async () => [...versions],
+   *   deleteVersionAsync: async (packageName, version) => versions.delete(version)
+   * };
+   * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
+   * const result = await step.runAsync(["0.0.3", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://npm.pkg.github.com/", "2"]);
+   * result.message; // "@noldova/a@0.0.1 deleted." when the commit holds only @noldova/a
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

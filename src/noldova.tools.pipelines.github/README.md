@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines.github
 
 Runs the steps of `@noldova/tools.pipelines` on GitHub Actions.
-This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly and tag steps, and the tag step's access to GitHub's REST API.
+This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune and tag steps, and the prune and tag steps' access to GitHub's REST API.
 
 ## Install
 
@@ -16,7 +16,7 @@ npm install @noldova/tools.pipelines.github
 A job installs the package at an exact version, without install scripts, and calls `pipelines` with a step's name and values in the checkout:
 
 ```yaml
-- run: npm install --global --ignore-scripts @noldova/tools.pipelines.github@0.0.1
+- run: npm install --global --ignore-scripts @noldova/tools.pipelines.github@0.0.2
 - run: pipelines source "$VERSION" "$COMMIT"
 - id: nightly
   run: |
@@ -30,6 +30,7 @@ A job installs the package at an exact version, without install scripts, and cal
 | `archive` | `<folder> <version> <commit> <scope>` |
 | `publish` | `<folder> <version> <commit> <scope> <registry> <access>` |
 | `nightly` | `<commit> <registry>` |
+| `prune` | `<version> <commit> <scope> <registry> <keep-versions>` |
 | `tag` | `<version> <commit>` |
 
 `@noldova/tools.pipelines`'s README says what each step checks and does.
@@ -52,6 +53,21 @@ It reads `GITHUB_API_URL` and `GITHUB_REPOSITORY`, which GitHub Actions sets, an
 
 The job needs `permissions: contents: write`.
 The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as a missing permission.
+
+### The prune step
+
+`pipelines prune <version> <commit> <scope> <registry> <keep-versions>` deletes each package's older release versions on GitHub Packages, `https://npm.pkg.github.com/`, keeping the newest `<keep-versions>`; for any other registry it fails and deletes nothing.
+A package `@<owner>/<name>` is the npm package `<name>` of the organization `<owner>`, so the scope is the organization's.
+It runs in a checkout of the commit, and reads `GITHUB_API_URL`, which GitHub Actions sets, and `GITHUB_TOKEN`, which the workflow passes in; the token needs to delete the packages' versions, and is never written anywhere:
+
+```yaml
+- env:
+    GITHUB_TOKEN: ${{ github.token }}
+  run: pipelines prune "$VERSION" "$COMMIT" @noldova-com https://npm.pkg.github.com/ 5
+```
+
+The job needs `permissions: packages: write`, and, since the step deletes, an environment whose reviewers approve each run.
+The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as GitHub refusing to delete a package's last version.
 
 ### From code
 

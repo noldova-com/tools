@@ -6,7 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type { IStepOutput, ITagHost, StepResult } from "@noldova/tools.pipelines";
+import type { IRegistryHost, IStepOutput, ITagHost, StepResult } from "@noldova/tools.pipelines";
 
 /**
  * Writes a step's messages as a GitHub Actions job reads them: a success to
@@ -64,6 +64,93 @@ export declare class GitHubStepOutput implements IStepOutput {
    * ```
    */
   public writeFailure(message: string): void;
+}
+
+/**
+ * GitHub Packages' npm registry, `https://npm.pkg.github.com/`, through
+ * GitHub's REST API, as the prune step of `@noldova/tools.pipelines` lists
+ * and deletes a package's versions.
+ *
+ * A package `@<owner>/<name>` is the npm package `<name>` of the
+ * organization `<owner>`. It reaches the API with two environment
+ * variables: `GITHUB_API_URL`, which GitHub Actions sets in a job, such as
+ * `https://api.github.com`, and `GITHUB_TOKEN`, a token that may delete the
+ * packages, with `packages: write`, which the workflow passes in. It sends
+ * the token only to that API and never writes it anywhere.
+ */
+export declare class GitHubPackages implements IRegistryHost {
+  /**
+   * The registry it lists and deletes versions on,
+   * `"https://npm.pkg.github.com/"`.
+   */
+  public readonly registry: string;
+
+  /**
+   * Creates the packages over an environment, which it reads at each call.
+   *
+   * @param environment The environment variables, such as `process.env`.
+   * @param timeoutMilliseconds How long it waits for each answer of the API.
+   * Omitted, it waits a minute.
+   * @example
+   * ```ts
+   * import { GitHubPackages } from "@noldova/tools.pipelines.github";
+   *
+   * const packages = new GitHubPackages(process.env);
+   * packages.registry; // "https://npm.pkg.github.com/"
+   * ```
+   */
+  public constructor(environment: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number);
+
+  /**
+   * Lists every version of a package, reading GitHub's list a hundred at a
+   * time, and remembers each version's id for
+   * {@link GitHubPackages.deleteVersionAsync}.
+   *
+   * @param packageName The package's name, `@<owner>/<name>`, such as
+   * `@noldova-com/tools.pipelines`.
+   * @returns A promise of the versions' texts, or a failed
+   * {@link StepResult}: for a name that is not `@<owner>/<name>`; when one
+   * of the two environment variables is missing or empty, naming it; or
+   * when GitHub answers with another status than 200, such as 404 for a
+   * package it doesn't have or can't show, with the request, the status and
+   * GitHub's message. It rejects with `JsonException`, from
+   * `@noldova/context.json`, for an answer that is not a JSON list of
+   * versions, each with a whole-number `id` and a `name` text, with a
+   * `DOMException` named `TimeoutError` when GitHub doesn't answer within
+   * the timeout, and with the error `fetch` gives when GitHub can't be
+   * reached.
+   * @example
+   * ```ts
+   * import { GitHubPackages } from "@noldova/tools.pipelines.github";
+   *
+   * const versions = await new GitHubPackages(process.env).readVersionsAsync("@noldova-com/tools.pipelines");
+   * ```
+   */
+  public readVersionsAsync(packageName: string): Promise<readonly string[] | StepResult>;
+
+  /**
+   * Deletes one version of a package, by the id its last list gave, and
+   * lists the package first if it has not yet.
+   *
+   * @param packageName The package's name, `@<owner>/<name>`.
+   * @param version The version's text, as the list gave it.
+   * @returns A promise of `true` when GitHub deleted the version, `false`
+   * when the list has no such version or GitHub answers 404, as after
+   * another run deleted it, or a failed {@link StepResult} as
+   * {@link GitHubPackages.readVersionsAsync} gives one, or when GitHub
+   * answers the delete with another status than 204, such as when it
+   * refuses to delete a package's last version. It rejects as
+   * {@link GitHubPackages.readVersionsAsync} does.
+   * @example
+   * ```ts
+   * import { GitHubPackages } from "@noldova/tools.pipelines.github";
+   *
+   * const packages = new GitHubPackages(process.env);
+   * await packages.readVersionsAsync("@noldova-com/tools.pipelines");
+   * const deleted = await packages.deleteVersionAsync("@noldova-com/tools.pipelines", "0.0.1");
+   * ```
+   */
+  public deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult>;
 }
 
 /**
@@ -142,10 +229,11 @@ export declare class GitHubTags implements ITagHost {
 
 /**
  * The `pipelines` command line a GitHub Actions workflow calls: it runs the
- * source, archive, publish, nightly and tag steps of `@noldova/tools.pipelines`
- * in the current directory, which is the clone the steps check and where a
- * folder value is. The tag step reaches GitHub through {@link GitHubTags},
- * with the process's environment.
+ * source, archive, publish, nightly, prune and tag steps of
+ * `@noldova/tools.pipelines` in the current directory, which is the clone
+ * the steps check and where a folder value is. The prune step reaches
+ * GitHub Packages through {@link GitHubPackages}, and the tag step reaches
+ * GitHub through {@link GitHubTags}, each with the process's environment.
  */
 export declare class PipelinesProgram {
   /**

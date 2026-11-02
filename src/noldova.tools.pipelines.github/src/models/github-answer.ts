@@ -6,7 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { JsonReader } from "@noldova/context.json";
+import { JsonException, JsonReader } from "@noldova/context.json";
 import { StepResult } from "@noldova/tools.pipelines";
 
 import { Resources } from "../resources.js";
@@ -30,6 +30,18 @@ export class GitHubAnswer {
 
   public readBody(): JsonReader {
     return JsonReader.parse(this.text, this.resource);
+  }
+
+  public readItems(): readonly JsonReader[] {
+    let value: unknown;
+    try {
+      value = JSON.parse(this.text);
+    }
+    catch {
+      throw new JsonException(Resources.answerNotJson, this.resource);
+    }
+
+    return JsonReader.fromValue({ [Resources.itemsField]: value }, this.resource).readObjectArray(Resources.itemsField);
   }
 
   public readMessage(): string {
