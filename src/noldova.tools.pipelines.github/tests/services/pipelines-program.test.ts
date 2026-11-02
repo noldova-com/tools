@@ -35,7 +35,7 @@ export class PipelinesProgramTests {
 
     Assert.areEqual(1, exitCode);
     Assert.areEqual(
-      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit>\"]",
+      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | line-endings | unchanged\"]",
       JSON.stringify(output.lines));
   }
 
@@ -53,5 +53,17 @@ export class PipelinesProgramTests {
 
     Assert.areEqual(1, exitCode);
     Assert.areEqual(JSON.stringify([`failure: The ${stepName} step takes ${usage}.`]), JSON.stringify(output.lines));
+  }
+
+  @TestData("line-endings")
+  @TestData("unchanged")
+  @TestMethod
+  public async runsTheStepThatTakesNoValuesAsync(stepName: string): Promise<void> {
+    const output = new RecordingOutput();
+
+    const exitCode = await new PipelinesProgram(output).runAsync([stepName, "more"]);
+
+    Assert.areEqual(1, exitCode);
+    Assert.areEqual(JSON.stringify([`failure: The ${stepName} step takes no values.`]), JSON.stringify(output.lines));
   }
 }

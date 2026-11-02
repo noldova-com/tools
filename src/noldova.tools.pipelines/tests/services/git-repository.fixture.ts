@@ -16,6 +16,8 @@ export class GitRepositoryFixture implements Disposable {
   private static readonly MAIN_REFERENCE: string = "refs/remotes/origin/main";
   private static readonly PROGRAM: string = "git";
   private static readonly STAGING_FOLDER: string = ".staging";
+  private static readonly SUBMODULE_MODE: string = "160000";
+  private static readonly SYMBOLIC_LINK_MODE: string = "120000";
   private static readonly TAR_PROGRAM: string = "tar";
   private static readonly TEXT_ENCODING: BufferEncoding = "utf8";
 
@@ -41,15 +43,27 @@ export class GitRepositoryFixture implements Disposable {
   }
 
   public commit(files: Readonly<Record<string, string>>): string {
-    for (const [filePath, content] of Object.entries(files)) {
-      fs.mkdirSync(path.dirname(path.join(this.directory, filePath)), { recursive: true });
-      fs.writeFileSync(path.join(this.directory, filePath), content);
-    }
-
+    this.write(files);
     this.run("add", "--all");
     this.run("commit", "--quiet", "--no-verify", "--allow-empty", "--message", "Commit");
 
     return this.readHead();
+  }
+
+  public write(files: Readonly<Record<string, string>>): void {
+    for (const [filePath, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(this.directory, filePath)), { recursive: true });
+      fs.writeFileSync(path.join(this.directory, filePath), content);
+    }
+  }
+
+  public addSymbolicLink(filePath: string, target: string): void {
+    const objectId = execFileSync(GitRepositoryFixture.PROGRAM, ["hash-object", "-w", "--stdin"], { cwd: this.directory, encoding: GitRepositoryFixture.TEXT_ENCODING, input: target }).trim();
+    this.run("update-index", "--add", "--cacheinfo", `${GitRepositoryFixture.SYMBOLIC_LINK_MODE},${objectId},${filePath}`);
+  }
+
+  public addSubmodule(filePath: string, commit: string): void {
+    this.run("update-index", "--add", "--cacheinfo", `${GitRepositoryFixture.SUBMODULE_MODE},${commit},${filePath}`);
   }
 
   public readHead(): string {

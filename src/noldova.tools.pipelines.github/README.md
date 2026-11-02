@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines.github
 
 Runs the steps of `@noldova/tools.pipelines` on GitHub Actions.
-This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune and tag steps, and the prune and tag steps' access to GitHub's REST API.
+This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, line-endings and unchanged steps, and the prune and tag steps' access to GitHub's REST API.
 
 ## Install
 
@@ -32,6 +32,8 @@ A job installs the package at an exact version, without install scripts, and cal
 | `nightly` | `<commit> <registry>` |
 | `prune` | `<version> <commit> <scope> <registry> <keep-versions>` |
 | `tag` | `<version> <commit>` |
+| `line-endings` | none |
+| `unchanged` | none |
 
 `@noldova/tools.pipelines`'s README says what each step checks and does.
 
