@@ -74,7 +74,7 @@ It succeeds only when:
 - the checkout is at the commit;
 - the folder holds one archive for each package at the version, named as `npm pack` names it, such as `noldova-tools.pipelines-0.0.4.tgz`, and nothing else;
 - each archive's `package/package.json` has the package's name, inside the scope, the version, and the commit as its `gitHead`, isn't `"private": true`, has a `license`, and lists any other expected package under `dependencies` at exactly the version;
-- each archive holds `package/LICENSE`, and no file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or `.env.<name>`, `id_rsa`, `id_ed25519`, or a name ending in `.pem`, `.key`, `.p12` or `.pfx`, in any folder and whatever its case.
+- each archive holds `package/LICENSE`, and no file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any folder and whatever its case.
 
 ```ts
 import { ArchiveStep, CommandLine, Git, ProcessRunner, SourceStep, Tar } from "@noldova/tools.pipelines";

@@ -815,8 +815,7 @@ export declare class Tar {
    * import { ProcessRunner, Tar } from "@noldova/tools.pipelines";
    *
    * const result = await new Tar(new ProcessRunner()).listFilesAsync("archives/noldova-tools.pipelines-0.0.4.tgz");
-   * result.output.split("
-").includes("package/LICENSE"); // true when the archive holds its license
+   * result.output.split(/\r?\n/).includes("package/LICENSE"); // true when the archive holds its license
    * ```
    */
   public listFilesAsync(archivePath: string): Promise<ProcessResult>;
@@ -1000,8 +999,9 @@ export declare class SourceStep implements IStep {
  * its `gitHead`, is not `"private": true`, has a `license`, and lists any expected package under `dependencies` at
  * exactly the version. Each archive must also hold `package/LICENSE`, and no
  * file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or
- * `.env.<name>`, `id_rsa`, `id_ed25519`, or a name ending in `.pem`, `.key`,
- * `.p12` or `.pfx`, in any folder and whatever its case.
+ * `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name
+ * ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any
+ * folder and whatever its case.
  */
 export declare class ArchiveStep implements IStep {
   /**

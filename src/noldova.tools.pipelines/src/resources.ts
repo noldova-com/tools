@@ -15,7 +15,7 @@ export class Resources {
   public static readonly archiveStepName: string = "archive";
   public static readonly archiveStepUsage: string = "<folder> <version> <commit> <scope>";
   public static readonly commitPattern: RegExp = /^[0-9a-f]{40}$/;
-  public static readonly credentialFilePattern: RegExp = /(?:^|\/)(?:\.npmrc|\.netrc|\.env(?:\.[^/]+)?|id_rsa|id_ed25519|[^/]+\.(?:pem|key|p12|pfx))$/i;
+  public static readonly credentialFilePattern: RegExp = /(?:^|\/)(?:\.npmrc|\.netrc|\.env(?:\.[^/]+)?|id_rsa|id_dsa|id_ecdsa|id_ed25519|[^/]*\.(?:pem|key|p12|pfx))$/i;
   public static readonly dependenciesField: string = "dependencies";
   public static readonly failureExitCode: number = 1;
   public static readonly gitFileSeparator: string = "\0";
