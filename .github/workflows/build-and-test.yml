@@ -60,13 +60,11 @@ jobs:
         shell: bash
         run: |
           if output="$(npm run build -- --version 01.0.0 2>&1)"; then
-            printf '%s
-' "$output"
+            printf '%s\n' "$output"
             echo '::error::npm run build -- --version 01.0.0 must fail.'
             exit 1
           fi
-          printf '%s
-' "$output"
+          printf '%s\n' "$output"
           if [[ "$output" != *'"01.0.0" is not a version'* ]]; then
             echo "::error::npm run build -- --version 01.0.0 must fail with the published Version's message."
             exit 1
