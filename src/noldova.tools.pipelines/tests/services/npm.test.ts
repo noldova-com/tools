@@ -8,7 +8,7 @@
 
 import path from "node:path";
 
-import { Assert, TestClass, TestMethod } from "@noldova/context.testing";
+import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { Npm, ProcessException, ProcessResult, ProcessRunner } from "@noldova/tools.pipelines";
 
 class RecordingProcessRunner extends ProcessRunner {
@@ -50,6 +50,29 @@ export class NpmTests {
     Assert.areEqual(
       `release: npm publish ${path.resolve("archives/noldova-a-0.0.4.tgz")} --tag latest --access public --registry https://registry.example/`,
       processRunner.calls.join("\n"));
+  }
+
+  @TestData("linux", "release: npm --version")
+  @TestData("darwin", "release: npm --version")
+  @TestData("win32", "release: cmd.exe /d /s /c npm.cmd --version")
+  @TestMethod
+  public async readsItsVersionAsTheirPlatformRunsItAsync(platform: string, expected: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "11.19.0\n", ""));
+
+    const version = await new Npm(processRunner, "release", platform).readVersionAsync();
+
+    Assert.areEqual("11.19.0", version);
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
+  }
+
+  @TestMethod
+  public async rejectsWhenReadingItsVersionFailsAsync(): Promise<void> {
+    const npm = new Npm(new RecordingProcessRunner(new ProcessResult(1, "", "npm error broken\n")), "release");
+
+    const exception = await Assert.throwsAsync(() => npm.readVersionAsync(), ProcessException);
+
+    Assert.areEqual("npm", exception.program);
+    Assert.areEqual("\"npm --version\" failed with exit code 1: npm error broken", exception.message);
   }
 
   @TestMethod
