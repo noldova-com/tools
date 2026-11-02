@@ -17,11 +17,20 @@ import type { ProcessRunner } from "./process-runner.js";
 
 export class Git {
   private readonly processRunner: ProcessRunner;
-  private readonly workingDirectory: string;
+
+  public readonly workingDirectory: string;
 
   public constructor(processRunner: ProcessRunner, workingDirectory: string) {
     this.processRunner = processRunner;
     this.workingDirectory = workingDirectory;
+  }
+
+  public async addWorktreeAsync(directory: string, commit: string): Promise<void> {
+    await this.readAsync([...Resources.gitAddWorktreeValues, directory, commit]);
+  }
+
+  public async removeWorktreeAsync(directory: string): Promise<void> {
+    await this.readAsync([...Resources.gitRemoveWorktreeValues, directory]);
   }
 
   public async hasCommitAsync(revision: string): Promise<boolean> {

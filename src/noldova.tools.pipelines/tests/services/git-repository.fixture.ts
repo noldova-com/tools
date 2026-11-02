@@ -70,6 +70,10 @@ export class GitRepositoryFixture implements Disposable {
     return this.run("rev-parse", "HEAD").trim();
   }
 
+  public listWorktrees(): readonly string[] {
+    return this.run("worktree", "list", "--porcelain").split("\n").filter(t => t.startsWith("worktree "));
+  }
+
   public pack(archivePath: string, files: Readonly<Record<string, string>>): string {
     const stagingPath = path.join(this.directory, GitRepositoryFixture.STAGING_FOLDER);
     for (const [filePath, content] of Object.entries(files)) {

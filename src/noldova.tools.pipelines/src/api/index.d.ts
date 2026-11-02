@@ -734,6 +734,11 @@ export declare class ProcessRunner {
  */
 export declare class Git {
   /**
+   * The directory git runs in, as the constructor was given it.
+   */
+  public readonly workingDirectory: string;
+
+  /**
    * Creates a reader of one clone.
    *
    * @param processRunner What runs `git`.
@@ -747,6 +752,41 @@ export declare class Git {
    * ```
    */
   public constructor(processRunner: ProcessRunner, workingDirectory: string);
+
+  /**
+   * Adds a worktree of the clone at a commit, detached from any branch.
+   *
+   * @param directory The worktree's directory: a new or empty one.
+   * @param commit The commit, which the clone holds.
+   * @returns A promise that resolves once the worktree is checked out. It
+   * rejects with {@link ProcessException} if git cannot start or fails, such
+   * as when the directory holds files.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.addWorktreeAsync("/tmp/second-build", await git.readHeadAsync());
+   * ```
+   */
+  public addWorktreeAsync(directory: string, commit: string): Promise<void>;
+
+  /**
+   * Removes a worktree and its directory, with the files a build wrote in
+   * it.
+   *
+   * @param directory The worktree's directory.
+   * @returns A promise that resolves once the worktree is removed. It rejects
+   * with {@link ProcessException} if git cannot start or fails, such as when
+   * the directory is not a worktree of the clone.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Git(new ProcessRunner(), process.cwd()).removeWorktreeAsync("/tmp/second-build");
+   * ```
+   */
+  public removeWorktreeAsync(directory: string): Promise<void>;
 
   /**
    * Tells whether a revision names a commit in the clone.
@@ -1072,6 +1112,25 @@ export declare class Npm {
    * ```
    */
   public publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult>;
+
+  /**
+   * Runs the build script of the package in a directory, with
+   * `npm run build`, or on Windows `cmd.exe /d /s /c "npm.cmd run build"`, a
+   * fixed command.
+   *
+   * @param directory The directory whose `package.json` names the build
+   * script.
+   * @returns A promise of npm's exit code and of what it wrote; a build that
+   * fails still resolves. It rejects with {@link ProcessException} if the
+   * program cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * (await new Npm(new ProcessRunner(), process.cwd()).buildAsync("/tmp/second-build")).isSuccessful; // true when the build passes
+   * ```
+   */
+  public buildAsync(directory: string): Promise<ProcessResult>;
 
   /**
    * Reads the version of the npm that runs, with `npm --version`, or on
@@ -1772,6 +1831,70 @@ export declare class ToolchainStep implements IStep {
    *
    * const step = new ToolchainStep(new Npm(new ProcessRunner(), process.cwd()), "v24.20.0");
    * (await step.runAsync(["24.21.0"])).message; // "Node.js v24.20.0 runs this step, not v24.21.0; set up Node.js 24.21.0 before it."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that checks a build is reproducible: `reproducible <folder>`.
+ * Run after the build in a checkout, it builds the checkout's commit again in
+ * a worktree in a new temporary folder, with `npm run build`, and succeeds
+ * only when both builds' `<folder>` hold the same `.tgz` archives, byte for
+ * byte, so that rerunning a release publishes nothing new.
+ */
+export declare class ReproducibleStep implements IStep {
+  /**
+   * The step's name, `"reproducible"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<folder>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step over a checkout.
+   *
+   * @param git The reader of the clone, whose working directory is the
+   * checkout's root.
+   * @param npm What runs the second build.
+   * @param temporaryRoot The folder the step makes its temporary folder in,
+   * such as one the pipeline host empties after each job, so a run that is
+   * cancelled leaves nothing behind. Omitted or empty, it is `os.tmpdir()`.
+   * @example
+   * ```ts
+   * import { Git, Npm, ProcessRunner, ReproducibleStep } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new ReproducibleStep(new Git(processRunner, process.cwd()), new Npm(processRunner, process.cwd()));
+   * step.name; // "reproducible"
+   * ```
+   */
+  public constructor(git: Git, npm: Npm, temporaryRoot?: string);
+
+  /**
+   * Builds the commit again and compares the archives.
+   *
+   * @param values The folder the build packs its archives into, as a path
+   * from the checkout's root, such as `_packages`.
+   * @returns A promise of the result: succeeded, listing each archive with
+   * its SHA-512, or failed for any number of values but one, for a folder
+   * that is absolute, outside the checkout or the checkout itself, a missing
+   * folder or one without archives, a second build that
+   * fails, with npm's exit code and error output, or with one line for each
+   * archive that differs or is in only one build. It removes the worktree and
+   * its folder whether it succeeds or fails, and rejects with
+   * {@link ProcessException} if git or npm cannot start, or git fails, such
+   * as outside a clone.
+   * @example
+   * ```ts
+   * import { Git, Npm, ProcessRunner, ReproducibleStep } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new ReproducibleStep(new Git(processRunner, process.cwd()), new Npm(processRunner, process.cwd()));
+   * (await step.runAsync(["_packages"])).isSuccessful; // true when the second build packs the same archives
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

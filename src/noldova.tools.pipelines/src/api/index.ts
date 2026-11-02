@@ -28,6 +28,7 @@ export { Npm } from "../services/npm.js";
 export { ProcessRunner } from "../services/process-runner.js";
 export { PruneStep } from "../services/prune-step.js";
 export { PublishStep } from "../services/publish-step.js";
+export { ReproducibleStep } from "../services/reproducible-step.js";
 export { SourceStep } from "../services/source-step.js";
 export { TagStep } from "../services/tag-step.js";
 export { Tar } from "../services/tar.js";
