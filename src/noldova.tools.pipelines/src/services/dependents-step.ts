@@ -74,7 +74,7 @@ export class DependentsStep implements IStep {
     const root = fs.mkdtempSync(path.join(this.temporaryRoot, Resources.dependentsFolderPrefix));
     try {
       for (const [index, repository] of repositories.entries()) {
-        const result = await this.updateAsync(update, repository, path.join(root, String(index)));
+        const result = await this.tryUpdateAsync(update, repository, path.join(root, String(index)));
         isSuccessful &&= result.isSuccessful;
         lines.push(result.message);
       }
@@ -86,6 +86,18 @@ export class DependentsStep implements IStep {
     const message = [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator);
 
     return isSuccessful ? StepResult.succeeded(message) : StepResult.failed(message);
+  }
+
+  private async tryUpdateAsync(update: DependentsUpdate, repository: string, directory: string): Promise<StepResult> {
+    try {
+      return await this.updateAsync(update, repository, directory);
+    }
+    catch (error: unknown) {
+      if (!(error instanceof Error))
+        throw error;
+
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, error.message));
+    }
   }
 
   private async updateAsync(update: DependentsUpdate, repository: string, directory: string): Promise<StepResult> {
@@ -103,7 +115,7 @@ export class DependentsStep implements IStep {
 
     const lockFilePaths = filePaths.filter(t => path.posix.basename(t) === Resources.lockFileName);
     for (const lockFilePath of lockFilePaths) {
-      const result = await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)));
+      const result = await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables);
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)));
     }
@@ -111,7 +123,13 @@ export class DependentsStep implements IStep {
     const title = Resources.formatUpdateTitle(update.source, update.version);
     await git.commitAllAsync(title);
     const branch = Resources.formatUpdateBranch(update.source);
-    const push = await this.updateHost.pushAsync(repository, directory, branch);
+    const replaced = await this.updateHost.fetchBranchAsync(repository, directory, branch);
+    if (replaced instanceof StepResult)
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, replaced.message));
+    if (replaced !== null && !await DependentsStep.isOwnCommitAsync(git, replaced, update.source))
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatBranchNotOwn(branch, replaced)));
+
+    const push = await this.updateHost.pushAsync(repository, directory, branch, replaced);
     if (push !== null)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
@@ -121,6 +139,11 @@ export class DependentsStep implements IStep {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, proposal.message));
 
     return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, moves.length));
+  }
+
+  private static async isOwnCommitAsync(git: Git, commit: string, source: string): Promise<boolean> {
+    return await git.readCommitterAsync(commit) === await git.readCommitterAsync(Resources.gitHeadRevision)
+      && (await git.readSubjectAsync(commit)).startsWith(Resources.formatUpdateTitlePrefix(source));
   }
 
   private static movePins(fullPath: string, filePath: string, packageNames: readonly string[], version: string): readonly string[] {

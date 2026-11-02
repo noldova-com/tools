@@ -288,6 +288,12 @@ export declare class GitHubUpdates implements IUpdateHost {
   public constructor(environment: Readonly<Record<string, string | undefined>>, processRunner?: ProcessRunner, timeoutMilliseconds?: number, waitAsync?: (milliseconds: number) => Promise<void>, createSignal?: (timeoutMilliseconds: number) => AbortSignal);
 
   /**
+   * The variable that holds the token, `["GITHUB_TOKEN"]`, which npm doesn't
+   * get when the step refreshes lock files.
+   */
+  public readonly credentialVariables: readonly string[];
+
+  /**
    * Reads the name of the repository that released, after its owner.
    *
    * @returns The name, such as `tools` for
@@ -315,8 +321,8 @@ export declare class GitHubUpdates implements IUpdateHost {
    *
    * @param version The version.
    * @param commit The commit.
-   * @returns A promise of the section, `""` when no pull request merged the
-   * commit or its description has no such section, or a failed
+   * @returns A promise of the section, `""` when no pull request lists the
+   * commit as its merge commit or its description has no such section, or a failed
    * {@link StepResult}.
    */
   public readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
@@ -333,15 +339,32 @@ export declare class GitHubUpdates implements IUpdateHost {
   public checkOutAsync(repository: string, directory: string): Promise<StepResult | null>;
 
   /**
-   * Force-pushes the clone's `HEAD` to the branch.
+   * Finds the branch with `git ls-remote` and fetches its commit, one commit
+   * deep, into the clone.
    *
    * @param repository The repository's full name.
    * @param directory The clone's directory.
    * @param branch The branch.
+   * @returns A promise of the commit's full id, `null` when the repository
+   * has no such branch, or a failed {@link StepResult} with git's exit code
+   * and error output.
+   */
+  public fetchBranchAsync(repository: string, directory: string, branch: string): Promise<string | null | StepResult>;
+
+  /**
+   * Pushes the clone's `HEAD` to the branch: with `replaced` `null`, a plain
+   * push, which git refuses over a branch that holds other commits; with a
+   * commit, `--force-with-lease` on that commit, which git refuses once the
+   * branch has moved from it.
+   *
+   * @param repository The repository's full name.
+   * @param directory The clone's directory.
+   * @param branch The branch.
+   * @param replaced The commit the branch must still be at, or `null`.
    * @returns A promise of `null` once pushed, or a failed {@link StepResult}
    * with git's exit code and error output.
    */
-  public pushAsync(repository: string, directory: string, branch: string): Promise<StepResult | null>;
+  public pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null>;
 
   /**
    * Opens an issue with the title and a pull request from the branch into the

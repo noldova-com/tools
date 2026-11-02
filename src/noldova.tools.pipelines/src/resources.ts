@@ -48,7 +48,9 @@ export class Resources {
   public static readonly gitNotFoundExitCode: number = 1;
   public static readonly gitProgram: string = "git";
   public static readonly gitReadFileValues: readonly string[] = ["cat-file", "blob", "--end-of-options"];
+  public static readonly gitReadCommitterValues: readonly string[] = ["log", "-1", "--format=%ce", "--end-of-options"];
   public static readonly gitReadHeadValues: readonly string[] = ["rev-parse", "--verify", "--end-of-options"];
+  public static readonly gitReadSubjectValues: readonly string[] = ["log", "-1", "--format=%s", "--end-of-options"];
   public static readonly gitReadTypeValues: readonly string[] = ["cat-file", "-t", "--end-of-options"];
   public static readonly gitRemoveWorktreeValues: readonly string[] = ["worktree", "remove", "--force", "--end-of-options"];
   public static readonly gitSymbolicLinkMode: string = "120000";
@@ -457,7 +459,15 @@ export class Resources {
   }
 
   public static formatUpdateTitle(source: string, version: string): string {
-    return `Move the pins of ${source}'s packages to ${version}`;
+    return `${Resources.formatUpdateTitlePrefix(source)}${version}`;
+  }
+
+  public static formatUpdateTitlePrefix(source: string): string {
+    return `Move the pins of ${source}'s packages to `;
+  }
+
+  public static formatBranchNotOwn(branch: string, commit: string): string {
+    return `${branch} is at ${commit}, a commit this step didn't make, so it is left as it is; merge or close its pull request, or move its changes elsewhere.`;
   }
 
   public static formatUpdateBranch(source: string): string {

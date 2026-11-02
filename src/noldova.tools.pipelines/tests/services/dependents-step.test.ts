@@ -16,6 +16,9 @@ import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessResult,
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 
 class FakeUpdateHost implements IUpdateHost {
+  public readonly credentialVariables: readonly string[] = ["SECRET_TOKEN"];
+  public readonly branches: Map<string, readonly [string, string]> = new Map();
+  public readonly thrown: Map<string, unknown> = new Map();
   public readonly repositories: Map<string, GitRepositoryFixture> = new Map();
   public readonly failures: Map<string, StepResult> = new Map();
   public readonly pushed: Map<string, Readonly<Record<string, string>>> = new Map();
@@ -49,12 +52,29 @@ class FakeUpdateHost implements IUpdateHost {
     return null;
   }
 
-  public async pushAsync(repository: string, directory: string, branch: string): Promise<StepResult | null> {
+  public async fetchBranchAsync(repository: string, directory: string): Promise<string | null | StepResult> {
+    if (this.thrown.has(repository))
+      throw this.thrown.get(repository);
+    const failure = this.failures.get(`fetch ${repository}`);
+    if (failure !== undefined)
+      return failure;
+
+    const branch = this.branches.get(repository);
+    if (branch === undefined)
+      return null;
+
+    const [committer, subject] = branch;
+    const tree = execFileSync("git", ["rev-parse", "HEAD~1^{tree}"], { cwd: directory, encoding: "utf8" }).trim();
+
+    return execFileSync("git", ["commit-tree", tree, "-p", "HEAD~1", "-m", subject], { cwd: directory, encoding: "utf8", env: { ...process.env, GIT_COMMITTER_EMAIL: committer } }).trim();
+  }
+
+  public async pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null> {
     const failure = this.failures.get(`push ${repository}`);
     if (failure !== undefined)
       return failure;
 
-    const files: Record<string, string> = { branch, message: execFileSync("git", ["log", "-1", "--format=%s"], { cwd: directory, encoding: "utf8" }).trim() };
+    const files: Record<string, string> = { branch, replaced: String(replaced), message: execFileSync("git", ["log", "-1", "--format=%s"], { cwd: directory, encoding: "utf8" }).trim() };
     for (const filePath of execFileSync("git", ["ls-files"], { cwd: directory, encoding: "utf8" }).split("\n").filter(t => t.length > 0))
       files[filePath] = fs.readFileSync(path.join(directory, filePath), "utf8");
     this.pushed.set(repository, files);
@@ -75,14 +95,16 @@ class FakeUpdateHost implements IUpdateHost {
 
 class LockingNpm extends Npm {
   public readonly directories: string[] = [];
+  public readonly hiddenVariables: string[] = [];
   public result: ProcessResult = new ProcessResult(0, "", "");
 
   public constructor() {
     super(new ProcessRunner(), ".");
   }
 
-  public override async lockAsync(directory: string): Promise<ProcessResult> {
+  public override async lockAsync(directory: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
     this.directories.push(path.basename(directory));
+    this.hiddenVariables.push(...hiddenVariables);
     fs.writeFileSync(path.join(directory, "package-lock.json"), `locked from ${fs.readFileSync(path.join(directory, "package.json"), "utf8")}`);
 
     return this.result;
@@ -130,6 +152,8 @@ export class DependentsStepTests {
     const pushed = host.pushed.get("noldova-com/pinned");
     Assert.areEqual("pipelines/update-source", pushed?.["branch"]);
     Assert.areEqual("Move the pins of source's packages to 0.0.4", pushed?.["message"]);
+    Assert.areEqual("null", pushed?.["replaced"]);
+    Assert.areEqual("SECRET_TOKEN,SECRET_TOKEN", npm.hiddenVariables.join(","));
     Assert.areEqual("{\n  \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@noldova/c\": \"0.0.1\" },\n  \"peerDependencies\": { \"@noldova/a\": \"0.0.4\" }\n}\n", pushed?.["package.json"]);
     Assert.areEqual("{ \"devDependencies\": { \"@noldova/a.b\": \"0.0.4\", \"@noldova/aXb\": \"0.0.2\", \"@noldova/a\": \"^0.0.3\" } }\n", pushed?.["src/package.json"]);
     Assert.areEqual(`locked from ${pushed?.["package.json"]}`, pushed?.["package-lock.json"]);
@@ -202,6 +226,93 @@ export class DependentsStepTests {
         "noldova-com/works: moved 3 pins in https://example.test/noldova-com/works/pull/1"
       ].join("\n"),
       result.message);
+  }
+
+  @TestMethod
+  public async replacesABranchAtItsOwnEarlierCommitWhileItIsThereAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.branches.set("noldova-com/pinned", ["pipelines-tests@example.com", "Move the pins of source's packages to 0.0.3"]);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isTrue(/^[0-9a-f]{40}$/.test(host.pushed.get("noldova-com/pinned")?.["replaced"] ?? ""));
+  }
+
+  @TestData("someone@example.com", "Move the pins of source's packages to 0.0.3")
+  @TestData("pipelines-tests@example.com", "Fix the build for the new version")
+  @TestData("pipelines-tests@example.com", "Move the pins of other's packages to 0.0.3")
+  @TestMethod
+  public async leavesABranchWithACommitItDidNotMakeAndGoesOnAsync(committer: string, subject: string): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using taken = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    using works = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/taken", taken);
+    host.repositories.set("noldova-com/works", works);
+    host.branches.set("noldova-com/taken", [committer, subject]);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    const lines = result.message.split("\n");
+    Assert.isTrue(/^noldova-com\/taken: pipelines\/update-source is at [0-9a-f]{40}, a commit this step didn't make, so it is left as it is; /.test(lines[1] ?? ""), lines[1]);
+    Assert.areEqual("noldova-com/works: moved 3 pins in https://example.test/noldova-com/works/pull/1", lines[2]);
+    Assert.isFalse(host.pushed.has("noldova-com/taken"));
+  }
+
+  @TestMethod
+  public async failsARepositoryWhoseBranchItCannotReadAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.failures.set("fetch noldova-com/pinned", StepResult.failed("git ls-remote exited with code 128: denied"));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.areEqual("noldova-com/pinned: git ls-remote exited with code 128: denied", result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async turnsAnErrorInOneRepositoryIntoItsLineAndGoesOnAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using broken = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    using works = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/broken", broken);
+    host.repositories.set("noldova-com/works", works);
+    host.thrown.set("noldova-com/broken", new Error("git broke"));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      ["noldova-com/broken: git broke", "noldova-com/works: moved 3 pins in https://example.test/noldova-com/works/pull/1"].join("\n"),
+      result.message.split("\n").slice(1).join("\n"));
+  }
+
+  @TestMethod
+  public async rejectsWithWhatIsThrownThatIsNotAnErrorAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.thrown.set("noldova-com/pinned", "not an error");
+
+    let thrown: unknown = null;
+    try {
+      await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+    }
+    catch (error: unknown) {
+      thrown = error;
+    }
+
+    Assert.areEqual("not an error", thrown);
   }
 
   @TestMethod

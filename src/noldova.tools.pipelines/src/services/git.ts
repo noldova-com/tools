@@ -95,6 +95,14 @@ export class Git {
     return (await this.readAsync([...Resources.gitReadHeadValues, Resources.gitHeadRevision])).trim();
   }
 
+  public async readCommitterAsync(revision: string): Promise<string> {
+    return (await this.readAsync([...Resources.gitReadCommitterValues, revision])).trim();
+  }
+
+  public async readSubjectAsync(revision: string): Promise<string> {
+    return (await this.readAsync([...Resources.gitReadSubjectValues, revision])).trim();
+  }
+
   private async readAsync(values: readonly string[]): Promise<string> {
     const result = await this.runAsync(values);
     if (!result.isSuccessful)

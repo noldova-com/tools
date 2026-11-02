@@ -52,6 +52,19 @@ export class ProcessRunnerTests {
   }
 
   @TestMethod
+  public async keepsAVariableSetToUndefinedFromTheProgramAsync(): Promise<void> {
+    process.env["TOOLS_PIPELINES_HIDDEN"] = "hidden";
+    try {
+      const result = await new ProcessRunner().runAsync(process.execPath, ["-e", "process.stdout.write([String('TOOLS_PIPELINES_HIDDEN' in process.env), typeof process.env.PATH].join(' '));"], ".", { TOOLS_PIPELINES_HIDDEN: undefined });
+
+      Assert.areEqual("false string", result.output);
+    }
+    finally {
+      delete process.env["TOOLS_PIPELINES_HIDDEN"];
+    }
+  }
+
+  @TestMethod
   public async readsTheOutputAsUtf8Async(): Promise<void> {
     const result = await new ProcessRunner().runAsync(process.execPath, ["-e", "process.stdout.write('caf\\u00e9 \\u2713');"], ".");
 

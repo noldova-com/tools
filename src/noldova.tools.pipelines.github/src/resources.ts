@@ -18,7 +18,12 @@ export class Resources {
   public static readonly gitConfigKeyVariable: string = "GIT_CONFIG_KEY_0";
   public static readonly gitConfigValueVariable: string = "GIT_CONFIG_VALUE_0";
   public static readonly gitProgram: string = "git";
-  public static readonly gitPushValues: readonly string[] = ["push", "--quiet", "--force", "--"];
+  public static readonly gitFetchValues: readonly string[] = ["fetch", "--quiet", "--depth", "1", "--no-tags"];
+  public static readonly gitListRemoteValues: readonly string[] = ["ls-remote", "--exit-code", "--heads"];
+  public static readonly gitNoMatchExitCode: number = 2;
+  public static readonly gitOptionsEnd: string = "--";
+  public static readonly gitPushValues: readonly string[] = ["push", "--quiet"];
+  public static readonly gitReferenceSeparatorPattern: RegExp = /\s/;
   public static readonly gitTerminalPromptOff: string = "0";
   public static readonly gitTerminalPromptVariable: string = "GIT_TERMINAL_PROMPT";
   public static readonly headingPattern: RegExp = /^#{1,6}\s/;
@@ -139,7 +144,15 @@ export class Resources {
   }
 
   public static formatPushReference(branch: string): string {
-    return `HEAD:refs/heads/${branch}`;
+    return `HEAD:${Resources.formatBranchReference(branch)}`;
+  }
+
+  public static formatBranchReference(branch: string): string {
+    return `refs/heads/${branch}`;
+  }
+
+  public static formatForceWithLease(branch: string, commit: string): string {
+    return `--force-with-lease=${Resources.formatBranchReference(branch)}:${commit}`;
   }
 
   public static formatExtraHeaderKey(serverUrl: string): string {

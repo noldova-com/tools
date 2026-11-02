@@ -592,6 +592,13 @@ export declare interface ITagHost {
  */
 export declare interface IUpdateHost {
   /**
+   * The environment variables that hold the host's credentials, such as
+   * `GITHUB_TOKEN`; the step keeps them from npm when it refreshes a
+   * repository's lock files.
+   */
+  readonly credentialVariables: readonly string[];
+
+  /**
    * Reads the name of the repository that released, which names the branch
    * of each update.
    *
@@ -617,7 +624,7 @@ export declare interface IUpdateHost {
    * @param version The version, such as `0.0.4`.
    * @param commit The commit the version was released from.
    * @returns A promise of the notes' section, starting with its heading, `""`
-   * when the change has none, or a failed {@link StepResult} that says why
+   * when no change merged the commit or the one that did has none, or a failed {@link StepResult} that says why
    * the host could not answer.
    */
   readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
@@ -634,16 +641,30 @@ export declare interface IUpdateHost {
   checkOutAsync(repository: string, directory: string): Promise<StepResult | null>;
 
   /**
-   * Pushes the clone's checked-out commit to a branch of the repository,
-   * replacing what the branch held.
+   * Fetches the commit a branch of the repository is at into the clone, so
+   * the step can read who made it.
    *
    * @param repository The repository's full name.
    * @param directory The clone's directory.
    * @param branch The branch, such as `pipelines/update-tools`.
+   * @returns A promise of the commit's full id, `null` when the repository
+   * has no such branch, or a failed {@link StepResult} that says why not.
+   */
+  fetchBranchAsync(repository: string, directory: string, branch: string): Promise<string | null | StepResult>;
+
+  /**
+   * Pushes the clone's checked-out commit to a branch of the repository.
+   *
+   * @param repository The repository's full name.
+   * @param directory The clone's directory.
+   * @param branch The branch, such as `pipelines/update-tools`.
+   * @param replaced `null` to create the branch, which fails if it exists,
+   * or the commit {@link fetchBranchAsync} found it at, to replace it only
+   * while it is still at that commit.
    * @returns A promise of `null` once it is pushed, or a failed
    * {@link StepResult} that says why not.
    */
-  pushAsync(repository: string, directory: string, branch: string): Promise<StepResult | null>;
+  pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null>;
 
   /**
    * Proposes a pushed branch for merging into the default branch: opens the
@@ -789,8 +810,9 @@ export declare class ProcessRunner {
    * never read by a shell.
    * @param workingDirectory The directory the program runs in.
    * @param environment Variables the program gets on top of this process's
-   * own, such as a credential only it may read; omitted, it gets this
-   * process's variables alone.
+   * own, such as a credential only it may read, where a variable set to
+   * `undefined` is kept from it; omitted, it gets this process's variables
+   * alone.
    * @returns A promise of the program's exit code and of what it wrote. A
    * program that fails still resolves, with its exit code; the promise
    * rejects with {@link ProcessException} only when the program cannot
@@ -803,7 +825,7 @@ export declare class ProcessRunner {
    * result.isSuccessful; // true where git is installed
    * ```
    */
-  public runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string>>): Promise<ProcessResult>;
+  public runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>): Promise<ProcessResult>;
 }
 
 /**
@@ -1053,6 +1075,38 @@ export declare class Git {
    * ```
    */
   public readHeadAsync(): Promise<string>;
+
+  /**
+   * Reads the email address of a commit's committer.
+   *
+   * @param revision The commit, such as its id or `HEAD`.
+   * @returns A promise of the address. It rejects with
+   * {@link ProcessException} if git cannot start or fails, such as for a
+   * revision the clone doesn't hold.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Git(new ProcessRunner(), process.cwd()).readCommitterAsync("HEAD"); // "noreply@github.com"
+   * ```
+   */
+  public readCommitterAsync(revision: string): Promise<string>;
+
+  /**
+   * Reads a commit's subject, the first line of its message.
+   *
+   * @param revision The commit, such as its id or `HEAD`.
+   * @returns A promise of the subject. It rejects with
+   * {@link ProcessException} if git cannot start or fails, such as for a
+   * revision the clone doesn't hold.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Git(new ProcessRunner(), process.cwd()).readSubjectAsync("HEAD"); // "Move the pins of tools's packages to 0.0.4"
+   * ```
+   */
+  public readSubjectAsync(revision: string): Promise<string>;
 }
 
 /**
@@ -1234,6 +1288,8 @@ export declare class Npm {
    * command; it installs nothing and runs no script.
    *
    * @param directory The directory that holds the `package-lock.json`.
+   * @param hiddenVariables The environment variables npm doesn't get, such
+   * as a credential meant for something else; omitted, it gets them all.
    * @returns A promise of npm's exit code and of what it wrote; a refresh
    * that fails still resolves. It rejects with {@link ProcessException} if
    * the program cannot start.
@@ -1244,7 +1300,7 @@ export declare class Npm {
    * (await new Npm(new ProcessRunner(), process.cwd()).lockAsync("/tmp/example")).isSuccessful; // true when the lock file is refreshed
    * ```
    */
-  public lockAsync(directory: string): Promise<ProcessResult>;
+  public lockAsync(directory: string, hiddenVariables?: readonly string[]): Promise<ProcessResult>;
 
   /**
    * Reads the version of the npm that runs, with `npm --version`, or on
@@ -2022,10 +2078,13 @@ export declare class ReproducibleStep implements IStep {
  * the {@link IUpdateHost} lists. In a repository whose tracked `package.json`
  * files pin any of those packages exactly at an older version, it moves each
  * such pin to the version, refreshes every tracked `package-lock.json` with
- * {@link Npm.lockAsync}, commits, pushes the branch
- * `pipelines/update-<source>` and proposes it, with the moved pins and the
- * release's notes in its description; a proposal already open for that
- * branch is replaced. A repository that pins none of them is left as it is.
+ * {@link Npm.lockAsync}, without the host's credential variables, commits,
+ * pushes the branch `pipelines/update-<source>` and proposes it, with the
+ * moved pins and the release's notes in its description. When the branch
+ * exists, it replaces it only when the branch is at a commit of its own, made
+ * by the same committer with its title, and otherwise fails that repository,
+ * so nobody's commits are lost. A repository that pins none of them is left
+ * as it is.
  */
 export declare class DependentsStep implements IStep {
   /**
@@ -2073,9 +2132,11 @@ export declare class DependentsStep implements IStep {
    * failed. It fails for any number of values but two, a version that isn't
    * one or is a nightly, a commit that isn't a full id, a commit that
    * releases no package, what the host can't answer, and when any
-   * repository fails, after trying every other. It removes its temporary
+   * repository fails, after trying every other; an error in one repository,
+   * such as git failing, is that repository's line. It removes its temporary
    * folder whether it succeeds or fails, and rejects with
-   * {@link ProcessException} if git or npm cannot start, or git fails.
+   * {@link ProcessException} if git cannot start or fails while it reads the
+   * released commit.
    * @example
    * ```ts
    * (await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message;

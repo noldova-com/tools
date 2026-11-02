@@ -279,8 +279,9 @@ result.message; // "Looked for exact pins of @noldova/a, @noldova/b older than 0
 - It fails, before asking the host, unless the version is a release version and the commit is its full id; a nightly version moves nothing.
 - It reads the packages the commit releases as the archive step does, and checks out each repository the host lists into a new temporary folder.
 - In each tracked `package.json`, it moves every value that names one of those packages at an exact version older than the release, such as `"0.0.3"`; a range, such as `"^0.0.3"`, and a newer or equal version stay.
-- When it moved any, it refreshes every tracked `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, commits, pushes the branch `pipelines/update-<source>` and proposes it with the moved pins and the release's notes; a repository that pins none is left as it is.
-- It succeeds with one line for each repository, and fails, after trying every other repository, with the line of each that failed.
+- When it moved any, it refreshes every tracked `package-lock.json` with `npm install --package-lock-only --ignore-scripts`, without the host's credential variables, commits, pushes the branch `pipelines/update-<source>` and proposes it with the moved pins and the release's notes; a repository that pins none is left as it is.
+- When the branch exists, it replaces it only while the branch is at a commit of its own, with its title and the same committer; a branch with anyone else's commit is left as it is, and that repository fails, so nobody's work is lost.
+- It succeeds with one line for each repository, and fails, after trying every other repository, with the line of each that failed; an error in one repository, such as git failing, is that repository's line.
 - It removes its temporary folder whether it succeeds or fails, and makes it in the root its constructor is given, or in `os.tmpdir()`.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.

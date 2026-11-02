@@ -53,6 +53,7 @@ export class GitHubUpdatesTests {
     await using api = await GitHubApiFixture.startAsync({});
 
     Assert.areEqual("tools", GitHubUpdatesTests.createUpdates(api).readSourceName());
+    Assert.areEqual("GITHUB_TOKEN", GitHubUpdatesTests.createUpdates(api).credentialVariables.join(","));
   }
 
   @TestData("GITHUB_API_URL")
@@ -71,7 +72,8 @@ export class GitHubUpdatesTests {
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.listRepositoriesAsync()));
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await missing.readReleaseNotesAsync("0.0.4", GitHubUpdatesTests.COMMIT)));
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.checkOutAsync(GitHubUpdatesTests.REPOSITORY, "target")));
-    Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await missing.pushAsync(GitHubUpdatesTests.REPOSITORY, "target", GitHubUpdatesTests.BRANCH)));
+    Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await missing.pushAsync(GitHubUpdatesTests.REPOSITORY, "target", GitHubUpdatesTests.BRANCH, null)));
+    Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.fetchBranchAsync(GitHubUpdatesTests.REPOSITORY, "target", GitHubUpdatesTests.BRANCH)));
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Title", "Body")));
     Assert.areEqual(0, api.requests.length);
   }
@@ -132,12 +134,14 @@ export class GitHubUpdatesTests {
     Assert.areEqual("## Release notes for 0.0.4\n\n- Adds a thing.\n### Detail\n- More.", notes);
   }
 
-  @TestData("[{ \"merge_commit_sha\": null, \"body\": \"Release notes for 0.0.4\\n\\n# Release notes for 0.0.4\\n- First.\" }]", "# Release notes for 0.0.4\n- First.")
-  @TestData("[{ \"merge_commit_sha\": null, \"body\": null }]", "")
-  @TestData("[{ \"merge_commit_sha\": null, \"body\": \"## Release notes for 0.0.3\\n- Older.\" }]", "")
+  @TestData("[{ \"merge_commit_sha\": null, \"body\": \"# Release notes for 0.0.4\\n- Open.\" }]", "")
+  @TestData("[{ \"merge_commit_sha\": \"0123456789abcdef0123456789abcdef01234567\", \"body\": \"# Release notes for 0.0.4\\n- Other.\" }]", "")
+  @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"Release notes for 0.0.4\\n\\n# Release notes for 0.0.4\\n- First.\" }]", "# Release notes for 0.0.4\n- First.")
+  @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": null }]", "")
+  @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"## Release notes for 0.0.3\\n- Older.\" }]", "")
   @TestData("[]", "")
   @TestMethod
-  public async readsTheNotesOfTheFirstPullRequestWhenNoneMergedTheCommitAsync(answer: string, expected: string): Promise<void> {
+  public async readsNotesOnlyFromThePullRequestThatMergedTheCommitAsync(answer: string, expected: string): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({ [GitHubUpdatesTests.PULLS_OF_COMMIT]: new GitHubApiAnswer(200, answer) });
 
     Assert.areEqual(expected, await GitHubUpdatesTests.createUpdates(api).readReleaseNotesAsync("0.0.4", GitHubUpdatesTests.COMMIT));
@@ -166,13 +170,18 @@ export class GitHubUpdatesTests {
       Assert.isNull(await updates.checkOutAsync(GitHubUpdatesTests.REPOSITORY, directory));
       fs.writeFileSync(path.join(directory, "package.json"), "{ \"changed\": true }\n");
       execFileSync("git", ["-c", "user.name=Pipelines Tests", "-c", "user.email=pipelines-tests@example.com", "-c", "commit.gpgsign=false", "commit", "--quiet", "--all", "--no-verify", "--message", "Change"], { cwd: directory });
-      Assert.isNull(await updates.pushAsync(GitHubUpdatesTests.REPOSITORY, directory, GitHubUpdatesTests.BRANCH));
+      Assert.isNull(await updates.fetchBranchAsync(GitHubUpdatesTests.REPOSITORY, directory, GitHubUpdatesTests.BRANCH));
+      Assert.isNull(await updates.pushAsync(GitHubUpdatesTests.REPOSITORY, directory, GitHubUpdatesTests.BRANCH, null));
 
       const pushed = execFileSync("git", ["rev-parse", `refs/heads/${GitHubUpdatesTests.BRANCH}`], { cwd: path.join(root, "noldova-com", "target.git"), encoding: "utf8" }).trim();
       Assert.areEqual(execFileSync("git", ["rev-parse", "HEAD"], { cwd: directory, encoding: "utf8" }).trim(), pushed);
       const url = `${root}/noldova-com/target.git`;
       Assert.areEqual(
-        [`git clone --quiet --depth 1 --no-tags -- ${url} ${directory}`, `git push --quiet --force -- ${url} HEAD:refs/heads/${GitHubUpdatesTests.BRANCH}`].join("\n"),
+        [
+          `git clone --quiet --depth 1 --no-tags -- ${url} ${directory}`,
+          `git ls-remote --exit-code --heads -- ${url} refs/heads/${GitHubUpdatesTests.BRANCH}`,
+          `git push --quiet -- ${url} HEAD:refs/heads/${GitHubUpdatesTests.BRANCH}`
+        ].join("\n"),
         processRunner.calls.join("\n"));
       Assert.isFalse(processRunner.calls.join("\n").includes(GitHubUpdatesTests.TOKEN));
       const environment = processRunner.environments[0];
@@ -195,10 +204,12 @@ export class GitHubUpdatesTests {
       const updates = new GitHubUpdates(GitHubUpdatesTests.createEnvironment(api, root));
 
       const cloned = GitHubUpdatesTests.readFailure(await updates.checkOutAsync(GitHubUpdatesTests.REPOSITORY, path.join(root, "checkout")));
-      const pushed = GitHubUpdatesTests.readFailure(await updates.pushAsync(GitHubUpdatesTests.REPOSITORY, root, GitHubUpdatesTests.BRANCH));
+      const pushed = GitHubUpdatesTests.readFailure(await updates.pushAsync(GitHubUpdatesTests.REPOSITORY, root, GitHubUpdatesTests.BRANCH, null));
+      const listed = GitHubUpdatesTests.readFailure(await updates.fetchBranchAsync(GitHubUpdatesTests.REPOSITORY, root, GitHubUpdatesTests.BRANCH));
 
       Assert.isTrue(cloned.startsWith("git clone exited with code 128: "), cloned);
       Assert.isTrue(pushed.startsWith("git push exited with code 128: "), pushed);
+      Assert.isTrue(listed.startsWith("git ls-remote exited with code 128: "), listed);
       Assert.isFalse(cloned.includes(GitHubUpdatesTests.TOKEN));
     }
     finally {
@@ -215,9 +226,55 @@ export class GitHubUpdatesTests {
     }
     await using api = await GitHubApiFixture.startAsync({});
 
-    const result = await new GitHubUpdates(GitHubUpdatesTests.createEnvironment(api, "."), new SilentProcessRunner()).pushAsync(GitHubUpdatesTests.REPOSITORY, ".", GitHubUpdatesTests.BRANCH);
+    const result = await new GitHubUpdates(GitHubUpdatesTests.createEnvironment(api, "."), new SilentProcessRunner()).pushAsync(GitHubUpdatesTests.REPOSITORY, ".", GitHubUpdatesTests.BRANCH, null);
 
     Assert.areEqual("git push exited with code 1.", GitHubUpdatesTests.readFailure(result));
+  }
+
+  @TestMethod
+  public async fetchesAnOpenBranchAndReplacesItOnlyWhileItIsThereAsync(): Promise<void> {
+    using source = GitCloneFixture.create({ "package.json": "{}\n" });
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tools-pipelines-github-server-"));
+    try {
+      const server = path.join(root, "noldova-com", "target.git");
+      execFileSync("git", ["clone", "--quiet", "--bare", "--", source.directory, server]);
+      const open = GitHubUpdatesTests.commitTree(server, "main", "Open");
+      execFileSync("git", ["update-ref", `refs/heads/${GitHubUpdatesTests.BRANCH}`, open], { cwd: server });
+      await using api = await GitHubApiFixture.startAsync({});
+      const updates = new GitHubUpdates(GitHubUpdatesTests.createEnvironment(api, root));
+      const directory = path.join(root, "checkout");
+      Assert.isNull(await updates.checkOutAsync(GitHubUpdatesTests.REPOSITORY, directory));
+      execFileSync("git", ["-c", "user.name=Pipelines Tests", "-c", "user.email=pipelines-tests@example.com", "-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty", "--no-verify", "--message", "Change"], { cwd: directory });
+
+      const fetched = await updates.fetchBranchAsync(GitHubUpdatesTests.REPOSITORY, directory, GitHubUpdatesTests.BRANCH);
+
+      Assert.areEqual(open, fetched);
+      Assert.areEqual("Open", execFileSync("git", ["log", "-1", "--format=%s", open], { cwd: directory, encoding: "utf8" }).trim());
+      Assert.isTrue(GitHubUpdatesTests.readFailure(await updates.pushAsync(GitHubUpdatesTests.REPOSITORY, directory, GitHubUpdatesTests.BRANCH, null)).startsWith("git push exited with code 1: "));
+      const moved = GitHubUpdatesTests.commitTree(server, open, "Someone's commit");
+      execFileSync("git", ["update-ref", `refs/heads/${GitHubUpdatesTests.BRANCH}`, moved], { cwd: server });
+      Assert.isTrue(GitHubUpdatesTests.readFailure(await updates.pushAsync(GitHubUpdatesTests.REPOSITORY, directory, GitHubUpdatesTests.BRANCH, open)).startsWith("git push exited with code 1: "));
+      Assert.areEqual(moved, GitHubUpdatesTests.readBranch(server));
+      Assert.isNull(await updates.pushAsync(GitHubUpdatesTests.REPOSITORY, directory, GitHubUpdatesTests.BRANCH, moved));
+      Assert.areEqual(execFileSync("git", ["rev-parse", "HEAD"], { cwd: directory, encoding: "utf8" }).trim(), GitHubUpdatesTests.readBranch(server));
+    }
+    finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  @TestMethod
+  public async failsWhenFetchingTheListedCommitFailsAsync(): Promise<void> {
+    class ListingProcessRunner extends ProcessRunner {
+      public override async runAsync(_program: string, values: readonly string[]): Promise<ProcessResult> {
+        return values[0] === "ls-remote" ? new ProcessResult(0, `${GitHubUpdatesTests.COMMIT}\trefs/heads/pipelines/update-tools\n`, "") : new ProcessResult(128, "", "fatal: no such commit\n");
+      }
+    }
+    await using api = await GitHubApiFixture.startAsync({});
+
+    const result = await new GitHubUpdates(GitHubUpdatesTests.createEnvironment(api, "."), new ListingProcessRunner()).fetchBranchAsync(GitHubUpdatesTests.REPOSITORY, ".", GitHubUpdatesTests.BRANCH);
+
+    Assert.areEqual("git fetch exited with code 128: fatal: no such commit", GitHubUpdatesTests.readFailure(result));
   }
 
   @TestMethod
@@ -293,6 +350,16 @@ export class GitHubUpdatesTests {
     const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.");
 
     Assert.areEqual(GitHubUpdatesTests.formatFailure(request, isHeld), GitHubUpdatesTests.readFailure(result));
+  }
+
+  private static commitTree(directory: string, parent: string, message: string): string {
+    const tree = execFileSync("git", ["rev-parse", `${parent}^{tree}`], { cwd: directory, encoding: "utf8" }).trim();
+
+    return execFileSync("git", ["-c", "user.name=Someone", "-c", "user.email=someone@example.com", "commit-tree", tree, "-p", parent, "-m", message], { cwd: directory, encoding: "utf8" }).trim();
+  }
+
+  private static readBranch(directory: string): string {
+    return execFileSync("git", ["rev-parse", `refs/heads/${GitHubUpdatesTests.BRANCH}`], { cwd: directory, encoding: "utf8" }).trim();
   }
 
   private static createNewProposalAnswers(): Record<string, GitHubApiAnswer> {

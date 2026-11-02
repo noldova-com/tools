@@ -13,6 +13,7 @@ import { Npm, ProcessException, ProcessResult, ProcessRunner } from "@noldova/to
 
 class RecordingProcessRunner extends ProcessRunner {
   public readonly calls: string[] = [];
+  public readonly environments: (Readonly<Record<string, string | undefined>> | undefined)[] = [];
   private readonly result: ProcessResult;
 
   public constructor(result: ProcessResult) {
@@ -21,8 +22,9 @@ class RecordingProcessRunner extends ProcessRunner {
     this.result = result;
   }
 
-  public override async runAsync(program: string, values: readonly string[], workingDirectory: string): Promise<ProcessResult> {
+  public override async runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>): Promise<ProcessResult> {
     this.calls.push(`${workingDirectory}: ${program} ${values.join(" ")}`);
+    this.environments.push(environment);
 
     return this.result;
   }
@@ -87,6 +89,19 @@ export class NpmTests {
 
     Assert.areEqual(1, result.exitCode);
     Assert.areEqual(expected, processRunner.calls.join("\n"));
+    Assert.areEqual("{}", JSON.stringify(processRunner.environments[0]));
+  }
+
+  @TestData("linux")
+  @TestData("win32")
+  @TestMethod
+  public async keepsTheHiddenVariablesFromTheLockRefreshAsync(platform: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "", ""));
+
+    await new Npm(processRunner, "release", platform).lockAsync("locked", ["GITHUB_TOKEN", "OTHER_TOKEN"]);
+
+    Assert.areEqual("GITHUB_TOKEN,OTHER_TOKEN", Object.keys(processRunner.environments[0] ?? {}).join(","));
+    Assert.isTrue(Object.values(processRunner.environments[0] ?? {}).every(t => t === undefined));
   }
 
   @TestMethod

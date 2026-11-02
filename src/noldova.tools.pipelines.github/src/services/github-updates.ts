@@ -21,6 +21,8 @@ export class GitHubUpdates implements IUpdateHost {
   private readonly waitAsync: (milliseconds: number) => Promise<void>;
   private readonly createSignal: (timeoutMilliseconds: number) => AbortSignal;
 
+  public readonly credentialVariables: readonly string[] = [Resources.tokenVariable];
+
   public constructor(environment: Readonly<Record<string, string | undefined>>, processRunner: ProcessRunner = new ProcessRunner(), timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync, createSignal: (timeoutMilliseconds: number) => AbortSignal = GitHubApi.createTimeoutSignal) {
     this.environment = environment;
     this.processRunner = processRunner;
@@ -77,8 +79,7 @@ export class GitHubUpdates implements IUpdateHost {
     if (answer.status !== Resources.foundStatus)
       return answer.toFailure();
 
-    const pulls = answer.readItems();
-    const pull = pulls.find(t => t.readNullableString(Resources.mergeCommitField) === commit) ?? pulls[0];
+    const pull = answer.readItems().find(t => t.readNullableString(Resources.mergeCommitField) === commit);
 
     return pull === undefined ? "" : GitHubUpdates.findNotes(pull.readNullableString(Resources.bodyField) ?? "", version);
   }
@@ -88,17 +89,35 @@ export class GitHubUpdates implements IUpdateHost {
     if (missing !== null)
       return missing;
 
-    const values = [...Resources.gitCloneValues, this.formatCloneUrl(repository), directory];
-
-    return await this.runGitAsync(values, process.cwd());
+    return await this.runGitAsync([...Resources.gitCloneValues, this.formatCloneUrl(repository), directory], process.cwd());
   }
 
-  public async pushAsync(repository: string, directory: string, branch: string): Promise<StepResult | null> {
+  public async fetchBranchAsync(repository: string, directory: string, branch: string): Promise<string | null | StepResult> {
     const missing = this.findMissingVariable();
     if (missing !== null)
       return missing;
 
-    const values = [...Resources.gitPushValues, this.formatCloneUrl(repository), Resources.formatPushReference(branch)];
+    const url = this.formatCloneUrl(repository);
+    const values = [...Resources.gitListRemoteValues, Resources.gitOptionsEnd, url, Resources.formatBranchReference(branch)];
+    const listed = await this.processRunner.runAsync(Resources.gitProgram, values, directory, this.createGitEnvironment());
+    if (listed.exitCode === Resources.gitNoMatchExitCode)
+      return null;
+    if (!listed.isSuccessful)
+      return GitHubUpdates.failGit(values, listed.exitCode, listed.errorOutput);
+
+    const commit = listed.output.slice(0, listed.output.search(Resources.gitReferenceSeparatorPattern));
+    const fetched = await this.runGitAsync([...Resources.gitFetchValues, Resources.gitOptionsEnd, url, commit], directory);
+
+    return fetched ?? commit;
+  }
+
+  public async pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null> {
+    const missing = this.findMissingVariable();
+    if (missing !== null)
+      return missing;
+
+    const lease = replaced === null ? [] : [Resources.formatForceWithLease(branch, replaced)];
+    const values = [...Resources.gitPushValues, ...lease, Resources.gitOptionsEnd, this.formatCloneUrl(repository), Resources.formatPushReference(branch)];
 
     return await this.runGitAsync(values, directory);
   }
@@ -158,7 +177,11 @@ export class GitHubUpdates implements IUpdateHost {
   private async runGitAsync(values: readonly string[], workingDirectory: string): Promise<StepResult | null> {
     const result = await this.processRunner.runAsync(Resources.gitProgram, values, workingDirectory, this.createGitEnvironment());
 
-    return result.isSuccessful ? null : StepResult.failed(Resources.formatGitFailed(values, result.exitCode, result.errorOutput));
+    return result.isSuccessful ? null : GitHubUpdates.failGit(values, result.exitCode, result.errorOutput);
+  }
+
+  private static failGit(values: readonly string[], exitCode: number | null, errorOutput: string): StepResult {
+    return StepResult.failed(Resources.formatGitFailed(values, exitCode, errorOutput));
   }
 
   private createGitEnvironment(): Readonly<Record<string, string>> {

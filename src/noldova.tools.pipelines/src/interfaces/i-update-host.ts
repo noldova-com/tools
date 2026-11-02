@@ -9,6 +9,8 @@
 import type { StepResult } from "../models/step-result.js";
 
 export interface IUpdateHost {
+  readonly credentialVariables: readonly string[];
+
   readSourceName(): string | StepResult;
 
   listRepositoriesAsync(): Promise<readonly string[] | StepResult>;
@@ -17,7 +19,9 @@ export interface IUpdateHost {
 
   checkOutAsync(repository: string, directory: string): Promise<StepResult | null>;
 
-  pushAsync(repository: string, directory: string, branch: string): Promise<StepResult | null>;
+  fetchBranchAsync(repository: string, directory: string, branch: string): Promise<string | null | StepResult>;
+
+  pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null>;
 
   proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult>;
 }

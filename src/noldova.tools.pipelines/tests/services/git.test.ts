@@ -43,6 +43,28 @@ export class GitTests {
   }
 
   @TestMethod
+  public async readsACommitsCommitterAndSubjectAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const first = repository.commit({ "a.txt": "a\n" });
+    repository.commit({ "b.txt": "b\n" });
+    const git = GitTests.createGit(repository);
+
+    Assert.areEqual("pipelines-tests@example.com", await git.readCommitterAsync(first));
+    Assert.areEqual(execFileSync("git", ["log", "-1", "--format=%s", first], { cwd: repository.directory, encoding: "utf8" }).trim(), await git.readSubjectAsync(first));
+    Assert.areEqual(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: repository.directory, encoding: "utf8" }).trim(), await git.readSubjectAsync("HEAD"));
+  }
+
+  @TestMethod
+  public async rejectsReadingACommitTheCloneDoesNotHoldAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.commit({ "a.txt": "a\n" });
+    const git = GitTests.createGit(repository);
+
+    await Assert.throwsAsync(() => git.readCommitterAsync("0123456789abcdef0123456789abcdef01234567"), ProcessException);
+    await Assert.throwsAsync(() => git.readSubjectAsync("0123456789abcdef0123456789abcdef01234567"), ProcessException);
+  }
+
+  @TestMethod
   public async rejectsACommitWithNothingToCommitAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     repository.commit({ "a.txt": "a\n" });
