@@ -1071,6 +1071,20 @@ export declare class Npm {
   public publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult>;
 
   /**
+   * Reads the version of the npm that runs, with `npm --version`.
+   *
+   * @returns A promise of the version, such as `11.19.0`. It rejects with
+   * {@link ProcessException} if npm cannot start or fails.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Npm(new ProcessRunner(), process.cwd()).readVersionAsync(); // "11.19.0"
+   * ```
+   */
+  public readVersionAsync(): Promise<string>;
+
+  /**
    * Tells whether a text is a registry the steps take: an `https` URL
    * without credentials, a query or a fragment.
    *
@@ -1697,6 +1711,63 @@ export declare class UnchangedStep implements IStep {
    *
    * const step = new UnchangedStep(new Git(new ProcessRunner(), process.cwd()));
    * (await step.runAsync([])).isSuccessful; // true in a checkout as committed
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that checks the toolchain a job runs:
+ * `toolchain <node-version> [<npm-version>]`. It succeeds only when the
+ * Node.js that runs it is that version and, when an npm version is given,
+ * `npm --version` prints it.
+ */
+export declare class ToolchainStep implements IStep {
+  /**
+   * The step's name, `"toolchain"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<node-version> [<npm-version>]"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param npm What reads npm's version.
+   * @param nodeVersion The version of the Node.js that runs the step, as
+   * `process.version` gives it, such as `v24.21.0`.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner, ToolchainStep } from "@noldova/tools.pipelines";
+   *
+   * const step = new ToolchainStep(new Npm(new ProcessRunner(), process.cwd()), process.version);
+   * step.name; // "toolchain"
+   * ```
+   */
+  public constructor(npm: Npm, nodeVersion: string);
+
+  /**
+   * Checks the toolchain.
+   *
+   * @param values The Node.js version, such as `24.21.0`, and optionally
+   * the npm version, such as `11.19.0`; each exact, `major.minor.patch`.
+   * An empty npm version is the same as none, so a workflow can pass a
+   * setting that names none.
+   * @returns A promise of the result: succeeded, such as
+   * `Node.js v24.21.0 and npm 11.19.0 run this step.`, or failed for no
+   * values or more than two, for a version that is not exact, or with one
+   * line for each version that differs, naming the version found, the one
+   * expected and the fix. It reads npm's version only when one is given, and
+   * rejects with {@link ProcessException} if npm cannot start or fails.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner, ToolchainStep } from "@noldova/tools.pipelines";
+   *
+   * const step = new ToolchainStep(new Npm(new ProcessRunner(), process.cwd()), "v24.20.0");
+   * (await step.runAsync(["24.21.0"])).message; // "Node.js v24.20.0 runs this step, not v24.21.0; set up Node.js 24.21.0 before it."
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

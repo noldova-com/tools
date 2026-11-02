@@ -8,6 +8,7 @@
 
 import path from "node:path";
 
+import { ProcessException } from "../exceptions/process.exception.js";
 import type { ProcessResult } from "../models/process-result.js";
 import { StepResult } from "../models/step-result.js";
 import { Resources } from "../resources.js";
@@ -40,6 +41,14 @@ export class Npm {
     const values = [...Resources.npmPublishValues, path.resolve(archivePath), ...Resources.npmTagValues, tag, ...Resources.npmAccessValues, access, ...Resources.npmRegistryValues, registry];
 
     return await this.runAsync(values);
+  }
+
+  public async readVersionAsync(): Promise<string> {
+    const result = await this.runAsync(Resources.npmVersionValues);
+    if (!result.isSuccessful)
+      throw new ProcessException(Resources.npmProgram, Resources.formatNpmVersionFailed(result.exitCode, result.errorOutput));
+
+    return result.output.trim();
   }
 
   public static isRegistry(text: string): boolean {

@@ -53,6 +53,26 @@ export class NpmTests {
   }
 
   @TestMethod
+  public async readsItsVersionAsync(): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "11.19.0\n", ""));
+
+    const version = await new Npm(processRunner, "release").readVersionAsync();
+
+    Assert.areEqual("11.19.0", version);
+    Assert.areEqual("release: npm --version", processRunner.calls.join("\n"));
+  }
+
+  @TestMethod
+  public async rejectsWhenReadingItsVersionFailsAsync(): Promise<void> {
+    const npm = new Npm(new RecordingProcessRunner(new ProcessResult(1, "", "npm error broken\n")), "release");
+
+    const exception = await Assert.throwsAsync(() => npm.readVersionAsync(), ProcessException);
+
+    Assert.areEqual("npm", exception.program);
+    Assert.areEqual("\"npm --version\" failed with exit code 1: npm error broken", exception.message);
+  }
+
+  @TestMethod
   public async rejectsWhenNpmCannotStartAsync(): Promise<void> {
     const npm = new Npm(new ProcessRunner(), "tools-pipelines-missing-directory");
 

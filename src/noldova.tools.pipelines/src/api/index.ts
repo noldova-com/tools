@@ -31,4 +31,5 @@ export { PublishStep } from "../services/publish-step.js";
 export { SourceStep } from "../services/source-step.js";
 export { TagStep } from "../services/tag-step.js";
 export { Tar } from "../services/tar.js";
+export { ToolchainStep } from "../services/toolchain-step.js";
 export { UnchangedStep } from "../services/unchanged-step.js";
