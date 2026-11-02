@@ -14,27 +14,44 @@ export class Resources {
   public static readonly archiveManifestPath: string = "package/package.json";
   public static readonly archiveStepName: string = "archive";
   public static readonly archiveStepUsage: string = "<folder> <version> <commit> <scope>";
+  public static readonly checkoutUnchanged: string = "The checkout has no changed or untracked file.";
   public static readonly commitPattern: RegExp = /^[0-9a-f]{40}$/;
   public static readonly credentialFilePattern: RegExp = /(?:^|\/)(?:\.npmrc|\.netrc|\.env(?:\.[^/]+)?|id_rsa|id_dsa|id_ecdsa|id_ed25519|[^/]*\.(?:pem|key|p12|pfx))$/i;
+  public static readonly crlfLineEndings: string = "crlf";
   public static readonly dependenciesField: string = "dependencies";
   public static readonly failureExitCode: number = 1;
+  public static readonly fileEndByteCount: number = 2;
+  public static readonly gitAttributesFilePath: string = ".gitattributes";
+  public static readonly gitAttributesLine: string = "* text=auto eol=lf";
+  public static readonly gitCheckoutRevision: string = "HEAD";
+  public static readonly gitEntrySeparator: string = "\t";
   public static readonly gitFileSeparator: string = "\0";
   public static readonly gitFileType: string = "blob";
   public static readonly gitHeadField: string = "gitHead";
   public static readonly gitHeadRevision: string = "HEAD^{commit}";
   public static readonly gitIsAncestorValues: readonly string[] = ["merge-base", "--is-ancestor", "--end-of-options"];
+  public static readonly gitLineEndingsPrefix: string = "i/";
+  public static readonly gitLineEndingsSeparator: RegExp = /\s+/;
+  public static readonly gitListChangesValues: readonly string[] = ["status", "--porcelain"];
   public static readonly gitListFilesValues: readonly string[] = ["ls-tree", "-r", "-z", "--name-only", "--full-tree", "--end-of-options"];
+  public static readonly gitListTrackedFilesValues: readonly string[] = ["ls-files", "-z", "--stage", "--eol"];
+  public static readonly gitModeSeparator: string = " ";
+  public static readonly gitNotTextAttribute: string = "attr/-text";
+  public static readonly gitNotTextLineEndings: string = "-text";
   public static readonly gitNotFoundExitCode: number = 1;
   public static readonly gitProgram: string = "git";
   public static readonly gitReadFileValues: readonly string[] = ["cat-file", "blob", "--end-of-options"];
   public static readonly gitReadHeadValues: readonly string[] = ["rev-parse", "--verify", "--end-of-options"];
   public static readonly gitReadTypeValues: readonly string[] = ["cat-file", "-t", "--end-of-options"];
+  public static readonly gitSymbolicLinkMode: string = "120000";
   public static readonly gitVerifyValues: readonly string[] = ["rev-parse", "--verify", "--quiet", "--end-of-options"];
   public static readonly integrityAlgorithm: string = "sha512";
   public static readonly integrityEncoding: BinaryToTextEncoding = "base64";
   public static readonly keepVersionsPattern: RegExp = /^[1-9][0-9]*$/;
   public static readonly latestTag: string = "latest";
   public static readonly licenseField: string = "license";
+  public static readonly lineEndingsStepName: string = "line-endings";
+  public static readonly lineEndingsStepUsage: string = "";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly lineSeparator: string = "\n";
   public static readonly mainBranch: string = "origin/main";
@@ -43,7 +60,9 @@ export class Resources {
   public static readonly manifestFileName: string = "package.json";
   public static readonly messagePartSeparator: string = "; ";
   public static readonly minorPartName: string = "minor";
+  public static readonly mixedLineEndings: string = "mixed";
   public static readonly nameField: string = "name";
+  public static readonly newlineByte: number = 10;
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
   public static readonly nightlySeparator: string = "-nightly.";
   public static readonly nightlyStepName: string = "nightly";
@@ -82,6 +101,9 @@ export class Resources {
   public static readonly tarListFilesValues: readonly string[] = ["-tzf"];
   public static readonly tarReadFileValues: readonly string[] = ["-xzOf"];
   public static readonly testsFolderName: string = "tests";
+  public static readonly trackedFilesMissing: string = "Git lists no tracked file in this folder; run this step in a clone's checkout.";
+  public static readonly unchangedStepName: string = "unchanged";
+  public static readonly unchangedStepUsage: string = "";
   public static readonly textEncoding: BufferEncoding = "utf8";
   public static readonly urlCredentialsPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
   public static readonly urlQueryPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/[^\s?#]*)[?#]\S*/gi;
@@ -110,11 +132,43 @@ export class Resources {
   }
 
   public static formatStepUsage(stepName: string, usage: string): string {
-    return `${stepName}${Resources.valueSeparator}${usage}`;
+    return usage.length === 0 ? stepName : `${stepName}${Resources.valueSeparator}${usage}`;
   }
 
   public static formatStepValuesInvalid(stepName: string, usage: string): string {
-    return `The ${stepName} step takes ${usage}.`;
+    return usage.length === 0 ? `The ${stepName} step takes no values.` : `The ${stepName} step takes ${usage}.`;
+  }
+
+  public static formatCheckoutChanged(changes: readonly string[]): string {
+    return [
+      "The checkout has changed or untracked files:",
+      ...changes,
+      "What runs before this step must leave every tracked file as committed and write only to ignored paths: undo the change, or ignore the output in .gitignore."
+    ].join(Resources.lineSeparator);
+  }
+
+  public static formatGitAttributesLineMissing(filePath: string, line: string): string {
+    return `${filePath} at the checkout's root must hold the line "${line}"; add it.`;
+  }
+
+  public static formatCrlfLineEndings(filePath: string): string {
+    return `${JSON.stringify(filePath)} has CRLF line endings; convert them to LF.`;
+  }
+
+  public static formatMixedLineEndings(filePath: string): string {
+    return `${JSON.stringify(filePath)} mixes CRLF and LF line endings; convert them to LF.`;
+  }
+
+  public static formatFinalNewlineMissing(filePath: string): string {
+    return `${JSON.stringify(filePath)} does not end with a newline; add one.`;
+  }
+
+  public static formatFinalBlankLine(filePath: string): string {
+    return `${JSON.stringify(filePath)} ends with a blank line; remove it, so the file ends with exactly one newline.`;
+  }
+
+  public static formatLineEndingsChecked(filePath: string, line: string, fileCount: number): string {
+    return `${filePath} holds "${line}", and the ${fileCount} tracked text files use LF line endings and end with exactly one newline.`;
   }
 
   public static formatCommitInvalid(text: string): string {

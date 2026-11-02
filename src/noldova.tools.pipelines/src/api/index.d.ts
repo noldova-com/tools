@@ -352,6 +352,46 @@ export declare class StepResult {
 }
 
 /**
+ * A file a checkout tracks, as {@link Git.listTrackedFilesAsync} lists it.
+ */
+export declare class TrackedFile {
+  /**
+   * The file's path from the working directory, with `/` between folders.
+   */
+  public readonly filePath: string;
+
+  /**
+   * The line endings of the file's committed content, as git names them:
+   * `"lf"`, `"crlf"`, `"mixed"`, `"none"` for text without a line ending,
+   * `"-text"` for content git sees as binary, or `""` for an entry without
+   * content of its own, such as a submodule.
+   */
+  public readonly lineEndings: string;
+
+  /**
+   * Whether the file is text: not a symbolic link, not an entry without
+   * content of its own, not binary as git sees its content, and not marked
+   * `-text`, or `binary`, in `.gitattributes`.
+   */
+  public readonly isText: boolean;
+
+  /**
+   * Creates a tracked file.
+   *
+   * @param filePath The file's path from the working directory.
+   * @param lineEndings The line endings of its committed content.
+   * @param isText Whether the file is text.
+   * @example
+   * ```ts
+   * import { TrackedFile } from "@noldova/tools.pipelines";
+   *
+   * new TrackedFile("README.md", "lf", true).isText; // true
+   * ```
+   */
+  public constructor(filePath: string, lineEndings: string, isText: boolean);
+}
+
+/**
  * A package and the path of its archive, as {@link ArchiveStep} checked it.
  */
 export declare class PackageArchive {
@@ -424,7 +464,7 @@ export declare interface IStep {
 
   /**
    * The values the step takes, as a usage line shows them, such as
-   * `"<version> <commit>"`.
+   * `"<version> <commit>"`; `""` for a step that takes none.
    */
   readonly usage: string;
 
@@ -785,6 +825,61 @@ export declare class Git {
    * ```
    */
   public listFilesAsync(commit: string, folderPath: string): Promise<readonly string[]>;
+
+  /**
+   * Lists what `git status --porcelain` lists: the checkout's changed,
+   * staged and untracked paths, outside the ignored ones.
+   *
+   * @returns A promise of each line git writes, such as ` M README.md` or
+   * `?? notes.txt`, with paths from the repository's root as git quotes
+   * them; none for a checkout as committed. It rejects with
+   * {@link ProcessException} if git cannot start or fails otherwise, such as
+   * outside a clone.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * await git.listChangesAsync(); // [] in a checkout as committed
+   * ```
+   */
+  public listChangesAsync(): Promise<readonly string[]>;
+
+  /**
+   * Lists the files the index tracks in the working directory and the
+   * folders inside it.
+   *
+   * @returns A promise of each file, in git's order, with its line endings
+   * and whether it is text; none when the index tracks no file there. It
+   * rejects with {@link ProcessException} if git cannot start or fails
+   * otherwise, such as outside a clone.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * (await git.listTrackedFilesAsync()).filter(t => t.isText).length; // the number of tracked text files
+   * ```
+   */
+  public listTrackedFilesAsync(): Promise<readonly TrackedFile[]>;
+
+  /**
+   * Reads the last bytes of a file as the checkout holds it.
+   *
+   * @param filePath The file's path from the working directory.
+   * @param byteCount How many bytes to read from the file's end.
+   * @returns A promise of the file's last `byteCount` bytes, or all of them
+   * for a shorter file. It rejects with the file system's error if the file
+   * cannot be read, such as when the checkout does not hold it.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const git = new Git(new ProcessRunner(), process.cwd());
+   * (await git.readCheckoutFileEndAsync("README.md", 2)).toString("utf8"); // ".\n"
+   * ```
+   */
+  public readCheckoutFileEndAsync(filePath: string, byteCount: number): Promise<Buffer>;
 
   /**
    * Reads a file as a commit holds it.
@@ -1484,6 +1579,119 @@ export declare class TagStep implements IStep {
    * const step = new TagStep(host);
    * (await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message; // "Tagged commit 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 as v0.0.4."
    * (await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message; // "v0.0.4 already points to commit 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that checks the line endings of the files a checkout tracks:
+ * `line-endings`, which takes no values. It succeeds only when
+ * `.gitattributes` at the checkout's root holds the line
+ * `* text=auto eol=lf`, and every tracked text file uses LF line endings and
+ * ends with exactly one newline. It skips the files that are not text, as
+ * {@link TrackedFile.isText} tells.
+ */
+export declare class LineEndingsStep implements IStep {
+  /**
+   * The step's name, `"line-endings"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes: none, `""`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step over a checkout.
+   *
+   * @param git The reader of the clone, whose working directory is the
+   * checkout's root, or the folder whose files the step checks.
+   * @example
+   * ```ts
+   * import { Git, LineEndingsStep, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const step = new LineEndingsStep(new Git(new ProcessRunner(), process.cwd()));
+   * step.name; // "line-endings"
+   * ```
+   */
+  public constructor(git: Git);
+
+  /**
+   * Checks the line endings.
+   *
+   * @param values None.
+   * @returns A promise of the result: succeeded, such as
+   * `.gitattributes holds "* text=auto eol=lf", and the 12 tracked text
+   * files use LF line endings and end with exactly one newline.`, or failed
+   * when values are given, when git lists no tracked file, or with one line
+   * for each thing that is wrong, naming the file and the fix: a
+   * `.gitattributes` without the line, a file whose committed content has
+   * CRLF or mixed line endings, a file that does not end with a newline, and
+   * a file that ends with a blank line. It reads the files' ends from the
+   * checkout, and rejects with {@link ProcessException} if git cannot start
+   * or fails otherwise, such as outside a clone, and with the file system's
+   * error if a tracked file is missing from the checkout.
+   * @example
+   * ```ts
+   * import { Git, LineEndingsStep, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const step = new LineEndingsStep(new Git(new ProcessRunner(), process.cwd()));
+   * const result = await step.runAsync([]);
+   * result.message; // "\"README.md\" does not end with a newline; add one." when it does not
+   * (await step.runAsync(["src"])).message; // "The line-endings step takes no values."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that checks that a checkout is as committed: `unchanged`, which
+ * takes no values. Run after a build and its tests, it finds the tracked
+ * files they changed and the files they wrote outside the ignored paths.
+ */
+export declare class UnchangedStep implements IStep {
+  /**
+   * The step's name, `"unchanged"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes: none, `""`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step over a checkout.
+   *
+   * @param git The reader of the clone.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner, UnchangedStep } from "@noldova/tools.pipelines";
+   *
+   * const step = new UnchangedStep(new Git(new ProcessRunner(), process.cwd()));
+   * step.name; // "unchanged"
+   * ```
+   */
+  public constructor(git: Git);
+
+  /**
+   * Checks that the checkout has no changed or untracked file.
+   *
+   * @param values None.
+   * @returns A promise of the result: succeeded,
+   * `The checkout has no changed or untracked file.`, when `git status
+   * --porcelain` lists nothing, or failed when values are given, or with
+   * each path git lists, as it lists them, and how to fix it. It rejects with
+   * {@link ProcessException} if git cannot start or fails otherwise, such as
+   * outside a clone.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner, UnchangedStep } from "@noldova/tools.pipelines";
+   *
+   * const step = new UnchangedStep(new Git(new ProcessRunner(), process.cwd()));
+   * (await step.runAsync([])).isSuccessful; // true in a checkout as committed
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

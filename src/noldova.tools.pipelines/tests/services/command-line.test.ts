@@ -88,6 +88,17 @@ export class CommandLineTests {
   }
 
   @TestMethod
+  public async writesAStepThatTakesNoValuesByItsNameAloneAsync(): Promise<void> {
+    const output = new RecordingOutput();
+    const unchanged = new RecordingStep("unchanged", "", StepResult.succeeded("Unchanged."));
+    const source = new RecordingStep("source", "<version> <commit>", StepResult.succeeded("Source checked."));
+
+    await new CommandLine("pipelines", [unchanged, source], output).runAsync([]);
+
+    Assert.areEqual("[\"failure: Usage: pipelines unchanged | source <version> <commit>\"]", JSON.stringify(output.lines));
+  }
+
+  @TestMethod
   public async rejectsWithTheFaultOfAStepAsync(): Promise<void> {
     const output = new RecordingOutput();
     const fault = new ProcessException("git");

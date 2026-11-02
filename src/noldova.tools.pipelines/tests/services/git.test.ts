@@ -125,6 +125,49 @@ export class GitTests {
   }
 
   @TestMethod
+  public async listsNoChangeForACheckoutAsCommittedAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.commit({ "README.md": "Read me.\n" });
+
+    Assert.areEqual(0, (await GitTests.createGit(repository).listChangesAsync()).length);
+  }
+
+  @TestMethod
+  public async listsEachChangeAsGitWritesItAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.commit({ "README.md": "Read me.\n" });
+    repository.write({ "README.md": "Changed.\n", "notes.txt": "notes\n" });
+
+    Assert.areEqual("[\" M README.md\",\"?? notes.txt\"]", JSON.stringify(await GitTests.createGit(repository).listChangesAsync()));
+  }
+
+  @TestMethod
+  public async listsEachTrackedFileWithItsLineEndingsAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ "crlf.txt": "a\r\n", "mixed.txt": "a\r\nb\n" });
+    repository.commit({ ".gitattributes": "* text=auto eol=lf\n*.png -text\n*.dat binary\n", "a b.txt": "a\n", "empty.txt": "", "image.png": "a\n", "data.dat": "a\n", "data.bin": "a\0b" });
+    repository.addSymbolicLink("link", "a.txt");
+    repository.addSubmodule("module", commit);
+
+    const files = await GitTests.createGit(repository).listTrackedFilesAsync();
+
+    Assert.areEqual(
+      ".gitattributes lf text|a b.txt lf text|crlf.txt crlf text|data.bin -text|data.dat lf|empty.txt none text|image.png lf|link |mixed.txt mixed text|module ",
+      files.map(t => `${t.filePath} ${t.lineEndings}${t.isText ? " text" : ""}`).join("|"));
+  }
+
+  @TestMethod
+  public async readsTheEndOfAFileAsTheCheckoutHoldsItAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.write({ "a.txt": "abc\n", "b.txt": "b", "empty.txt": "" });
+    const git = GitTests.createGit(repository);
+
+    Assert.areEqual("c\n", (await git.readCheckoutFileEndAsync("a.txt", 2)).toString("utf8"));
+    Assert.areEqual("b", (await git.readCheckoutFileEndAsync("b.txt", 2)).toString("utf8"));
+    Assert.areEqual(0, (await git.readCheckoutFileEndAsync("empty.txt", 2)).length);
+  }
+
+  @TestMethod
   public async readsAFileAsTheCommitHoldsItAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const first = repository.commit({ "version.json": "{\n  \"version\": \"0.0.3\"\n}\n" });
