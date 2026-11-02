@@ -6,8 +6,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { ProcessException } from "../exceptions/process.exception.js";
 import type { ProcessResult } from "../models/process-result.js";
+import { TrackedFile } from "../models/tracked-file.js";
 import { Resources } from "../resources.js";
 import type { ProcessRunner } from "./process-runner.js";
 
@@ -40,6 +44,36 @@ export class Git {
     return output.split(Resources.gitFileSeparator).filter(t => t.length > 0);
   }
 
+  public async listChangesAsync(): Promise<readonly string[]> {
+    const output = await this.readAsync(Resources.gitListChangesValues);
+
+    return output.split(Resources.lineSeparator).filter(t => t.length > 0);
+  }
+
+  public async listTrackedFilesAsync(): Promise<readonly TrackedFile[]> {
+    const output = await this.readAsync(Resources.gitListTrackedFilesValues);
+
+    return output.split(Resources.gitFileSeparator).filter(t => t.length > 0).map(t => Git.readTrackedFile(t));
+  }
+
+  public async readCheckoutFileEndAsync(filePath: string, byteCount: number): Promise<Buffer | null> {
+    const fullPath = path.join(this.workingDirectory, filePath);
+    if (fs.statSync(fullPath, { throwIfNoEntry: false })?.isFile() !== true)
+      return null;
+
+    const file = await fs.promises.open(fullPath);
+    try {
+      const { size } = await file.stat();
+      const length = Math.min(size, byteCount);
+      const { buffer } = await file.read(Buffer.alloc(length), 0, length, size - length);
+
+      return buffer;
+    }
+    finally {
+      await file.close();
+    }
+  }
+
   public async readFileAsync(commit: string, filePath: string): Promise<string> {
     return await this.readAsync([...Resources.gitReadFileValues, Resources.formatGitFileRevision(commit, filePath)]);
   }
@@ -70,6 +104,17 @@ export class Git {
 
   private async runAsync(values: readonly string[]): Promise<ProcessResult> {
     return await this.processRunner.runAsync(Resources.gitProgram, values, this.workingDirectory);
+  }
+
+  private static readTrackedFile(entry: string): TrackedFile {
+    const infoStart = entry.indexOf(Resources.gitEntrySeparator) + 1;
+    const pathStart = entry.indexOf(Resources.gitEntrySeparator, infoStart) + 1;
+    const [mode] = entry.slice(0, infoStart).split(Resources.gitModeSeparator);
+    const [indexInfo = "", ...otherInfo] = entry.slice(infoStart, pathStart).trim().split(Resources.gitLineEndingsSeparator);
+    const lineEndings = indexInfo.slice(Resources.gitLineEndingsPrefix.length);
+    const isText = mode !== Resources.gitSymbolicLinkMode && lineEndings.length > 0 && lineEndings !== Resources.gitNotTextLineEndings && !otherInfo.includes(Resources.gitNotTextAttribute);
+
+    return new TrackedFile(entry.slice(pathStart), lineEndings, isText);
   }
 
   private static failed(values: readonly string[], result: ProcessResult): ProcessException {

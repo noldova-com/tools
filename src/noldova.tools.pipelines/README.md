@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune` and `tag`.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `line-endings` and `unchanged`.
 
 ## Install
 
@@ -195,6 +195,35 @@ result.message; // "Tagged commit 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 as v0
 - It creates the tag when the host has none, and succeeds, such as `Tagged commit 225059f… as v0.0.4.`
 - When the tag is already there, such as from a rerun or from another run that made it first, it succeeds if the tag points to the commit, and otherwise fails, naming both commits; it never moves or deletes a tag.
 - A failed answer of the host is the step's result.
+
+### The line-endings step
+
+`line-endings` takes no values and checks the files the checkout tracks, in the working directory and the folders inside it.
+
+```ts
+import { Git, LineEndingsStep, ProcessRunner } from "@noldova/tools.pipelines";
+
+const result = await new LineEndingsStep(new Git(new ProcessRunner(), process.cwd())).runAsync([]);
+result.message; // ".gitattributes holds \"* text=auto eol=lf\", and the 12 tracked text files use LF line endings and end with exactly one newline."
+```
+
+- `.gitattributes` at the checkout's root holds the line `* text=auto eol=lf`.
+- Every tracked text file's committed content uses LF line endings, and the file in the checkout ends with exactly one newline; a tracked file the checkout doesn't hold is a failure.
+- It reads the files' ends from the checkout, so a pipeline runs it on a checkout as committed, before the build.
+- It skips symbolic links, submodules, files git sees as binary and files `.gitattributes` marks `-text` or `binary`.
+- It fails with one line for each thing that is wrong, naming the file and the fix, and fails when git lists no tracked file.
+
+### The unchanged step
+
+`unchanged` takes no values and checks that the checkout is as committed, such as after a build and its tests: `git status --porcelain` lists nothing.
+It fails with each path git lists, changed, staged or untracked outside the ignored paths, and says to undo the change or ignore the output in `.gitignore`.
+
+```ts
+import { Git, ProcessRunner, UnchangedStep } from "@noldova/tools.pipelines";
+
+const result = await new UnchangedStep(new Git(new ProcessRunner(), process.cwd())).runAsync([]);
+result.message; // "The checkout has no changed or untracked file."
+```
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 
