@@ -20,28 +20,30 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
+  build-and-test:
+    name: Build and test
+    uses: noldova-com/.github/.github/workflows/build-and-test.yml@4104a6ab630213d661a3a8fc10db1224149caa9f # v2.1.0
+    permissions:
+      contents: read
+      packages: read
+    with:
+      targets: linux-x64
+      publishes: true
+      tool-from-source: true
+
   versions:
     name: Versions
-    uses: noldova-com/.github/.github/workflows/versions.yml@6e2ab8efb06aff6f0fdb9c4ac91c623c74359c30 # v1.0.0
+    uses: noldova-com/.github/.github/workflows/versions.yml@4104a6ab630213d661a3a8fc10db1224149caa9f # v2.1.0
     permissions: {}
     with:
       targets: linux-x64
 
-  build-and-test:
-    name: ${{ matrix.name }}
+  version-check:
+    name: Version check
     needs: versions
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: Linux x64, target: linux-x64 }
-    runs-on: ${{ fromJSON(needs.versions.outputs[format('runs-on-{0}', matrix.target)]) }}
-    timeout-minutes: 30
+    runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
+    timeout-minutes: 10
     steps:
       - name: Check out the revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,117 +55,9 @@ jobs:
         with:
           node-version: ${{ needs.versions.outputs.node-version }}
           package-manager-cache: false
-          registry-url: ${{ needs.versions.outputs.install-registry-url }}
-          scope: ${{ needs.versions.outputs.install-scope }}
-
-      - name: Verify the toolchain
-        env:
-          NODE_VERSION: ${{ needs.versions.outputs.node-version }}
-          NPM_VERSION: ${{ needs.versions.outputs.npm-version }}
-        run: |
-          node --version
-          npm --version
-          test "$(node --version)" = "v$NODE_VERSION"
-          if [ -n "$NPM_VERSION" ]; then
-            test "$(npm --version)" = "$NPM_VERSION"
-          fi
-
-      - name: Check .gitattributes and the line endings
-        run: |
-          node --input-type=module <<'SCRIPT'
-          import { spawnSync } from "node:child_process";
-
-          const git = (args, input) => spawnSync("git", args, { input, maxBuffer: 1024 * 1024 * 1024 });
-          const quote = name => /^[\w./@+,:=%-]+$/.test(name) ? name : JSON.stringify(name);
-          const listFiles = args => {
-            const result = git(["ls-files", "-z", ...args]);
-            if (result.error || result.status !== 0) {
-              console.log("::error::Git could not list the tracked files.");
-              process.exit(1);
-            }
-            return result.stdout.toString("utf8").split("\0").filter(entry => entry !== "");
-          };
-          let failed = false;
-
-          const attributes = git(["cat-file", "blob", ":0:.gitattributes"]);
-          const attributeLines = attributes.status === 0 ? attributes.stdout.toString("utf8").split("\n") : [];
-          if (!attributeLines.includes("* text=auto eol=lf")) {
-            console.log(".gitattributes lacks the line: * text=auto eol=lf");
-            failed = true;
-          }
-
-          const objects = new Map();
-          for (const entry of listFiles(["--stage"])) {
-            const tab = entry.indexOf("\t");
-            const [mode, id] = entry.slice(0, tab).split(" ");
-            objects.set(entry.slice(tab + 1), { mode, id });
-          }
-          const entries = listFiles(["--eol"]);
-          if (entries.length === 0) {
-            console.log("::error::Git listed no tracked files to check.");
-            process.exit(1);
-          }
-
-          const blobs = [];
-          for (const entry of entries) {
-            const tab = entry.indexOf("\t");
-            const info = entry.slice(0, tab);
-            const file = entry.slice(tab + 1);
-            const committedEol = info.split(" ")[0];
-            const object = objects.get(file);
-            if (committedEol === "i/-text" || object.mode === "120000")
-              continue;
-            if (info.includes("attr/-text"))
-              continue;
-            if (committedEol === "i/crlf" || committedEol === "i/mixed") {
-              console.log(`Not LF only: ${quote(file)}`);
-              failed = true;
-              continue;
-            }
-            blobs.push({ file, id: object.id });
-          }
-
-          if (blobs.length > 0) {
-            const batch = git(["cat-file", "--batch"], blobs.map(blob => blob.id).join("\n") + "\n");
-            if (batch.error || batch.status !== 0) {
-              console.log("::error::Git could not read the tracked files.");
-              process.exit(1);
-            }
-            const output = batch.stdout;
-            let position = 0;
-            for (const { file } of blobs) {
-              const headerEnd = output.indexOf(10, position);
-              const header = output.toString("utf8", position, headerEnd).split(" ");
-              if (header[1] !== "blob") {
-                console.log(`::error::Git could not read ${quote(file)}.`);
-                process.exit(1);
-              }
-              const start = headerEnd + 1;
-              const end = start + Number(header[2]);
-              const ending = output.subarray(Math.max(start, end - 2), end);
-              position = end + 1;
-              if (ending.length === 2 && ending[0] === 10 && ending[1] === 10) {
-                console.log(`Ends with a blank line: ${quote(file)}`);
-                failed = true;
-              }
-              else if (ending.length === 0 || ending[ending.length - 1] !== 10) {
-                console.log(`Does not end with a newline: ${quote(file)}`);
-                failed = true;
-              }
-            }
-          }
-
-          if (failed) {
-            console.log('::error::.gitattributes must hold "* text=auto eol=lf", and every tracked text file must use LF line endings and end with exactly one newline.');
-            process.exit(1);
-          }
-          console.log('.gitattributes holds "* text=auto eol=lf", and every tracked text file uses LF line endings and ends with exactly one newline.');
-          SCRIPT
-
-      - name: Build the packages
-        run: npm run build
 
       - name: Check that the build refuses a version that isn't one
+        shell: bash
         run: |
           if output="$(npm run build -- --version 01.0.0 2>&1)"; then
             printf '%s\n' "$output"
@@ -177,63 +71,13 @@ jobs:
           fi
           echo "The build refused --version 01.0.0 with the published Version's message."
 
-      - name: Test the packages
-        run: npm run test -- --skip-test-details --skip-coverage-details
-
-      - name: Check that tracked files are unchanged
+      - name: Check that the refused build left the checkout unchanged
+        shell: bash
         run: |
           changes="$(git status --porcelain)"
-          if [ -n "$changes" ]; then
+          if [[ -n "$changes" ]]; then
             printf '%s\n' "$changes"
-            echo '::error::The build and the tests must change no tracked file and leave no untracked file outside the ignored outputs.'
+            echo '::error::The refused build changed or added files in the checkout.'
             exit 1
           fi
-          echo 'The build and the tests changed no tracked file.'
-
-      - name: Check that a second build packs the same archives
-        run: |
-          shopt -s failglob
-          git worktree add --quiet --detach "$RUNNER_TEMP/rebuild" HEAD
-          (cd "$RUNNER_TEMP/rebuild" && npm run build)
-          (cd _packages && sha512sum *.tgz) > "$RUNNER_TEMP/first.sha512"
-          (cd "$RUNNER_TEMP/rebuild/_packages" && sha512sum *.tgz) > "$RUNNER_TEMP/second.sha512"
-          echo 'The first build:'
-          cat "$RUNNER_TEMP/first.sha512"
-          echo 'The second build:'
-          cat "$RUNNER_TEMP/second.sha512"
-          if ! cmp --quiet "$RUNNER_TEMP/first.sha512" "$RUNNER_TEMP/second.sha512"; then
-            echo '::error::A second build of the same commit, in another folder, must pack byte-identical archives, so that rerunning a release publishes nothing new.'
-            exit 1
-          fi
-          echo 'A second build of the same commit, in another folder, packed byte-identical archives.'
-
-      - name: Check the archives as the release workflow does
-        env:
-          RELEASE_SCOPE: ${{ needs.versions.outputs.publish-scope }}
-        run: |
-          shopt -s failglob
-          mkdir "$RUNNER_TEMP/release-archives"
-          cp _packages/*.tgz "$RUNNER_TEMP/release-archives/"
-          npm install --prefix "$RUNNER_TEMP/release-tool" --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP"/release-archives/*.tgz
-          commit="$(git rev-parse HEAD)"
-          version="$(node -p 'require("./version.json").version')"
-          git worktree add --quiet --detach "$RUNNER_TEMP/release-checkout" "$commit"
-          cd "$RUNNER_TEMP/release-checkout"
-          "$RUNNER_TEMP/release-tool/node_modules/.bin/pipelines" archive "$RUNNER_TEMP/release-archives" "$version" "$commit" "$RELEASE_SCOPE"
-
-  all-targets:
-    name: All targets
-    needs: [versions, build-and-test]
-    if: always()
-    runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
-    timeout-minutes: 5
-    permissions: {}
-    steps:
-      - name: Require every target to pass
-        env:
-          VERSIONS_RESULT: ${{ needs.versions.result }}
-          RESULT: ${{ needs.build-and-test.result }}
-        run: |
-          echo "The versions' result: $VERSIONS_RESULT; the targets' result: $RESULT"
-          test "$VERSIONS_RESULT" = success
-          test "$RESULT" = success
+          echo 'The checkout has no changed or untracked file.'
