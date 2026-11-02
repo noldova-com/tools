@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `line-endings` and `unchanged`.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings` and `unchanged`.
 
 ## Install
 
@@ -195,6 +195,21 @@ result.message; // "Tagged commit 225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8 as v0
 - It creates the tag when the host has none, and succeeds, such as `Tagged commit 225059f… as v0.0.4.`
 - When the tag is already there, such as from a rerun or from another run that made it first, it succeeds if the tag points to the commit, and otherwise fails, naming both commits; it never moves or deletes a tag.
 - A failed answer of the host is the step's result.
+
+### The toolchain step
+
+`toolchain <node-version> [<npm-version>]` checks that the Node.js running it is `<node-version>` and, when given, that `npm --version` prints `<npm-version>`; an empty npm version checks none.
+
+```ts
+import { Npm, ProcessRunner, ToolchainStep } from "@noldova/tools.pipelines";
+
+const step = new ToolchainStep(new Npm(new ProcessRunner(), process.cwd()), process.version);
+const result = await step.runAsync(["24.21.0", "11.19.0"]);
+result.message; // "Node.js v24.21.0 and npm 11.19.0 run this step."
+```
+
+- Each version is exact, `major.minor.patch`; anything else, such as `24` or `v24.21.0`, fails before anything is read.
+- It fails with one line for each version that differs, naming the version found, the one expected and the fix.
 
 ### The line-endings step
 

@@ -20,6 +20,7 @@ export class Resources {
   public static readonly crlfLineEndings: string = "crlf";
   public static readonly dependenciesField: string = "dependencies";
   public static readonly failureExitCode: number = 1;
+  public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
   public static readonly fileEndByteCount: number = 2;
   public static readonly gitAttributesFilePath: string = ".gitattributes";
   public static readonly gitAttributesLine: string = "* text=auto eol=lf";
@@ -68,6 +69,7 @@ export class Resources {
   public static readonly nightlyStepName: string = "nightly";
   public static readonly nightlyStepUsage: string = "<commit> <registry>";
   public static readonly nightlyTag: string = "nightly";
+  public static readonly nodeVersionPrefix: string = "v";
   public static readonly npmAccessValues: readonly string[] = ["--access"];
   public static readonly npmIntegrityField: string = "dist.integrity";
   public static readonly npmNotFoundCode: string = "E404";
@@ -77,6 +79,7 @@ export class Resources {
   public static readonly npmRegistryHostName: string = "registry.npmjs.org";
   public static readonly npmRegistryValues: readonly string[] = ["--registry"];
   public static readonly npmTagValues: readonly string[] = ["--tag"];
+  public static readonly npmVersionValues: readonly string[] = ["--version"];
   public static readonly npmViewValues: readonly string[] = ["view"];
   public static readonly packagesFolderPath: string = "src";
   public static readonly patchPartName: string = "patch";
@@ -105,6 +108,8 @@ export class Resources {
   public static readonly unchangedStepName: string = "unchanged";
   public static readonly unchangedStepUsage: string = "";
   public static readonly textEncoding: BufferEncoding = "utf8";
+  public static readonly toolchainStepName: string = "toolchain";
+  public static readonly toolchainStepUsage: string = "<node-version> [<npm-version>]";
   public static readonly urlCredentialsPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
   public static readonly urlQueryPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/[^\s?#]*)[?#]\S*/gi;
   public static readonly usageSeparator: string = " | ";
@@ -114,6 +119,9 @@ export class Resources {
   public static readonly versionInvalid: string = "The text is not a version.";
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
+  public static readonly windowsNpmVersionValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd --version"];
+  public static readonly windowsPlatform: string = "win32";
+  public static readonly windowsShellProgram: string = "cmd.exe";
 
   public static formatVersionInvalid(text: string): string {
     return `"${text}" is not a version: a version is major.minor.patch, each a whole number without a leading zero, such as 1.4.0, or a nightly version, major.minor.patch-nightly.YYYYMMDD, such as 1.4.1-nightly.20261101.`;
@@ -173,6 +181,26 @@ export class Resources {
 
   public static formatLineEndingsChecked(filePath: string, line: string, fileCount: number): string {
     return `${filePath} holds "${line}", and the ${fileCount} tracked text files use LF line endings and end with exactly one newline.`;
+  }
+
+  public static formatExactVersionInvalid(text: string): string {
+    return `"${text}" is not an exact version: write major.minor.patch, such as 24.21.0.`;
+  }
+
+  public static formatNodeVersionDiffers(found: string, expected: string): string {
+    return `Node.js ${found} runs this step, not ${Resources.nodeVersionPrefix}${expected}; set up Node.js ${expected} before it.`;
+  }
+
+  public static formatNpmVersionDiffers(found: string, expected: string): string {
+    return `npm ${found} runs this step, not ${expected}; install npm ${expected} before it.`;
+  }
+
+  public static formatToolchainChecked(nodeVersion: string, npmVersion: string | null): string {
+    return npmVersion === null ? `Node.js ${nodeVersion} runs this step; npm is not checked.` : `Node.js ${nodeVersion} and npm ${npmVersion} run this step.`;
+  }
+
+  public static formatNpmVersionFailed(exitCode: number | null, errorOutput: string): string {
+    return Resources.formatProcessFailed(`${Resources.npmProgram}${Resources.valueSeparator}${Resources.npmVersionValues.join(Resources.valueSeparator)}`, exitCode, errorOutput);
   }
 
   public static formatCommitInvalid(text: string): string {

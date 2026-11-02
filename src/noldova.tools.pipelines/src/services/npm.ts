@@ -8,6 +8,7 @@
 
 import path from "node:path";
 
+import { ProcessException } from "../exceptions/process.exception.js";
 import type { ProcessResult } from "../models/process-result.js";
 import { StepResult } from "../models/step-result.js";
 import { Resources } from "../resources.js";
@@ -16,10 +17,12 @@ import type { ProcessRunner } from "./process-runner.js";
 export class Npm {
   private readonly processRunner: ProcessRunner;
   private readonly workingDirectory: string;
+  private readonly platform: string;
 
-  public constructor(processRunner: ProcessRunner, workingDirectory: string) {
+  public constructor(processRunner: ProcessRunner, workingDirectory: string, platform: string = process.platform) {
     this.processRunner = processRunner;
     this.workingDirectory = workingDirectory;
+    this.platform = platform;
   }
 
   public async viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult> {
@@ -40,6 +43,16 @@ export class Npm {
     const values = [...Resources.npmPublishValues, path.resolve(archivePath), ...Resources.npmTagValues, tag, ...Resources.npmAccessValues, access, ...Resources.npmRegistryValues, registry];
 
     return await this.runAsync(values);
+  }
+
+  public async readVersionAsync(): Promise<string> {
+    const result = this.platform === Resources.windowsPlatform
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmVersionValues, this.workingDirectory)
+      : await this.runAsync(Resources.npmVersionValues);
+    if (!result.isSuccessful)
+      throw new ProcessException(Resources.npmProgram, Resources.formatNpmVersionFailed(result.exitCode, result.errorOutput));
+
+    return result.output.trim();
   }
 
   public static isRegistry(text: string): boolean {
