@@ -41,7 +41,7 @@ export class PipelinesBinTests {
     Assert.areEqual(1, run.exitCode);
     Assert.areEqual("", run.standardOutput);
     Assert.areEqual(
-      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | tag <version> <commit>\n",
+      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit>\n",
       run.standardError);
   }
 

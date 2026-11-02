@@ -6,9 +6,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { ArchiveStep, CommandLine, Git, type IStepOutput, NightlyStep, Npm, ProcessRunner, PublishStep, SourceStep, TagStep, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, CommandLine, Git, type IStepOutput, NightlyStep, Npm, ProcessRunner, PruneStep, PublishStep, SourceStep, TagStep, Tar } from "@noldova/tools.pipelines";
 
 import { Resources } from "../resources.js";
+import { GitHubPackages } from "./github-packages.js";
 import { GitHubTags } from "./github-tags.js";
 
 export class PipelinesProgram {
@@ -23,7 +24,7 @@ export class PipelinesProgram {
     const git = new Git(processRunner, process.cwd());
     const npm = new Npm(processRunner, process.cwd());
     const archiveStep = new ArchiveStep(git, new Tar(processRunner));
-    const steps = [new SourceStep(git), archiveStep, new PublishStep(archiveStep, npm), new NightlyStep(git, archiveStep, npm), new TagStep(new GitHubTags(process.env))];
+    const steps = [new SourceStep(git), archiveStep, new PublishStep(archiveStep, npm), new NightlyStep(git, archiveStep, npm), new PruneStep(git, archiveStep, new GitHubPackages(process.env)), new TagStep(new GitHubTags(process.env))];
 
     return new CommandLine(Resources.programName, steps, this.output).runAsync(values);
   }

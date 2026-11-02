@@ -11,6 +11,7 @@ import { type ITagHost, StepResult } from "@noldova/tools.pipelines";
 import { GitHubAnswer } from "../models/github-answer.js";
 import { GitHubConnection } from "../models/github-connection.js";
 import { Resources } from "../resources.js";
+import { GitHubApi } from "./github-api.js";
 
 export class GitHubTags implements ITagHost {
   private readonly environment: Readonly<Record<string, string | undefined>>;
@@ -79,19 +80,6 @@ export class GitHubTags implements ITagHost {
   }
 
   private async requestAsync(connection: GitHubConnection, method: string, path: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer> {
-    const resource = Resources.formatResource(connection.repository, path);
-    const response = await fetch(`${connection.apiUrl}/${resource}`, {
-      method,
-      headers: {
-        [Resources.acceptHeader]: Resources.apiMediaType,
-        [Resources.authorizationHeader]: Resources.formatAuthorization(connection.token),
-        [Resources.apiVersionHeader]: Resources.apiVersion,
-        ...(body === undefined ? {} : { [Resources.contentTypeHeader]: Resources.jsonContentType })
-      },
-      signal: AbortSignal.timeout(this.timeoutMilliseconds),
-      ...(body === undefined ? {} : { body: JSON.stringify(body) })
-    });
-
-    return new GitHubAnswer(method, resource, response.status, response.statusText, response.headers.get(Resources.contentTypeHeader) ?? "", await response.text());
+    return new GitHubApi(connection.apiUrl, connection.token, this.timeoutMilliseconds).requestAsync(method, Resources.formatResource(connection.repository, path), body);
   }
 }

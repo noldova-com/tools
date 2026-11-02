@@ -6,8 +6,8 @@ Development tools from Noldova.
 
 | Package | What it is |
 |---|---|
-| `@noldova/tools.pipelines` | The steps of a build and release pipeline that work the same on any host: checks of the commit and its version, checks of the packed archives, and publishing them to npm |
-| `@noldova/tools.pipelines.github` | Runs those steps on GitHub Actions: the command line a workflow calls, GitHub's environment, tags and annotations |
+| `@noldova/tools.pipelines` | The steps of a build and release pipeline that work the same on any host: checks of the commit and its version, checks of the packed archives, publishing them to npm, and keeping a registry's newest versions |
+| `@noldova/tools.pipelines.github` | Runs those steps on GitHub Actions: the command line a workflow calls, GitHub's environment, tags, GitHub Packages' versions and annotations |
 
 [documents/ARCHITECTURE.md](documents/ARCHITECTURE.md) lists what each package owns.
 Each package lives in `src/`, in a folder named after it, such as `src/noldova.tools.pipelines` for `@noldova/tools.pipelines`, and its README says how to install and use it.
@@ -26,7 +26,7 @@ npm test
 
 `npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing`, `@noldova/context.json`, which the build and the packages read JSON with, and the published `@noldova/tools.pipelines` 0.0.1 as `tools.pipelines.published`, whose `Version` checks the `--version` option, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
 Under that name it stays apart from the `@noldova/tools.pipelines` that the build installs into `node_modules`.
-Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.1" }`, or from the `--version` option, such as for a nightly version:
+Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.2" }`, or from the `--version` option, such as for a nightly version:
 
 ```bash
 npm run build -- --version 0.0.5-nightly.20261102
