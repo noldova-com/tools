@@ -119,6 +119,9 @@ export class Resources {
   public static readonly versionInvalid: string = "The text is not a version.";
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
+  public static readonly windowsNpmVersionValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd --version"];
+  public static readonly windowsPlatform: string = "win32";
+  public static readonly windowsShellProgram: string = "cmd.exe";
 
   public static formatVersionInvalid(text: string): string {
     return `"${text}" is not a version: a version is major.minor.patch, each a whole number without a leading zero, such as 1.4.0, or a nightly version, major.minor.patch-nightly.YYYYMMDD, such as 1.4.1-nightly.20261101.`;

@@ -17,10 +17,12 @@ import type { ProcessRunner } from "./process-runner.js";
 export class Npm {
   private readonly processRunner: ProcessRunner;
   private readonly workingDirectory: string;
+  private readonly platform: string;
 
-  public constructor(processRunner: ProcessRunner, workingDirectory: string) {
+  public constructor(processRunner: ProcessRunner, workingDirectory: string, platform: string = process.platform) {
     this.processRunner = processRunner;
     this.workingDirectory = workingDirectory;
+    this.platform = platform;
   }
 
   public async viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult> {
@@ -44,7 +46,9 @@ export class Npm {
   }
 
   public async readVersionAsync(): Promise<string> {
-    const result = await this.runAsync(Resources.npmVersionValues);
+    const result = this.platform === Resources.windowsPlatform
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmVersionValues, this.workingDirectory)
+      : await this.runAsync(Resources.npmVersionValues);
     if (!result.isSuccessful)
       throw new ProcessException(Resources.npmProgram, Resources.formatNpmVersionFailed(result.exitCode, result.errorOutput));
 

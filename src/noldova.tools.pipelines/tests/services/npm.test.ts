@@ -8,7 +8,7 @@
 
 import path from "node:path";
 
-import { Assert, TestClass, TestMethod } from "@noldova/context.testing";
+import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { Npm, ProcessException, ProcessResult, ProcessRunner } from "@noldova/tools.pipelines";
 
 class RecordingProcessRunner extends ProcessRunner {
@@ -52,15 +52,19 @@ export class NpmTests {
       processRunner.calls.join("\n"));
   }
 
+  @TestData("linux", "release: npm --version")
+  @TestData("darwin", "release: npm --version")
+  @TestData("win32", "release: cmd.exe /d /s /c npm.cmd --version")
   @TestMethod
-  public async readsItsVersionAsync(): Promise<void> {
+  public async readsItsVersionAsTheirPlatformRunsItAsync(platform: string, expected: string): Promise<void> {
     const processRunner = new RecordingProcessRunner(new ProcessResult(0, "11.19.0\n", ""));
 
-    const version = await new Npm(processRunner, "release").readVersionAsync();
+    const version = await new Npm(processRunner, "release", platform).readVersionAsync();
 
     Assert.areEqual("11.19.0", version);
-    Assert.areEqual("release: npm --version", processRunner.calls.join("\n"));
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
   }
+
 
   @TestMethod
   public async rejectsWhenReadingItsVersionFailsAsync(): Promise<void> {

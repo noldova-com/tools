@@ -115,7 +115,7 @@ export class ToolchainStepTests {
 
   @TestMethod
   public async rejectsWhenNpmCannotStartAsync(): Promise<void> {
-    const step = new ToolchainStep(new Npm(new ProcessRunner(), "tools-pipelines-missing-directory"), "v24.21.0");
+    const step = new ToolchainStep(new Npm(new ProcessRunner(), "tools-pipelines-missing-directory", "linux"), "v24.21.0");
 
     const exception = await Assert.throwsAsync(() => step.runAsync(["24.21.0", "11.19.0"]), ProcessException);
 

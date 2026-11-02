@@ -993,6 +993,9 @@ export declare class Npm {
    * @param processRunner The runner that starts `npm`.
    * @param workingDirectory The directory `npm` runs in, whose configuration
    * it reads.
+   * @param platform The platform npm runs on, as `process.platform` names it;
+   * on `win32`, where npm is a command script, it reads npm's version
+   * through `cmd.exe`. Omitted, it is `process.platform`.
    * @example
    * ```ts
    * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
@@ -1000,7 +1003,7 @@ export declare class Npm {
    * const npm = new Npm(new ProcessRunner(), process.cwd());
    * ```
    */
-  public constructor(processRunner: ProcessRunner, workingDirectory: string);
+  public constructor(processRunner: ProcessRunner, workingDirectory: string, platform?: string);
 
   /**
    * Reads a field of a package or a version from the registry, asking the
@@ -1071,7 +1074,8 @@ export declare class Npm {
   public publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult>;
 
   /**
-   * Reads the version of the npm that runs, with `npm --version`.
+   * Reads the version of the npm that runs, with `npm --version`, or on
+   * Windows `cmd.exe /d /s /c "npm.cmd --version"`, a fixed command.
    *
    * @returns A promise of the version, such as `11.19.0`. It rejects with
    * {@link ProcessException} if npm cannot start or fails.
