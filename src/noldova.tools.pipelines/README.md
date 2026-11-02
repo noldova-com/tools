@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly` and `tag`.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune` and `tag`.
 
 ## Install
 
@@ -145,6 +145,34 @@ process.exitCode = await commandLine.runAsync(["nightly", "225059f4c1e6a3b2d8f7e
 
 The step prints nothing when the last nightly version of every package the archive step expects has the commit as its `gitHead`, or is from the same UTC date, so a pipeline skips the build when the output is empty.
 It fails with one line naming the packages when only some have a nightly version from that date, and with `npm`'s exit code and message for a read of the registry that fails.
+
+### The prune step
+
+`prune <version> <commit> <scope> <registry> <keep-versions>` runs after a release on a registry that keeps only its newest versions: it deletes each package's older release versions, keeping the newest `<keep-versions>`, a whole number above 0.
+It lists and deletes versions through the host's `IRegistryHost`, which a host's package implements for its own registry, and runs only on that registry; it refuses npm's public registry whatever the host names, so a version published there stays.
+Since the step deletes, a pipeline runs it only from a release job that an environment's reviewers approve.
+
+```ts
+import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
+
+const processRunner = new ProcessRunner();
+const git = new Git(processRunner, process.cwd());
+const versions = new Set(["0.0.2", "0.0.3", "0.0.4"]);
+const host: IRegistryHost = {
+  registry: "https://npm.pkg.github.com/",
+  readVersionsAsync: async () => [...versions],
+  deleteVersionAsync: async (packageName, version) => versions.delete(version)
+};
+const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
+const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://npm.pkg.github.com/", "2"]);
+result.message; // "@noldova/a@0.0.2 deleted." when the commit holds only @noldova/a
+```
+
+- It fails, asking the registry nothing, unless the version is a release version, the commit is its full id and in the clone, the scope holds every package the archive step expects at the commit, the registry is the host's and not npm's, and the number to keep is one.
+- It lists every package's versions before it deletes any, and fails, deleting nothing, with one line for each package whose versions the host can't list and each whose newest release version isn't the version.
+- It deletes each package's release versions after the newest it keeps, with one line for each, and succeeds with one line saying nothing is deleted when no package has more; a version another run deleted first is reported, not a failure.
+- It stops at the first delete that fails, with the lines before it and the host's answer, or a line naming the version with the error's message when the delete rejects, such as for a lost connection.
+- It counts and deletes only release versions: a nightly version, or any other version, stays.
 
 ### The tag step
 
