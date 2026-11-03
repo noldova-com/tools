@@ -109,6 +109,7 @@ class LockingNpm extends Npm {
   public readonly directories: string[] = [];
   public readonly hiddenVariables: string[] = [];
   public result: ProcessResult = new ProcessResult(0, "", "");
+  public locked: object | null = null;
 
   public constructor() {
     super(new ProcessRunner(), ".");
@@ -117,7 +118,8 @@ class LockingNpm extends Npm {
   public override async lockAsync(directory: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
     this.directories.push(path.basename(directory));
     this.hiddenVariables.push(...hiddenVariables);
-    fs.writeFileSync(path.join(directory, "package-lock.json"), `locked from ${fs.readFileSync(path.join(directory, "package.json"), "utf8")}`);
+    const locked = this.locked ?? { lockedFrom: fs.readFileSync(path.join(directory, "package.json"), "utf8") };
+    fs.writeFileSync(path.join(directory, "package-lock.json"), `${JSON.stringify(locked)}\n`);
 
     return this.result;
   }
@@ -168,8 +170,8 @@ export class DependentsStepTests {
     Assert.areEqual("SECRET_TOKEN,SECRET_TOKEN", npm.hiddenVariables.join(","));
     Assert.areEqual("{\n  \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@noldova/c\": \"0.0.1\" },\n  \"peerDependencies\": { \"@noldova/a\": \"0.0.4\" }\n}\n", pushed?.["package.json"]);
     Assert.areEqual("{ \"devDependencies\": { \"@noldova/a.b\": \"0.0.4\", \"@noldova/aXb\": \"0.0.2\", \"@noldova/a\": \"^0.0.3\" } }\n", pushed?.["src/package.json"]);
-    Assert.areEqual(`locked from ${pushed?.["package.json"]}`, pushed?.["package-lock.json"]);
-    Assert.areEqual(`locked from ${pushed?.["src/package.json"]}`, pushed?.["src/package-lock.json"]);
+    Assert.areEqual(`${JSON.stringify({ lockedFrom: pushed?.["package.json"] })}\n`, pushed?.["package-lock.json"]);
+    Assert.areEqual(`${JSON.stringify({ lockedFrom: pushed?.["src/package.json"] })}\n`, pushed?.["src/package-lock.json"]);
     Assert.areEqual(2, npm.directories.length);
     Assert.isFalse(host.pushed.has("noldova-com/unpinned"));
     Assert.areEqual(
@@ -206,7 +208,7 @@ export class DependentsStepTests {
         "node_modules/@noldova/panel": { version: "0.0.7", peerDependencies: { "@noldova/a": "0.0.3" }, peerDependenciesMeta: { "@noldova/a": { optional: true } } },
         "node_modules/@noldova/window/node_modules/@noldova/a.b": { version: "0.0.2", peerDependencies: { "@noldova/a": "0.0.2" } },
         "node_modules/@noldova/plain": { version: "2.0.0" },
-        "node_modules/@noldova/ranged":{ version: "1.0.0", peerDependencies: { "@noldova/a": "^0.0.3" } },
+        "node_modules/@noldova/ranged": { version: "1.0.0", peerDependencies: { "@noldova/a": "^0.0.3" } },
         "node_modules/@noldova/current": { version: "1.0.0", peerDependencies: { "@noldova/a": "0.0.4" } },
         "src/window": { name: "@noldova/local", peerDependencies: { "@noldova/a": "0.0.3" } }
       }
@@ -229,6 +231,80 @@ export class DependentsStepTests {
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has("noldova-com/blocked"));
     Assert.areEqual(2, npm.directories.length);
+  }
+
+  @TestMethod
+  public async movesThePinsOfWhatAReleasedPackageNeedsAsAPeerAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\", \"@noldova/range\": \"0.9.0\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    using peerOnly = DependentsStepTests.createTarget({ "package.json": "{ \"dependencies\": { \"@noldova/kit\": \"0.0.4\" } }\n" });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.repositories.set("noldova-com/peer-only", peerOnly);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      ["noldova-com/pinned: moved 2 pins in https://example.test/noldova-com/pinned/pull/1", "noldova-com/peer-only: pins none of them below 0.0.4."].join("\n"),
+      result.message.split("\n").slice(1).join("\n"));
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@noldova/kit\": \"0.0.5\", \"@noldova/range\": \"0.9.0\" } }\n", host.pushed.get("noldova-com/pinned")?.["package.json"]);
+    Assert.isTrue(
+      (host.proposals[0] ?? "").includes("- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4\n- `package.json`: `@noldova/kit` from 0.0.4 to 0.0.5, which `@noldova/a.b` 0.0.4 needs as a peer\n"),
+      host.proposals[0] ?? "");
+  }
+
+  @TestMethod
+  public async leavesARepositoryWhoseLockedPackagesNeedAnotherVersionOfAMovedPeerAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    const lock = { packages: { "node_modules/@noldova/panel": { version: "0.0.7", peerDependencies: { "@noldova/kit": "0.0.4" } } } };
+    using blocked = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\" } }\n",
+      "package-lock.json": `${JSON.stringify(lock)}\n`
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/blocked", blocked);
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/blocked: left at its pins until these accept 0.0.4: package-lock.json locks @noldova/panel 0.0.7, which needs @noldova/kit 0.0.4.",
+      result.message.split("\n")[1]);
+    Assert.areEqual(0, npm.directories.length);
+  }
+
+  @TestMethod
+  public async leavesARepositoryWhoseRefreshedLockStillHoldsAPeerConflictAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.locked = {
+      packages: {
+        "": { name: "pinned" },
+        "node_modules/@noldova/kit": { version: "0.0.5", peerDependencies: { "@noldova/z": "2.0.0", "@noldova/absent": "1.0.0" } },
+        "node_modules/@noldova/z": { version: "1.0.0" },
+        "node_modules/@noldova/kit/node_modules/@noldova/y": { version: "1.0.0", peerDependencies: { "@noldova/w": "3.0.0", "@noldova/z": "1.0.0" } },
+        "node_modules/@noldova/kit/node_modules/@noldova/w": { version: "3.0.0" }
+      }
+    };
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, since the lock files refreshed for 0.0.4 still hold packages whose exact peers differ from what they lock: package-lock.json locks @noldova/kit 0.0.5, which needs @noldova/z 2.0.0.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
 
   @TestMethod
@@ -479,8 +555,8 @@ export class DependentsStepTests {
   private static createSource(): GitRepositoryFixture {
     const source = GitRepositoryFixture.create();
     source.commit({
-      "src/a/package.json": "{ \"name\": \"@noldova/a\" }\n",
-      "src/a.b/package.json": "{ \"name\": \"@noldova/a.b\" }\n",
+      "src/a/package.json": "{ \"name\": \"@noldova/a\", \"peerDependencies\": { \"@noldova/kit\": \"0.0.5\", \"@noldova/range\": \"^1.0.0\" } }\n",
+      "src/a.b/package.json": "{ \"name\": \"@noldova/a.b\", \"peerDependencies\": { \"@noldova/a\": \"0.0.4\", \"@noldova/kit\": \"0.0.5\" } }\n",
       "src/b/package.json": "{ \"name\": \"@noldova/b\" }\n",
       "src/b/tests/package.json": "{ \"name\": \"@noldova/b-tests\" }\n",
       "src/private/package.json": "{ \"name\": \"@noldova/private\", \"private\": true }\n"

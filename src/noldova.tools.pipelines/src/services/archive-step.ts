@@ -78,7 +78,11 @@ export class ArchiveStep implements IStep {
   }
 
   public async readPackageNamesAsync(commit: string): Promise<readonly string[]> {
-    const packageNames: string[] = [];
+    return (await this.readPackageManifestsAsync(commit)).map(t => t.readString(Resources.nameField)).sort();
+  }
+
+  public async readPackageManifestsAsync(commit: string): Promise<readonly JsonReader[]> {
+    const manifests: JsonReader[] = [];
     for (const filePath of await this.git.listFilesAsync(commit, Resources.packagesFolderPath)) {
       const segments = filePath.split(Resources.pathSeparator);
       if (segments.at(-1) !== Resources.manifestFileName || segments.includes(Resources.testsFolderName))
@@ -86,10 +90,10 @@ export class ArchiveStep implements IStep {
 
       const manifest = JsonReader.parse(await this.git.readFileAsync(commit, filePath), filePath);
       if (!ArchiveStep.isPrivate(manifest))
-        packageNames.push(manifest.readString(Resources.nameField));
+        manifests.push(manifest);
     }
 
-    return packageNames.sort();
+    return manifests;
   }
 
   private async checkArchiveAsync(archivePath: string, packageName: string, version: string, commit: string, scope: string, packageNames: readonly string[]): Promise<readonly string[]> {

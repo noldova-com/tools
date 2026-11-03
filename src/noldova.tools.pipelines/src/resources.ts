@@ -101,6 +101,7 @@ export class Resources {
   public static readonly parentFolderName: string = "..";
   public static readonly patchPartName: string = "patch";
   public static readonly pathSeparator: string = "/";
+  public static readonly peerDependenciesField: string = "peerDependencies";
   public static readonly privateField: string = "private";
   public static readonly processKillSignal: NodeJS.Signals = "SIGKILL";
   public static readonly processReleaseDelayMilliseconds: number = 0;
@@ -454,8 +455,16 @@ export class Resources {
     return `${repository}: left at its pins until these accept ${version}: ${blockers.join("; ")}.`;
   }
 
+  public static formatRepositoryConflicted(repository: string, version: string, conflicts: readonly string[]): string {
+    return `${repository}: left at its pins, since the lock files refreshed for ${version} still hold packages whose exact peers differ from what they lock: ${conflicts.join("; ")}.`;
+  }
+
   public static formatPeerBlocker(filePath: string, packageName: string, version: string, peerName: string, peerVersion: string): string {
     return `${filePath} locks ${packageName} ${version}, which needs ${peerName} ${peerVersion}`;
+  }
+
+  public static formatPeerReason(packageName: string, version: string): string {
+    return `, which \`${packageName}\` ${version} needs as a peer`;
   }
 
   public static formatRepositoryFailed(repository: string, message: string): string {
