@@ -90,13 +90,27 @@ export class PruneStep implements IStep {
     if (deletions.length === 0)
       return StepResult.succeeded(Resources.formatPruneNothing(keepVersions));
 
+    const lockFiles = await this.registryHost.readLockFilesAsync();
+    if (lockFiles instanceof StepResult)
+      return StepResult.failed(Resources.formatPruneLocksUnread(lockFiles.message));
+
+    const locked = PruneStep.findLocked(lockFiles, packageNames);
+    if (locked instanceof StepResult)
+      return locked;
+
     const lines: string[] = [];
     for (const [packageName, old] of deletions) {
+      const specifier = Resources.formatSpecifier(packageName, old);
+      const lockFilePaths = locked.get(specifier);
+      if (lockFilePaths !== undefined) {
+        lines.push(Resources.formatVersionKept(specifier, lockFilePaths));
+        continue;
+      }
+
       const deleted = await this.deleteVersionAsync(packageName, old);
       if (deleted instanceof StepResult)
         return StepResult.failed([...lines, deleted.message].join(Resources.lineSeparator));
 
-      const specifier = Resources.formatSpecifier(packageName, old);
       lines.push(deleted ? Resources.formatVersionDeleted(specifier) : Resources.formatVersionAlreadyDeleted(specifier));
     }
 
@@ -113,6 +127,50 @@ export class PruneStep implements IStep {
 
       return StepResult.failed(Resources.formatPruneDeleteRejected(Resources.formatSpecifier(packageName, version), error.message));
     }
+  }
+
+  private static findLocked(lockFiles: ReadonlyMap<string, string>, packageNames: readonly string[]): ReadonlyMap<string, readonly string[]> | StepResult {
+    const locked = new Map<string, string[]>();
+    for (const [filePath, text] of lockFiles) {
+      const packages = PruneStep.readLockedPackages(text);
+      if (packages === null)
+        return StepResult.failed(Resources.formatPruneLockInvalid(filePath));
+
+      for (const [key, entry] of Object.entries(packages)) {
+        const index = key.lastIndexOf(Resources.nodeModulesSegment);
+        const fields = PruneStep.isObject(entry) ? entry : {};
+        const version = fields[Resources.versionField];
+        const alias = fields[Resources.nameField];
+        const name = typeof alias === "string" ? alias : key.slice(index + Resources.nodeModulesSegment.length);
+        if (index === -1 || typeof version !== "string" || !packageNames.includes(name))
+          continue;
+
+        const specifier = Resources.formatSpecifier(name, version);
+        const filePaths = locked.get(specifier) ?? [];
+        if (!filePaths.includes(filePath))
+          locked.set(specifier, [...filePaths, filePath]);
+      }
+    }
+
+    return locked;
+  }
+
+  private static readLockedPackages(text: string): Readonly<Record<string, unknown>> | null {
+    let lock: unknown;
+    try {
+      lock = JSON.parse(text);
+    }
+    catch {
+      return null;
+    }
+
+    const packages: unknown = PruneStep.isObject(lock) ? lock[Resources.lockPackagesField] : undefined;
+
+    return PruneStep.isObject(packages) ? packages : null;
+  }
+
+  private static isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private static sortReleases(versions: readonly string[]): readonly Version[] {

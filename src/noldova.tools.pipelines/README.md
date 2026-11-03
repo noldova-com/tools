@@ -148,8 +148,8 @@ It fails with one line naming the packages when only some have a nightly version
 
 ### The prune step
 
-`prune <version> <commit> <scope> <registry> <keep-versions>` runs after a release on a registry that keeps only its newest versions: it deletes each package's older release versions, keeping the newest `<keep-versions>`, a whole number above 0.
-It lists and deletes versions through the host's `IRegistryHost`, which a host's package implements for its own registry, and runs only on that registry; it refuses npm's public registry whatever the host names, so a version published there stays.
+`prune <version> <commit> <scope> <registry> <keep-versions>` runs after a release on a registry that keeps only its newest versions: it deletes each package's older release versions, keeping the newest `<keep-versions>`, a whole number above 0, and every version a repository's lock file still holds, so that repository's `npm ci` keeps working.
+It lists and deletes versions, and reads the lock files, through the host's `IRegistryHost`, which a host's package implements for its own registry, and runs only on that registry; it refuses npm's public registry whatever the host names, so a version published there stays.
 Since the step deletes, a pipeline runs it only from a release job that an environment's reviewers approve.
 
 ```ts
@@ -161,16 +161,19 @@ const versions = new Set(["0.0.2", "0.0.3", "0.0.4"]);
 const host: IRegistryHost = {
   registry: "https://npm.pkg.github.com/",
   readVersionsAsync: async () => [...versions],
-  deleteVersionAsync: async (packageName, version) => versions.delete(version)
+  deleteVersionAsync: async (packageName, version) => versions.delete(version),
+  readLockFilesAsync: async () => new Map([["app/package-lock.json", JSON.stringify({ packages: { "node_modules/@noldova/a": { version: "0.0.3" } } })]])
 };
 const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
-const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://npm.pkg.github.com/", "2"]);
-result.message; // "@noldova/a@0.0.2 deleted." when the commit holds only @noldova/a
+const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://npm.pkg.github.com/", "1"]);
+result.message; // "@noldova/a@0.0.3 kept, since app/package-lock.json locks it.\n@noldova/a@0.0.2 deleted." when the commit holds only @noldova/a
 ```
 
 - It fails, asking the registry nothing, unless the version is a release version, the commit is its full id and in the clone, the scope holds every package the archive step expects at the commit, the registry is the host's and not npm's, and the number to keep is one.
 - It lists every package's versions before it deletes any, and fails, deleting nothing, with one line for each package whose versions the host can't list and each whose newest release version isn't the version.
-- It deletes each package's release versions after the newest it keeps, with one line for each, and succeeds with one line saying nothing is deleted when no package has more; a version another run deleted first is reported, not a failure.
+- When a package has more release versions than it keeps, it reads the host's lock files first, and fails, deleting nothing, when the host can't read them all or one has no `packages` object, as the lock files of npm 7 and later have.
+- It keeps each of those versions that a lock file holds under a `node_modules/` path, by the folder's name or the entry's `name` for an alias, with a line naming the lock files.
+- It deletes the others, with one line for each, and succeeds with one line saying nothing is deleted when no package has more; a version another run deleted first is reported, not a failure.
 - It stops at the first delete that fails, with the lines before it and the host's answer, or a line naming the version with the error's message when the delete rejects, such as for a lost connection.
 - It counts and deletes only release versions: a nightly version, or any other version, stays.
 

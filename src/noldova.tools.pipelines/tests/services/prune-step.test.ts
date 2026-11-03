@@ -18,6 +18,7 @@ class FakeRegistryHost implements IRegistryHost {
 
   public readonly registry: string;
   public readonly calls: string[] = [];
+  public lockFiles: ReadonlyMap<string, string> | StepResult = new Map();
 
   public constructor(versions: Readonly<Record<string, readonly string[] | StepResult>>, deletes: Readonly<Record<string, boolean | StepResult>> = {}, rejections: Readonly<Record<string, unknown>> = {}, registry: string = "https://npm.pkg.github.com/") {
     this.versions = versions;
@@ -38,6 +39,11 @@ class FakeRegistryHost implements IRegistryHost {
       return await Promise.reject(rejection as Error);
 
     return this.deletes[`${packageName}@${version}`] ?? true;
+  }
+
+  public async readLockFilesAsync(): Promise<ReadonlyMap<string, string> | StepResult> {
+    this.calls.push("read lock files");
+    return this.lockFiles;
   }
 }
 
@@ -113,7 +119,7 @@ export class PruneStepTests {
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual("@noldova/a@0.0.2 deleted.\n@noldova/a@0.0.1 deleted.", result.message);
     Assert.areEqual(
-      ["read @noldova/a", "read @noldova/b", "delete @noldova/a@0.0.2", "delete @noldova/a@0.0.1"].join("\n"),
+      ["read @noldova/a", "read @noldova/b", "read lock files", "delete @noldova/a@0.0.2", "delete @noldova/a@0.0.1"].join("\n"),
       host.calls.join("\n"));
   }
 
@@ -204,8 +210,79 @@ export class PruneStepTests {
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(`@noldova/a@0.0.3 deleted.\n${failure.message}`, result.message);
     Assert.areEqual(
-      ["read @noldova/a", "read @noldova/b", "delete @noldova/a@0.0.3", "delete @noldova/a@0.0.2"].join("\n"),
+      ["read @noldova/a", "read @noldova/b", "read lock files", "delete @noldova/a@0.0.3", "delete @noldova/a@0.0.2"].join("\n"),
       host.calls.join("\n"));
+  }
+
+  @TestMethod
+  public async keepsEveryVersionALockFileHoldsAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PruneStepTests.FILES);
+    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3", "0.0.2", "0.0.1"], "@noldova/b": ["0.0.4", "0.0.3", "0.0.2"] });
+    host.lockFiles = new Map([
+      ["one/package-lock.json", JSON.stringify({
+        packages: {
+          "": { name: "one", version: "1.0.0" },
+          "src/noldova.a": { name: "@noldova/a", version: "0.0.1" },
+          "node_modules/@noldova/a": { version: "0.0.3" },
+          "node_modules/x/node_modules/@noldova/a": { version: "0.0.3" },
+          "node_modules/alias": { name: "@noldova/b", version: "0.0.2" },
+          "node_modules/@noldova/c": { version: "0.0.1" },
+          "node_modules/@noldova/linked": { name: "@noldova/a", link: true },
+          "node_modules/odd": "0.0.1"
+        }
+      })],
+      ["two/src/package-lock.json", JSON.stringify({ packages: { "node_modules/@noldova/a": { version: "0.0.3" } } })]
+    ]);
+
+    const result = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      [
+        "@noldova/a@0.0.3 kept, since one/package-lock.json, two/src/package-lock.json lock it.",
+        "@noldova/a@0.0.2 deleted.",
+        "@noldova/a@0.0.1 deleted.",
+        "@noldova/b@0.0.3 deleted.",
+        "@noldova/b@0.0.2 kept, since one/package-lock.json locks it."
+      ].join("\n"),
+      result.message);
+    Assert.areEqual(
+      ["read @noldova/a", "read @noldova/b", "read lock files", "delete @noldova/a@0.0.2", "delete @noldova/a@0.0.1", "delete @noldova/b@0.0.3"].join("\n"),
+      host.calls.join("\n"));
+  }
+
+  @TestMethod
+  public async deletesNothingWhenTheLockFilesCannotBeReadAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PruneStepTests.FILES);
+    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3"], "@noldova/b": ["0.0.4"] });
+    host.lockFiles = StepResult.failed("GitHub answered GET installation/repositories?per_page=100&page=1 with 401: Bad credentials");
+
+    const result = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("The lock files could not all be read, so nothing is deleted: GitHub answered GET installation/repositories?per_page=100&page=1 with 401: Bad credentials", result.message);
+    Assert.areEqual("read @noldova/a\nread @noldova/b\nread lock files", host.calls.join("\n"));
+  }
+
+  @TestData("{")
+  @TestData("[]")
+  @TestData("null")
+  @TestData("{ \"lockfileVersion\": 1 }")
+  @TestData("{ \"packages\": [] }")
+  @TestMethod
+  public async deletesNothingForALockFileWithoutPackagesAsync(text: string): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PruneStepTests.FILES);
+    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3"], "@noldova/b": ["0.0.4"] });
+    host.lockFiles = new Map([["one/package-lock.json", "{ \"packages\": {} }"], ["two/package-lock.json", text]]);
+
+    const result = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("two/package-lock.json is not a lock file with a packages field, so nothing is deleted.", result.message);
+    Assert.areEqual("read @noldova/a\nread @noldova/b\nread lock files", host.calls.join("\n"));
   }
 
   @TestMethod
@@ -258,7 +335,7 @@ export class PruneStepTests {
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual("@noldova/a@0.0.3 deleted.\nDeleting @noldova/a@0.0.2 failed: fetch failed", result.message);
     Assert.areEqual(
-      ["read @noldova/a", "read @noldova/b", "delete @noldova/a@0.0.3", "delete @noldova/a@0.0.2"].join("\n"),
+      ["read @noldova/a", "read @noldova/b", "read lock files", "delete @noldova/a@0.0.3", "delete @noldova/a@0.0.2"].join("\n"),
       host.calls.join("\n"));
   }
 

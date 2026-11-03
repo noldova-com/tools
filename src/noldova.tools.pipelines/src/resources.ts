@@ -85,6 +85,7 @@ export class Resources {
   public static readonly npmAccessValues: readonly string[] = ["--access"];
   public static readonly npmBuildValues: readonly string[] = ["run", "build"];
   public static readonly npmIntegrityField: string = "dist.integrity";
+  public static readonly lockPackagesField: string = "packages";
   public static readonly nodeModulesSegment: string = "node_modules/";
   public static readonly npmLockTimeoutMilliseconds: number = 300_000;
   public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
@@ -572,6 +573,18 @@ export class Resources {
 
   public static formatVersionDeleted(specifier: string): string {
     return `${specifier} deleted.`;
+  }
+
+  public static formatPruneLocksUnread(message: string): string {
+    return `The lock files could not all be read, so nothing is deleted: ${message}`;
+  }
+
+  public static formatPruneLockInvalid(filePath: string): string {
+    return `${filePath} is not a lock file with a packages field, so nothing is deleted.`;
+  }
+
+  public static formatVersionKept(specifier: string, lockFilePaths: readonly string[]): string {
+    return `${specifier} kept, since ${lockFilePaths.join(", ")} lock${lockFilePaths.length === 1 ? "s" : ""} it.`;
   }
 
   public static formatVersionAlreadyDeleted(specifier: string): string {
