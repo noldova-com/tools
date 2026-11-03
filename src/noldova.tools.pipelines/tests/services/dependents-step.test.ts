@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessResult, ProcessRunner, StepResult, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, DependentsStep, Git, type IStepOutput, type IUpdateHost, Npm, ProcessResult, ProcessRunner, StepResult, Tar } from "@noldova/tools.pipelines";
 
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 
@@ -93,6 +93,18 @@ class FakeUpdateHost implements IUpdateHost {
   }
 }
 
+class RecordingOutput implements IStepOutput {
+  public readonly lines: string[] = [];
+
+  public writeSuccess(message: string): void {
+    this.lines.push(message);
+  }
+
+  public writeFailure(message: string): void {
+    this.lines.push(`failure: ${message}`);
+  }
+}
+
 class LockingNpm extends Npm {
   public readonly directories: string[] = [];
   public readonly hiddenVariables: string[] = [];
@@ -115,9 +127,9 @@ class LockingNpm extends Npm {
 export class DependentsStepTests {
   private static readonly PINNED: Readonly<Record<string, string>> = {
     "package.json": "{\n  \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/c\": \"0.0.1\" },\n  \"peerDependencies\": { \"@noldova/a\": \"0.0.3\" }\n}\n",
-    "package-lock.json": "old\n",
+    "package-lock.json": "{}\n",
     "src/package.json": "{ \"devDependencies\": { \"@noldova/a.b\": \"0.0.2\", \"@noldova/aXb\": \"0.0.2\", \"@noldova/a\": \"^0.0.3\" } }\n",
-    "src/package-lock.json": "old\n",
+    "src/package-lock.json": "{}\n",
     "README.md": "Read me.\n"
   };
 
@@ -182,6 +194,58 @@ export class DependentsStepTests {
         ].join("\n")
       ].join("\n---\n"),
       host.proposals.join("\n===\n"));
+  }
+
+  @TestMethod
+  public async leavesARepositoryWhoseLockedPackagesNeedAnotherExactVersionAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    const lock = {
+      packages: {
+        "": { name: "blocked", dependencies: { "@noldova/a": "0.0.3", "@noldova/window": "0.0.48" } },
+        "node_modules/@noldova/window": { version: "0.0.48", peerDependencies: { "@noldova/a": "0.0.3", "@noldova/c": "0.0.1" } },
+        "node_modules/@noldova/panel": { version: "0.0.7", peerDependencies: { "@noldova/a": "0.0.3" }, peerDependenciesMeta: { "@noldova/a": { optional: true } } },
+        "node_modules/@noldova/window/node_modules/@noldova/a.b": { version: "0.0.2", peerDependencies: { "@noldova/a": "0.0.2" } },
+        "node_modules/@noldova/plain": { version: "2.0.0" },
+        "node_modules/@noldova/ranged":{ version: "1.0.0", peerDependencies: { "@noldova/a": "^0.0.3" } },
+        "node_modules/@noldova/current": { version: "1.0.0", peerDependencies: { "@noldova/a": "0.0.4" } },
+        "src/window": { name: "@noldova/local", peerDependencies: { "@noldova/a": "0.0.3" } }
+      }
+    };
+    using blocked = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/window\": \"0.0.48\" } }\n",
+      "package-lock.json": `${JSON.stringify(lock, null, 2)}\n`
+    });
+    using works = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/blocked", blocked);
+    host.repositories.set("noldova-com/works", works);
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/blocked: left at its pins until these accept 0.0.4: package-lock.json locks @noldova/window 0.0.48, which needs @noldova/a 0.0.3; package-lock.json locks @noldova/panel 0.0.7, which needs @noldova/a 0.0.3.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/blocked"));
+    Assert.areEqual(2, npm.directories.length);
+  }
+
+  @TestMethod
+  public async writesEachRepositorysLineAsItIsDoneAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using failed = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    using unpinned = DependentsStepTests.createTarget({ "README.md": "Read me.\n" });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/failed", failed);
+    host.repositories.set("noldova-com/unpinned", unpinned);
+    host.failures.set("push noldova-com/failed", StepResult.failed("rejected"));
+    const output = new RecordingOutput();
+
+    const result = await new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), new LockingNpm(), undefined, output).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.areEqual(["noldova-com/failed: rejected", "noldova-com/unpinned: pins none of them below 0.0.4."].join("\n"), output.lines.join("\n"));
+    Assert.areEqual(output.lines.join("\n"), result.message.split("\n").slice(1).join("\n"));
   }
 
   @TestMethod

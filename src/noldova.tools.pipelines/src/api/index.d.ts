@@ -813,6 +813,10 @@ export declare class ProcessRunner {
    * own, such as a credential only it may read, where a variable set to
    * `undefined` is kept from it; omitted, it gets this process's variables
    * alone.
+   * @param timeoutMilliseconds How long the program may run; a program that
+   * runs longer is killed and resolves with no exit code, what it wrote, and
+   * a last line in its error output that says it was stopped. Omitted, it may
+   * run for as long as it takes.
    * @returns A promise of the program's exit code and of what it wrote. A
    * program that fails still resolves, with its exit code; the promise
    * rejects with {@link ProcessException} only when the program cannot
@@ -825,7 +829,7 @@ export declare class ProcessRunner {
    * result.isSuccessful; // true where git is installed
    * ```
    */
-  public runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>): Promise<ProcessResult>;
+  public runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number): Promise<ProcessResult>;
 }
 
 /**
@@ -1285,7 +1289,8 @@ export declare class Npm {
    * Refreshes a directory's `package-lock.json` from its `package.json`
    * files, with `npm install --package-lock-only --ignore-scripts --no-audit
    * --no-fund`, or on Windows the same through `cmd.exe /d /s /c`, a fixed
-   * command; it installs nothing and runs no script.
+   * command; it installs nothing and runs no script. A refresh that runs
+   * longer than 5 minutes is stopped, and fails.
    *
    * @param directory The directory that holds the `package-lock.json`.
    * @param hiddenVariables The environment variables npm doesn't get, such
@@ -2080,7 +2085,11 @@ export declare class ReproducibleStep implements IStep {
  * such pin to the version, refreshes every tracked `package-lock.json` with
  * {@link Npm.lockAsync}, without the host's credential variables, commits,
  * pushes the branch `pipelines/update-<source>` and proposes it, with the
- * moved pins and the release's notes in its description. When the branch
+ * moved pins and the release's notes in its description. Before the refresh,
+ * it leaves a repository as it is when any of its lock files holds a package
+ * that needs one of the released packages at another exact version, as a
+ * peer, and names each such package, since npm couldn't install the moved
+ * pins until that package accepts the version. When the branch
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
  * so nobody's commits are lost. A repository that pins none of them is left
@@ -2109,6 +2118,9 @@ export declare class DependentsStep implements IStep {
    * @param temporaryRoot The folder the step makes its temporary folder in,
    * such as one the pipeline host empties after each job. Omitted or empty,
    * it is `os.tmpdir()`.
+   * @param output Where each repository's line is written as soon as that
+   * repository is done, so a run stopped partway still shows the repositories
+   * it finished; omitted, the lines are only in the result.
    * @example
    * ```ts
    * import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
@@ -2120,7 +2132,7 @@ export declare class DependentsStep implements IStep {
    * step.name; // "dependents"
    * ```
    */
-  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string);
+  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string, output?: IStepOutput);
 
   /**
    * Moves the pins in every repository that has them.
@@ -2128,8 +2140,8 @@ export declare class DependentsStep implements IStep {
    * @param values The version, a release version such as `0.0.4`, and the
    * full id of the commit it was released from.
    * @returns A promise of the result, with a line for each repository: the
-   * proposal's address and how many pins moved, that it pins none, or why it
-   * failed. It fails for any number of values but two, a version that isn't
+   * proposal's address and how many pins moved, that it pins none, which
+   * locked packages hold it at its pins, or why it failed. It fails for any number of values but two, a version that isn't
    * one or is a nightly, a commit that isn't a full id, a commit that
    * releases no package, what the host can't answer, and when any
    * repository fails, after trying every other; an error in one repository,

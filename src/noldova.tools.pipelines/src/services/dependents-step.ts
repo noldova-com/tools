@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { IStep } from "../interfaces/i-step.js";
+import type { IStepOutput } from "../interfaces/i-step-output.js";
 import type { IUpdateHost } from "../interfaces/i-update-host.js";
 import { DependentsUpdate } from "../models/dependents-update.js";
 import { StepResult } from "../models/step-result.js";
@@ -21,22 +22,33 @@ import { Git } from "./git.js";
 import type { Npm } from "./npm.js";
 import type { ProcessRunner } from "./process-runner.js";
 
+interface LockFile {
+  readonly packages?: Readonly<Record<string, LockedPackage>>;
+}
+
+interface LockedPackage {
+  readonly version: string;
+  readonly peerDependencies?: Readonly<Record<string, string>>;
+}
+
 export class DependentsStep implements IStep {
   private readonly archiveStep: ArchiveStep;
   private readonly updateHost: IUpdateHost;
   private readonly processRunner: ProcessRunner;
   private readonly npm: Npm;
   private readonly temporaryRoot: string;
+  private readonly output: IStepOutput | undefined;
 
   public readonly name: string = Resources.dependentsStepName;
   public readonly usage: string = Resources.dependentsStepUsage;
 
-  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string) {
+  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string, output?: IStepOutput) {
     this.archiveStep = archiveStep;
     this.updateHost = updateHost;
     this.processRunner = processRunner;
     this.npm = npm;
     this.temporaryRoot = temporaryRoot === undefined || temporaryRoot.length === 0 ? os.tmpdir() : temporaryRoot;
+    this.output = output;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
@@ -77,6 +89,7 @@ export class DependentsStep implements IStep {
         const result = await this.tryUpdateAsync(update, repository, path.join(root, String(index)));
         isSuccessful &&= result.isSuccessful;
         lines.push(result.message);
+        this.output?.writeSuccess(result.message);
       }
     }
     finally {
@@ -114,6 +127,10 @@ export class DependentsStep implements IStep {
       return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
 
     const lockFilePaths = filePaths.filter(t => path.posix.basename(t) === Resources.lockFileName);
+    const blockers = lockFilePaths.flatMap(t => DependentsStep.findBlockers(path.join(directory, t), t, update.packageNames, update.version));
+    if (blockers.length > 0)
+      return StepResult.succeeded(Resources.formatRepositoryBlocked(repository, update.version, blockers));
+
     for (const lockFilePath of lockFilePaths) {
       const result = await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables);
       if (!result.isSuccessful)
@@ -144,6 +161,24 @@ export class DependentsStep implements IStep {
   private static async isOwnCommitAsync(git: Git, commit: string, source: string): Promise<boolean> {
     return await git.readCommitterAsync(commit) === await git.readCommitterAsync(Resources.gitHeadRevision)
       && (await git.readSubjectAsync(commit)).startsWith(Resources.formatUpdateTitlePrefix(source));
+  }
+
+  private static findBlockers(fullPath: string, filePath: string, packageNames: readonly string[], version: string): readonly string[] {
+    const lock: LockFile = JSON.parse(fs.readFileSync(fullPath, Resources.textEncoding));
+    const blockers = new Set<string>();
+    for (const [key, entry] of Object.entries(lock.packages ?? {})) {
+      const index = key.lastIndexOf(Resources.nodeModulesSegment);
+      const name = key.slice(index + Resources.nodeModulesSegment.length);
+      if (index < 0 || packageNames.includes(name))
+        continue;
+
+      for (const [peerName, range] of Object.entries(entry.peerDependencies ?? {})) {
+        if (packageNames.includes(peerName) && Resources.exactVersionPattern.test(range) && range !== version)
+          blockers.add(Resources.formatPeerBlocker(filePath, name, entry.version, peerName, range));
+      }
+    }
+
+    return [...blockers];
   }
 
   private static movePins(fullPath: string, filePath: string, packageNames: readonly string[], version: string): readonly string[] {

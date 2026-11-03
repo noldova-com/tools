@@ -65,6 +65,23 @@ export class ProcessRunnerTests {
   }
 
   @TestMethod
+  public async stopsAProgramThatRunsLongerThanItsTimeAsync(): Promise<void> {
+    const result = await new ProcessRunner().runAsync(process.execPath, ["-e", "process.stderr.write('started\\n'); setTimeout(() => {}, 60000);"], ".", undefined, 500);
+
+    Assert.isNull(result.exitCode);
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`started\n"${process.execPath}" ran longer than 0.5 seconds, so it was stopped.`, result.errorOutput);
+  }
+
+  @TestMethod
+  public async keepsTheExitCodeOfAProgramThatEndsInTimeAsync(): Promise<void> {
+    const result = await new ProcessRunner().runAsync(process.execPath, ["-e", "process.exitCode = 2;"], ".", undefined, 60000);
+
+    Assert.areEqual(2, result.exitCode);
+    Assert.areEqual("", result.errorOutput);
+  }
+
+  @TestMethod
   public async readsTheOutputAsUtf8Async(): Promise<void> {
     const result = await new ProcessRunner().runAsync(process.execPath, ["-e", "process.stdout.write('caf\\u00e9 \\u2713');"], ".");
 

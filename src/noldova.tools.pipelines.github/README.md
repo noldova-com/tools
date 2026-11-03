@@ -95,6 +95,8 @@ It runs in a checkout of the released commit, and reads `GITHUB_API_URL`, `GITHU
   It needs to write their contents, pull requests and issues, and is never written anywhere: git gets it through its environment, not its command line.
 - The workflow sets the commits' author and committer, such as the App's bot account, through git's environment.
 - npm refreshes each repository's lock files from the registries that repository names, without `GITHUB_TOKEN`; one that needs a token to read gets it from the workflow, as for an install.
+- A repository whose lock files hold a package that needs a released package at another exact version, as a peer, is left as it is, with a line that names that package.
+- The step prints each repository's line as soon as that repository is done, so a job stopped by its time limit still shows the repositories it finished.
 - The release notes are the section of the pull request whose merge commit is the commit, headed `Release notes for <version>`; without one, the proposal has none.
 - When the branch exists, the step replaces it, with `--force-with-lease`, only while it is at a commit of the step's own; then it updates the open pull request and its issue. Otherwise it opens an issue and a pull request that closes it, against the repository's default branch.
 - The step fails, naming the variable, when one is missing or empty; it fails for a repository, after trying every other, with git's exit code and error output, or with the request, the status and GitHub's message for an answer it doesn't expect.
