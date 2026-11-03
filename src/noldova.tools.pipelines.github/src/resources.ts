@@ -84,11 +84,13 @@ export class Resources {
   public static readonly runnerTemporaryVariable: string = "RUNNER_TEMP";
   public static readonly pathField: string = "path";
   public static readonly pathSeparator: string = "/";
+  public static readonly repositoriesChanged: string = "The installation's repositories changed while their lock files were read, so the lock files could not all be found.";
   public static readonly repositoriesTokenVariable: string = "REPOSITORIES_TOKEN";
   public static readonly shaField: string = "sha";
   public static readonly textEncoding: BufferEncoding = "utf8";
   public static readonly timeoutErrorName: string = "TimeoutError";
   public static readonly tokenVariable: string = "GITHUB_TOKEN";
+  public static readonly totalCountField: string = "total_count";
   public static readonly treeField: string = "tree";
   public static readonly truncatedField: string = "truncated";
   public static readonly typeField: string = "type";
@@ -203,6 +205,10 @@ export class Resources {
 
   public static formatBlobResource(repository: string, sha: string): string {
     return `repos/${repository}/git/blobs/${sha}`;
+  }
+
+  public static formatRepositoriesMiscounted(listed: number, totalCount: number): string {
+    return `GitHub listed ${listed} of the installation's ${totalCount} repositories, so the lock files could not all be found.`;
   }
 
   public static formatTreeTruncated(repository: string, branch: string): string {

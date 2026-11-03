@@ -165,15 +165,20 @@ export declare class GitHubPackages implements IRegistryHost {
 
   /**
    * Reads every npm lock file on the default branch of each repository the
-   * GitHub App installation can reach, skipping archived repositories and
-   * lock files under `node_modules`, with the installation token in
-   * `REPOSITORIES_TOKEN`, which it uses for nothing else.
+   * GitHub App installation can reach, archived ones included, skipping lock
+   * files under `node_modules`, with the installation token in
+   * `REPOSITORIES_TOKEN`, which it uses for nothing else and which needs only
+   * to read contents and metadata. It lists every repository before it reads
+   * any, and lists them again after.
    *
    * @returns A promise of each `package-lock.json`'s text, named
    * `<owner>/<repository>/<path>`, such as `noldova-com/tools/package-lock.json`;
    * an empty repository has none. Or a failed {@link StepResult}: when
    * `GITHUB_API_URL` or `REPOSITORIES_TOKEN` is missing or empty, naming it;
-   * when GitHub lists only part of a repository's files; or for an answer
+   * when the list holds fewer or more repositories than its `total_count`,
+   * or the second list differs from the first in a repository's name or
+   * default branch; when GitHub lists only part of a repository's files; or
+   * for an answer
    * with an unexpected status, a timeout or a lost connection, as
    * {@link GitHubPackages.readVersionsAsync} gives one. It rejects with
    * `JsonException`, from `@noldova/context.json`, for an answer that is not

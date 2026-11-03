@@ -77,7 +77,29 @@ export class GitHubPackages implements IRegistryHost {
       return StepResult.failed(Resources.formatPruneVariableMissing(missing));
 
     const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.repositoriesTokenVariable), this.timeoutMilliseconds, this.waitAsync, this.createSignal);
+    const repositories = await GitHubPackages.listRepositoriesAsync(api);
+    if (repositories instanceof StepResult)
+      return repositories;
+
     const lockFiles = new Map<string, string>();
+    for (const [repository, branch] of repositories) {
+      const read = await GitHubPackages.readRepositoryLockFilesAsync(api, repository, branch, lockFiles);
+      if (read !== null)
+        return read;
+    }
+
+    const relisted = await GitHubPackages.listRepositoriesAsync(api);
+    if (relisted instanceof StepResult)
+      return relisted;
+    if (JSON.stringify(relisted) !== JSON.stringify(repositories))
+      return StepResult.failed(Resources.repositoriesChanged);
+
+    return lockFiles;
+  }
+
+  private static async listRepositoriesAsync(api: GitHubApi): Promise<readonly (readonly [repository: string, branch: string])[] | StepResult> {
+    const repositories: (readonly [repository: string, branch: string])[] = [];
+    let totalCount = 0;
     for (let page = 1; ; page++) {
       const answer = await api.requestAsync(Resources.readMethod, Resources.formatInstallationRepositoriesPage(page));
       if (answer instanceof StepResult)
@@ -85,20 +107,18 @@ export class GitHubPackages implements IRegistryHost {
       if (answer.status !== Resources.foundStatus)
         return answer.toFailure();
 
-      const items = answer.readBody().readObjectArray(Resources.repositoriesField);
-      for (const item of items) {
-        if (item.readBoolean(Resources.archivedField))
-          continue;
-
-        const read = await GitHubPackages.readRepositoryLockFilesAsync(api, item.readString(Resources.fullNameField), item.readString(Resources.defaultBranchField), lockFiles);
-        if (read !== null)
-          return read;
-      }
+      const body = answer.readBody();
+      const items = body.readObjectArray(Resources.repositoriesField);
+      totalCount = body.readInteger(Resources.totalCountField);
+      repositories.push(...items.map(t => [t.readString(Resources.fullNameField), t.readString(Resources.defaultBranchField)] as const));
       if (items.length < Resources.repositoriesPageSize)
         break;
     }
 
-    return lockFiles;
+    if (repositories.length !== totalCount)
+      return StepResult.failed(Resources.formatRepositoriesMiscounted(repositories.length, totalCount));
+
+    return repositories.sort(([t], [u]) => t.localeCompare(u));
   }
 
   private static async readRepositoryLockFilesAsync(api: GitHubApi, repository: string, branch: string, lockFiles: Map<string, string>): Promise<StepResult | null> {
