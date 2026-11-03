@@ -85,7 +85,7 @@ It runs in a checkout of the commit, and reads `GITHUB_API_URL`, which GitHub Ac
   run: pipelines prune "$VERSION" "$COMMIT" @noldova-com https://npm.pkg.github.com/ 5
 ```
 
-The job needs `permissions: packages: write`, and, since the step deletes, an environment whose reviewers approve each run.
+The job needs `permissions: packages: write`, and runs in a release whose publish approval covers its deletes.
 The step lists the installation's repositories before it reads any lock file, and again after; when a list doesn't hold as many as GitHub counts, the two lists differ, GitHub lists only part of a repository's files, or a read fails, it deletes nothing.
 The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as GitHub refusing to delete a package's last version.
 A 404 to a delete counts as a version already deleted only when GitHub's list no longer has it; otherwise the step fails.
