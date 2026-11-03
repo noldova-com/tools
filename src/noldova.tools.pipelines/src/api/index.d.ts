@@ -1345,7 +1345,8 @@ export declare class Npm {
    * `cmd.exe /d /s /c`, a fixed command. The script prints one line for each
    * copy: the source's path from the repository's root, the package's name
    * and the copy's path inside the package, separated by tabs, with `/`
-   * between a path's parts; it prints nothing when it copies nothing.
+   * between a path's parts, then the line `end of copies`, its last, also
+   * when it copies nothing; it builds nothing.
    *
    * @returns A promise of npm's exit code and of what it wrote. It rejects
    * with {@link ProcessException} if the program cannot start.
@@ -1353,7 +1354,7 @@ export declare class Npm {
    * ```ts
    * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
    *
-   * (await new Npm(new ProcessRunner(), process.cwd()).listCopiesAsync()).output; // "LICENSE\t@noldova/context.text\tLICENSE\n"
+   * (await new Npm(new ProcessRunner(), process.cwd()).listCopiesAsync()).output; // "LICENSE\t@noldova/context.text\tLICENSE\nend of copies\n"
    * ```
    */
   public listCopiesAsync(): Promise<ProcessResult>;
@@ -1490,7 +1491,8 @@ export declare class SourceStep implements IStep {
  * folder and whatever its case. When those checks pass, the step asks the
  * build which files it copies into the packages, with
  * {@link Npm.listCopiesAsync}, and each archive must hold every copy into its
- * package with the same bytes as its source.
+ * package as a file with the same bytes as its source, neither of them a
+ * symbolic link or under one.
  */
 export declare class ArchiveStep implements IStep {
   /**
@@ -1547,12 +1549,14 @@ export declare class ArchiveStep implements IStep {
    * the build for its copies and adds a line, such as
    * `Each of the 2 files the build copies in matches its source.`, or
    * `The build copies no file into a package.`; it fails when the build
-   * cannot list them, with npm's exit code and message, or with one line for
-   * each line the build prints that is not three fields, a path that is
-   * absolute, holds `\`, or an empty, `.` or `..` part, or a package without
-   * an archive; otherwise with one line for each source that is not a file,
-   * archive `tar` cannot extract, with `tar`'s exit code and message, copy
-   * the archive lacks, and copy whose bytes differ. It rejects with
+   * cannot list them, with npm's exit code and message, or when its output
+   * does not end with the line `end of copies`, or with one line for each
+   * line before it that is not three fields, a path that is absolute, holds
+   * `\`, or an empty, `.` or `..` part, or a package without an archive;
+   * otherwise with one line for each source that is a symbolic link or under
+   * one, or not a file, archive `tar` cannot extract, with `tar`'s exit code
+   * and message, and copy the archive lacks, that is a symbolic link or under
+   * one, that is not a file, or whose bytes differ. It rejects with
    * `JsonException`,
    * from `@noldova/context.json`, if a `package.json` the step reads is not
    * a JSON object, lacks a `name` or `version` text where it needs one, has

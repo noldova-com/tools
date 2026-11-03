@@ -33,7 +33,7 @@ npm run build -- --version 0.0.5-nightly.20261102
 ```
 
 The build writes the checkout's head commit into every package's `package.json` as `gitHead`, so each published version names the commit it was built from; it fails before building when it can't read the commit or doesn't run at the root of a git checkout.
-The build copies the repository's `LICENSE` into every package; `npm run build --silent -- --list-copies` builds nothing and prints those copies, one per line, as `pipelines archive` reads them.
+The build copies the repository's `LICENSE` into every package; `npm run build --silent -- --list-copies` builds nothing and prints those copies, one per line, and then `end of copies`, as `pipelines archive` reads them.
 `npm test` runs every package's tests and fails unless they cover all of the packages' source.
 Two options shorten its output, as the CI run uses them:
 

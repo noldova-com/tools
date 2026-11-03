@@ -12,6 +12,7 @@ export class Resources {
   public static readonly accessLevels: readonly string[] = ["public", "restricted"];
   public static readonly archiveLicensePath: string = "package/LICENSE";
   public static readonly archivePackageFolder: string = "package";
+  public static readonly copiesEndLine: string = "end of copies";
   public static readonly copiesNone: string = "The build copies no file into a package.";
   public static readonly copiesTemporaryPrefix: string = "pipelines-copies-";
   public static readonly copyFieldSeparator: string = "\t";
@@ -369,6 +370,10 @@ export class Resources {
     return Resources.formatFailureLine(`The build could not list the files it copies in: npm ${Resources.npmListCopiesValues.join(Resources.valueSeparator)} exited with code ${exitCode}`, errorOutput);
   }
 
+  public static formatCopiesEndMissing(): string {
+    return `The build did not end its list of copies with the line "${Resources.copiesEndLine}": its build script must take --list-copies, print each file it copies into a package, and end with that line.`;
+  }
+
   public static formatCopyLineInvalid(line: string): string {
     return `"${line}" is not a copy the build lists: a source path from the repository's root, a package's name and a path inside the package, separated by tabs.`;
   }
@@ -383,6 +388,18 @@ export class Resources {
 
   public static formatCopySourceMissing(source: string): string {
     return `${source}, which the build lists as a copy, is not a file.`;
+  }
+
+  public static formatCopySourceLinked(source: string): string {
+    return `${source}, which the build lists as a copy, is a symbolic link or lies under one.`;
+  }
+
+  public static formatCopyLinked(archiveName: string, filePath: string): string {
+    return `${archiveName}: its ${Resources.archivePackageFolder}/${filePath} is a symbolic link or lies under one.`;
+  }
+
+  public static formatCopyNotFile(archiveName: string, filePath: string, source: string): string {
+    return `${archiveName}: its ${Resources.archivePackageFolder}/${filePath}, the copy of ${source}, is not a file.`;
   }
 
   public static formatArchiveUnextracted(archiveName: string, exitCode: number | null, errorOutput: string): string {

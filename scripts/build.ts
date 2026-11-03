@@ -12,7 +12,7 @@
  * npm run build - builds every package.
  * npm run build <package...> - builds the named packages, such as noldova.tools.pipelines.
  * npm run build -- --version <version> [package...] - builds at that version instead of version.json's, such as 0.0.5-nightly.20261102.
- * npm run build --silent -- --list-copies - builds nothing and prints each file the build copies into a package: its source, the package's name and its path inside the package, separated by tabs.
+ * npm run build --silent -- --list-copies - builds nothing and prints each file the build copies into a package: its source, the package's name and its path inside the package, separated by tabs; the last line is "end of copies".
  */
 
 import path from "node:path";
@@ -31,6 +31,7 @@ export class Build extends Script {
   private static readonly INSTALL_ARGUMENTS: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
   private static readonly INSTALLING_PACKAGES: string = "Installing the locked npm packages…";
   private static readonly LICENSE_FILE_NAME: string = "LICENSE";
+  private static readonly LIST_COPIES_END_LINE: string = "end of copies";
   private static readonly LIST_COPIES_OPTION: string = "--list-copies";
   private static readonly MANIFEST_INDENTATION: number = 2;
   private static readonly NODE_MODULES_DIRECTORY_NAME: string = "node_modules";
@@ -127,6 +128,7 @@ export class Build extends Script {
 
     for (const packageInfo of Config.PACKAGES_INFO)
       process.stdout.write(`${Build.LICENSE_FILE_NAME}\t${packageInfo.packageName}\t${Build.LICENSE_FILE_NAME}\n`);
+    process.stdout.write(`${Build.LIST_COPIES_END_LINE}\n`);
   }
 
   private static readVersionOption(arguments_: readonly string[]): string | undefined {

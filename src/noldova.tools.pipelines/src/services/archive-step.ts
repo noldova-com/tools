@@ -155,6 +155,8 @@ export class ArchiveStep implements IStep {
       return StepResult.failed(Resources.formatCopiesUnlisted(listed.exitCode, listed.errorOutput));
 
     const lines = listed.output.split(Resources.lineBreakPattern).filter(t => t.trim().length > 0);
+    if (lines.pop() !== Resources.copiesEndLine)
+      return StepResult.failed(Resources.formatCopiesEndMissing());
     if (lines.length === 0)
       return StepResult.succeeded(Resources.copiesNone);
 
@@ -206,23 +208,36 @@ export class ArchiveStep implements IStep {
 
     for (const [archive, source, filePath] of copies) {
       const archiveName = path.basename(archive.filePath);
-      const sourcePath = path.join(this.npm.workingDirectory, source);
+      const sourceStats = fs.lstatSync(path.join(this.npm.workingDirectory, source), { throwIfNoEntry: false });
       const target = targets.get(archive) as string | null;
-      if (fs.statSync(sourcePath, { throwIfNoEntry: false })?.isFile() !== true) {
+      if (sourceStats !== undefined && ArchiveStep.isLinked(this.npm.workingDirectory, source, sourceStats)) {
+        findings.push(Resources.formatCopySourceLinked(source));
+        continue;
+      }
+      if (sourceStats?.isFile() !== true) {
         findings.push(Resources.formatCopySourceMissing(source));
         continue;
       }
       if (target === null)
         continue;
 
-      const copyPath = path.join(target, Resources.archivePackageFolder, filePath);
-      if (fs.statSync(copyPath, { throwIfNoEntry: false })?.isFile() !== true)
+      const packagePath = path.join(target, Resources.archivePackageFolder);
+      const copyStats = fs.lstatSync(path.join(packagePath, filePath), { throwIfNoEntry: false });
+      if (copyStats === undefined)
         findings.push(Resources.formatCopyMissing(archiveName, filePath, source));
-      else if (!fs.readFileSync(copyPath).equals(fs.readFileSync(sourcePath)))
+      else if (ArchiveStep.isLinked(packagePath, filePath, copyStats))
+        findings.push(Resources.formatCopyLinked(archiveName, filePath));
+      else if (!copyStats.isFile())
+        findings.push(Resources.formatCopyNotFile(archiveName, filePath, source));
+      else if (!fs.readFileSync(path.join(packagePath, filePath)).equals(fs.readFileSync(path.join(this.npm.workingDirectory, source))))
         findings.push(Resources.formatCopyDiffers(archiveName, filePath, source));
     }
 
     return findings;
+  }
+
+  private static isLinked(folder: string, filePath: string, stats: fs.Stats): boolean {
+    return stats.isSymbolicLink() || fs.realpathSync(path.join(folder, filePath)) !== path.join(fs.realpathSync(folder), filePath);
   }
 
   private static isInsideFolder(filePath: string): boolean {

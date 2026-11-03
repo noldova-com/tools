@@ -75,10 +75,11 @@ It succeeds only when:
 - the folder holds one archive for each package at the version, named as `npm pack` names it, such as `noldova-tools.pipelines-0.0.4.tgz`, and nothing else;
 - each archive's `package/package.json` has the package's name, inside the scope, the version, and the commit as its `gitHead`, isn't `"private": true`, has a `license`, and lists any other expected package under `dependencies` at exactly the version;
 - each archive holds `package/LICENSE`, and no file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any folder and whatever its case;
-- each archive holds every file the build copies into its package, with the same bytes as the file's source.
+- each archive holds every file the build copies into its package, as a file with the same bytes as its source, and neither the copy nor its source is a symbolic link or under one.
 
 The step asks the build for those copies with `npm run build --silent -- --list-copies`, in the folder the `Npm` it's given works in, the checkout's root.
-The build script prints one line for each copy, with tabs between its source's path from the checkout's root, the package's name, and its path inside the package, such as `LICENSE`, `@noldova/tools.pipelines` and `LICENSE`, with `/` between a path's parts; it prints nothing when it copies nothing, and builds nothing.
+The build script prints one line for each copy, with tabs between its source's path from the checkout's root, the package's name, and its path inside the package, such as `LICENSE`, `@noldova/tools.pipelines` and `LICENSE`, with `/` between a path's parts, then `end of copies` as its last line, also when it copies nothing; it builds nothing.
+Every build the step checks must answer `--list-copies` so before the build's release or CI moves to this version of the step: a build that doesn't fails the step.
 
 ```ts
 import { ArchiveStep, CommandLine, Git, Npm, ProcessRunner, SourceStep, Tar } from "@noldova/tools.pipelines";
@@ -96,7 +97,7 @@ process.exitCode = await commandLine.runAsync(["archive", "archives", "0.0.4", "
 A wrong value, a checkout at another commit or a missing folder fails with that one message.
 Otherwise the step fails with one line for each problem it finds with the archives, such as `archives has no noldova-tools.pipelines-0.0.4.tgz.` or `noldova-tools.pipelines-0.0.4.tgz: its version is 0.0.3, not 0.0.4.`
 It reads each manifest and lists each archive's files with the `tar` program, which must be on the `PATH`; an archive `tar` can't read or list is one of those lines, with `tar`'s exit code and message.
-When the archives pass, the step checks the copies, extracting each archive with `tar` into a new temporary folder that it removes after, and adds one line, such as `Each of the 2 files the build copies in matches its source.`; it fails with npm's exit code and message when the build can't list its copies, and otherwise with one line for each copy the build lists that isn't three fields, has a path that isn't inside its folder or a package without an archive, a source that isn't a file, an archive `tar` can't extract, and a copy an archive lacks or holds with other bytes.
+When the archives pass, the step checks the copies, extracting each archive with `tar` into a new temporary folder that it removes after, and adds one line, such as `Each of the 2 files the build copies in matches its source.`; it fails with npm's exit code and message when the build can't list its copies, and when its output doesn't end with `end of copies`; otherwise with one line for each copy the build lists that isn't three fields, has a path that isn't inside its folder or a package without an archive, a source that is a symbolic link or under one or isn't a file, an archive `tar` can't extract, and a copy an archive lacks, holds as a symbolic link, under one or as a folder, or holds with other bytes.
 A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, has a `gitHead` or a `license` that isn't a text, or has a `private` that isn't `true` or `false` or `dependencies` that aren't an object of texts.
 
 ### The publish step
