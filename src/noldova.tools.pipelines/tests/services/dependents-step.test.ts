@@ -23,6 +23,7 @@ class FakeUpdateHost implements IUpdateHost {
   public readonly failures: Map<string, StepResult> = new Map();
   public readonly pushed: Map<string, Readonly<Record<string, string>>> = new Map();
   public readonly proposals: string[] = [];
+  public readonly events: string[] = [];
   public source: string | StepResult = "source";
   public listed: StepResult | null = null;
   public notes: string | StepResult = "## Release notes for 0.0.4\n\n- Adds a thing.";
@@ -40,6 +41,7 @@ class FakeUpdateHost implements IUpdateHost {
   }
 
   public async checkOutAsync(repository: string, directory: string): Promise<StepResult | null> {
+    this.events.push(`check out ${repository}`);
     const failure = this.failures.get(`checkOut ${repository}`);
     if (failure !== undefined)
       return failure;
@@ -94,10 +96,14 @@ class FakeUpdateHost implements IUpdateHost {
 }
 
 class RecordingOutput implements IStepOutput {
-  public readonly lines: string[] = [];
+  public readonly lines: string[];
+
+  public constructor(lines: string[]) {
+    this.lines = lines;
+  }
 
   public writeSuccess(message: string): void {
-    this.lines.push(message);
+    this.lines.push(`success: ${message}`);
   }
 
   public writeFailure(message: string): void {
@@ -316,12 +322,20 @@ export class DependentsStepTests {
     host.repositories.set("noldova-com/failed", failed);
     host.repositories.set("noldova-com/unpinned", unpinned);
     host.failures.set("push noldova-com/failed", StepResult.failed("rejected"));
-    const output = new RecordingOutput();
+    const output = new RecordingOutput(host.events);
 
     const result = await new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), new LockingNpm(), undefined, output).runAsync(["0.0.4", source.readHead()]);
 
-    Assert.areEqual(["noldova-com/failed: rejected", "noldova-com/unpinned: pins none of them below 0.0.4."].join("\n"), output.lines.join("\n"));
-    Assert.areEqual(output.lines.join("\n"), result.message.split("\n").slice(1).join("\n"));
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      [
+        "check out noldova-com/failed",
+        "failure: noldova-com/failed: rejected",
+        "check out noldova-com/unpinned",
+        "success: noldova-com/unpinned: pins none of them below 0.0.4."
+      ].join("\n"),
+      host.events.join("\n"));
+    Assert.areEqual("Looked for exact pins of @noldova/a, @noldova/a.b, @noldova/b older than 0.0.4 in 2 repositories; each one's line is above.", result.message);
   }
 
   @TestMethod

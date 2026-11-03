@@ -816,8 +816,10 @@ export declare class ProcessRunner {
    * alone.
    * @param timeoutMilliseconds How long the program may run; a program that
    * runs longer is killed and resolves with no exit code, what it wrote, and
-   * a last line in its error output that says it was stopped. Omitted, it may
-   * run for as long as it takes.
+   * a last line in its error output that says it was stopped. Only the
+   * program itself is killed, not what it starts, so the limit holds on Linux
+   * and macOS, where npm runs directly, and not for a program run through
+   * `cmd.exe` on Windows. Omitted, it may run for as long as it takes.
    * @returns A promise of the program's exit code and of what it wrote. A
    * program that fails still resolves, with its exit code; the promise
    * rejects with {@link ProcessException} only when the program cannot
@@ -1291,7 +1293,8 @@ export declare class Npm {
    * files, with `npm install --package-lock-only --ignore-scripts --no-audit
    * --no-fund`, or on Windows the same through `cmd.exe /d /s /c`, a fixed
    * command; it installs nothing and runs no script. A refresh that runs
-   * longer than 5 minutes is stopped, and fails.
+   * longer than 5 minutes is stopped, and fails, on Linux and macOS; on
+   * Windows, where npm runs through `cmd.exe`, it has no limit.
    *
    * @param directory The directory that holds the `package-lock.json`.
    * @param hiddenVariables The environment variables npm doesn't get, such
@@ -2145,8 +2148,9 @@ export declare class DependentsStep implements IStep {
    * such as one the pipeline host empties after each job. Omitted or empty,
    * it is `os.tmpdir()`.
    * @param output Where each repository's line is written as soon as that
-   * repository is done, so a run stopped partway still shows the repositories
-   * it finished; omitted, the lines are only in the result.
+   * repository is done, as a success or a failure, so a run stopped partway
+   * still shows the repositories it finished; the result's message then holds
+   * only the summary. Omitted, the lines are in the result's message.
    * @example
    * ```ts
    * import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
@@ -2165,9 +2169,10 @@ export declare class DependentsStep implements IStep {
    *
    * @param values The version, a release version such as `0.0.4`, and the
    * full id of the commit it was released from.
-   * @returns A promise of the result, with a line for each repository: the
-   * proposal's address and how many pins moved, that it pins none, which
-   * locked packages hold it at its pins, or why it failed. It fails for any number of values but two, a version that isn't
+   * @returns A promise of the result, with a line for each repository, or,
+   * given an output, only the summary: the proposal's address and how many
+   * pins moved, that it pins none, which locked packages hold it at its pins,
+   * or why it failed. It fails for any number of values but two, a version that isn't
    * one or is a nightly, a commit that isn't a full id, a commit that
    * releases no package, what the host can't answer, and when any
    * repository fails, after trying every other; an error in one repository,

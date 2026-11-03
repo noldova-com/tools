@@ -443,6 +443,10 @@ export class Resources {
     return `Looked for exact pins of ${packageNames.join(", ")} older than ${version} in ${repositoryCount} repositories:`;
   }
 
+  public static formatDependentsWritten(packageNames: readonly string[], version: string, repositoryCount: number): string {
+    return `Looked for exact pins of ${packageNames.join(", ")} older than ${version} in ${repositoryCount} repositories; each one's line is above.`;
+  }
+
   public static formatRepositoryUnpinned(repository: string, version: string): string {
     return `${repository}: pins none of them below ${version}.`;
   }

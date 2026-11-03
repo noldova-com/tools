@@ -96,15 +96,21 @@ export class DependentsStep implements IStep {
       for (const [index, repository] of repositories.entries()) {
         const result = await this.tryUpdateAsync(update, repository, path.join(root, String(index)));
         isSuccessful &&= result.isSuccessful;
-        lines.push(result.message);
-        this.output?.writeSuccess(result.message);
+        if (this.output === undefined)
+          lines.push(result.message);
+        else if (result.isSuccessful)
+          this.output.writeSuccess(result.message);
+        else
+          this.output.writeFailure(result.message);
       }
     }
     finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
 
-    const message = [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator);
+    const message = this.output === undefined
+      ? [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator)
+      : Resources.formatDependentsWritten(packageNames, version, repositories.length);
 
     return isSuccessful ? StepResult.succeeded(message) : StepResult.failed(message);
   }
