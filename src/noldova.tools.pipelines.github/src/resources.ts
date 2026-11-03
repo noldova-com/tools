@@ -9,7 +9,10 @@
 export class Resources {
   public static readonly acceptHeader: string = "Accept";
   public static readonly archivedField: string = "archived";
+  public static readonly blobEncoding: BufferEncoding = "base64";
+  public static readonly blobType: string = "blob";
   public static readonly bodyField: string = "body";
+  public static readonly contentField: string = "content";
   public static readonly defaultBranchField: string = "default_branch";
   public static readonly fullNameField: string = "full_name";
   public static readonly gitCloneValues: readonly string[] = ["clone", "--quiet", "--depth", "1", "--no-tags", "--"];
@@ -49,6 +52,7 @@ export class Resources {
   public static readonly apiVersionHeader: string = "X-GitHub-Api-Version";
   public static readonly authorizationHeader: string = "Authorization";
   public static readonly commitType: string = "commit";
+  public static readonly conflictStatus: number = 409;
   public static readonly contentTypeHeader: string = "Content-Type";
   public static readonly createdStatus: number = 201;
   public static readonly createMethod: string = "POST";
@@ -58,6 +62,7 @@ export class Resources {
   public static readonly foundStatus: number = 200;
   public static readonly idField: string = "id";
   public static readonly itemsField: string = "items";
+  public static readonly lockFileName: string = "package-lock.json";
   public static readonly jsonContentType: string = "application/json";
   public static readonly jsonContentTypePattern: RegExp = /^application\/(?:[a-z0-9.-]+\+)?json\b/i;
   public static readonly jsonObjectStart: string = "{";
@@ -77,12 +82,19 @@ export class Resources {
   public static readonly retryAfterMaxSeconds: number = 60;
   public static readonly retryAfterPattern: RegExp = /^[0-9]+$/;
   public static readonly runnerTemporaryVariable: string = "RUNNER_TEMP";
+  public static readonly pathField: string = "path";
+  public static readonly pathSeparator: string = "/";
+  public static readonly repositoriesTokenVariable: string = "REPOSITORIES_TOKEN";
   public static readonly shaField: string = "sha";
+  public static readonly textEncoding: BufferEncoding = "utf8";
   public static readonly timeoutErrorName: string = "TimeoutError";
   public static readonly tokenVariable: string = "GITHUB_TOKEN";
+  public static readonly treeField: string = "tree";
+  public static readonly truncatedField: string = "truncated";
   public static readonly typeField: string = "type";
   public static readonly unavailableStatuses: readonly number[] = [502, 503, 504];
   public static readonly unprocessableStatus: number = 422;
+  public static readonly vendorFolderName: string = "node_modules";
   public static readonly versionsPageSize: number = 100;
 
   public static formatErrorAnnotation(message: string): string {
@@ -183,6 +195,22 @@ export class Resources {
 
   public static formatVersionStillListed(packageName: string, version: string): string {
     return `GitHub answered 404 to deleting ${packageName}@${version} but still lists it, so it is not deleted; the token may not be allowed to delete it.`;
+  }
+
+  public static formatTreeResource(repository: string, branch: string): string {
+    return `repos/${repository}/git/trees/${branch.split(Resources.pathSeparator).map(t => encodeURIComponent(t)).join(Resources.pathSeparator)}?recursive=1`;
+  }
+
+  public static formatBlobResource(repository: string, sha: string): string {
+    return `repos/${repository}/git/blobs/${sha}`;
+  }
+
+  public static formatTreeTruncated(repository: string, branch: string): string {
+    return `GitHub listed only part of ${repository}'s files on ${branch}, so its lock files could not all be found.`;
+  }
+
+  public static formatLockFilePath(repository: string, filePath: string): string {
+    return `${repository}/${filePath}`;
   }
 
   public static formatVersionsResource(packageName: string): string {

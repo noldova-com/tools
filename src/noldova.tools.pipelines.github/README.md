@@ -62,17 +62,22 @@ The step fails, naming the variable, when one is missing or empty, and with the 
 
 ### The prune step
 
-`pipelines prune <version> <commit> <scope> <registry> <keep-versions>` deletes each package's older release versions on GitHub Packages, `https://npm.pkg.github.com/`, keeping the newest `<keep-versions>`; for any other registry it fails and deletes nothing.
+`pipelines prune <version> <commit> <scope> <registry> <keep-versions>` deletes each package's older release versions on GitHub Packages, `https://npm.pkg.github.com/`, keeping the newest `<keep-versions>` and every version a repository's lock file holds; for any other registry it fails and deletes nothing.
 A package `@<owner>/<name>` is the npm package `<name>` of the organization `<owner>`, so the scope is the organization's.
-It runs in a checkout of the commit, and reads `GITHUB_API_URL`, which GitHub Actions sets, and `GITHUB_TOKEN`, which the workflow passes in; the token needs to delete the packages' versions, and is never written anywhere:
+It runs in a checkout of the commit, and reads `GITHUB_API_URL`, which GitHub Actions sets, and two tokens the workflow passes in, which are never written anywhere:
+
+- `GITHUB_TOKEN` deletes the packages' versions.
+- `REPOSITORIES_TOKEN` is a GitHub App installation's: the step reads every `package-lock.json` on the default branch of each repository the installation is given, except archived repositories and lock files under `node_modules`, so it needs to read their contents.
 
 ```yaml
 - env:
     GITHUB_TOKEN: ${{ github.token }}
+    REPOSITORIES_TOKEN: ${{ steps.app-token.outputs.token }}
   run: pipelines prune "$VERSION" "$COMMIT" @noldova-com https://npm.pkg.github.com/ 5
 ```
 
 The job needs `permissions: packages: write`, and, since the step deletes, an environment whose reviewers approve each run.
+When GitHub lists only part of a repository's files, or a read fails, the step deletes nothing.
 The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as GitHub refusing to delete a package's last version.
 A 404 to a delete counts as a version already deleted only when GitHub's list no longer has it; otherwise the step fails.
 

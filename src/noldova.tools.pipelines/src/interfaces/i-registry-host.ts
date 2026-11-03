@@ -14,4 +14,6 @@ export interface IRegistryHost {
   readVersionsAsync(packageName: string): Promise<readonly string[] | StepResult>;
 
   deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult>;
+
+  readLockFilesAsync(): Promise<ReadonlyMap<string, string> | StepResult>;
 }

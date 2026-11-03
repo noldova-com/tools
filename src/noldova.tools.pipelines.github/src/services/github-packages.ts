@@ -71,6 +71,67 @@ export class GitHubPackages implements IRegistryHost {
     return listed.has(version) ? StepResult.failed(Resources.formatVersionStillListed(packageName, version)) : false;
   }
 
+  public async readLockFilesAsync(): Promise<ReadonlyMap<string, string> | StepResult> {
+    const missing = [Resources.apiUrlVariable, Resources.repositoriesTokenVariable].find(t => this.readVariable(t).length === 0);
+    if (missing !== undefined)
+      return StepResult.failed(Resources.formatPruneVariableMissing(missing));
+
+    const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.repositoriesTokenVariable), this.timeoutMilliseconds, this.waitAsync, this.createSignal);
+    const lockFiles = new Map<string, string>();
+    for (let page = 1; ; page++) {
+      const answer = await api.requestAsync(Resources.readMethod, Resources.formatInstallationRepositoriesPage(page));
+      if (answer instanceof StepResult)
+        return answer;
+      if (answer.status !== Resources.foundStatus)
+        return answer.toFailure();
+
+      const items = answer.readBody().readObjectArray(Resources.repositoriesField);
+      for (const item of items) {
+        if (item.readBoolean(Resources.archivedField))
+          continue;
+
+        const read = await GitHubPackages.readRepositoryLockFilesAsync(api, item.readString(Resources.fullNameField), item.readString(Resources.defaultBranchField), lockFiles);
+        if (read !== null)
+          return read;
+      }
+      if (items.length < Resources.repositoriesPageSize)
+        break;
+    }
+
+    return lockFiles;
+  }
+
+  private static async readRepositoryLockFilesAsync(api: GitHubApi, repository: string, branch: string, lockFiles: Map<string, string>): Promise<StepResult | null> {
+    const tree = await api.requestAsync(Resources.readMethod, Resources.formatTreeResource(repository, branch));
+    if (tree instanceof StepResult)
+      return tree;
+    if (tree.status === Resources.conflictStatus)
+      return null;
+    if (tree.status !== Resources.foundStatus)
+      return tree.toFailure();
+
+    const body = tree.readBody();
+    if (body.readBoolean(Resources.truncatedField))
+      return StepResult.failed(Resources.formatTreeTruncated(repository, branch));
+
+    for (const entry of body.readObjectArray(Resources.treeField)) {
+      const filePath = entry.readString(Resources.pathField);
+      const segments = filePath.split(Resources.pathSeparator);
+      if (entry.readString(Resources.typeField) !== Resources.blobType || segments.at(-1) !== Resources.lockFileName || segments.includes(Resources.vendorFolderName))
+        continue;
+
+      const blob = await api.requestAsync(Resources.readMethod, Resources.formatBlobResource(repository, entry.readString(Resources.shaField)));
+      if (blob instanceof StepResult)
+        return blob;
+      if (blob.status !== Resources.foundStatus)
+        return blob.toFailure();
+
+      lockFiles.set(Resources.formatLockFilePath(repository, filePath), Buffer.from(blob.readBody().readString(Resources.contentField), Resources.blobEncoding).toString(Resources.textEncoding));
+    }
+
+    return null;
+  }
+
   private async readIdsAsync(packageName: string, api: GitHubApi, resource: string): Promise<Map<string, number> | StepResult> {
     const ids = new Map<string, number>();
     for (let page = 1; ; page++) {

@@ -162,6 +162,30 @@ export declare class GitHubPackages implements IRegistryHost {
    * ```
    */
   public deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult>;
+
+  /**
+   * Reads every npm lock file on the default branch of each repository the
+   * GitHub App installation can reach, skipping archived repositories and
+   * lock files under `node_modules`, with the installation token in
+   * `REPOSITORIES_TOKEN`, which it uses for nothing else.
+   *
+   * @returns A promise of each `package-lock.json`'s text, named
+   * `<owner>/<repository>/<path>`, such as `noldova-com/tools/package-lock.json`;
+   * an empty repository has none. Or a failed {@link StepResult}: when
+   * `GITHUB_API_URL` or `REPOSITORIES_TOKEN` is missing or empty, naming it;
+   * when GitHub lists only part of a repository's files; or for an answer
+   * with an unexpected status, a timeout or a lost connection, as
+   * {@link GitHubPackages.readVersionsAsync} gives one. It rejects with
+   * `JsonException`, from `@noldova/context.json`, for an answer that is not
+   * the JSON GitHub's list of repositories, tree or blob gives.
+   * @example
+   * ```ts
+   * import { GitHubPackages } from "@noldova/tools.pipelines.github";
+   *
+   * const lockFiles = await new GitHubPackages(process.env).readLockFilesAsync();
+   * ```
+   */
+  public readLockFilesAsync(): Promise<ReadonlyMap<string, string> | StepResult>;
 }
 
 /**
