@@ -10,9 +10,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import type { JsonReader } from "@noldova/context.json";
+
 import type { IStep } from "../interfaces/i-step.js";
+import type { IStepOutput } from "../interfaces/i-step-output.js";
 import type { IUpdateHost } from "../interfaces/i-update-host.js";
-import { DependentsUpdate } from "../models/dependents-update.js";
+import { DependentsUpdate, type PinTarget } from "../models/dependents-update.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -21,22 +24,38 @@ import { Git } from "./git.js";
 import type { Npm } from "./npm.js";
 import type { ProcessRunner } from "./process-runner.js";
 
+interface LockFile {
+  readonly packages?: Readonly<Record<string, LockedPackage>>;
+}
+
+interface LockedPackage {
+  readonly version: string;
+  readonly peerDependencies?: Readonly<Record<string, string>>;
+}
+
+interface PinMove {
+  readonly packageName: string;
+  readonly line: string;
+}
+
 export class DependentsStep implements IStep {
   private readonly archiveStep: ArchiveStep;
   private readonly updateHost: IUpdateHost;
   private readonly processRunner: ProcessRunner;
   private readonly npm: Npm;
   private readonly temporaryRoot: string;
+  private readonly output: IStepOutput | undefined;
 
   public readonly name: string = Resources.dependentsStepName;
   public readonly usage: string = Resources.dependentsStepUsage;
 
-  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string) {
+  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string, output?: IStepOutput) {
     this.archiveStep = archiveStep;
     this.updateHost = updateHost;
     this.processRunner = processRunner;
     this.npm = npm;
     this.temporaryRoot = temporaryRoot === undefined || temporaryRoot.length === 0 ? os.tmpdir() : temporaryRoot;
+    this.output = output;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
@@ -56,7 +75,8 @@ export class DependentsStep implements IStep {
     if (source instanceof StepResult)
       return source;
 
-    const packageNames = await this.archiveStep.readPackageNamesAsync(commit);
+    const manifests = await this.archiveStep.readPackageManifestsAsync(commit);
+    const packageNames = manifests.map(t => t.readString(Resources.nameField)).sort();
     if (packageNames.length === 0)
       return StepResult.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
 
@@ -68,7 +88,7 @@ export class DependentsStep implements IStep {
     if (notes instanceof StepResult)
       return notes;
 
-    const update = new DependentsUpdate(source, version, commit, packageNames, notes);
+    const update = new DependentsUpdate(source, version, commit, packageNames, DependentsStep.readPeerPins(manifests, packageNames, version), notes);
     const lines: string[] = [];
     let isSuccessful = true;
     const root = fs.mkdtempSync(path.join(this.temporaryRoot, Resources.dependentsFolderPrefix));
@@ -76,14 +96,21 @@ export class DependentsStep implements IStep {
       for (const [index, repository] of repositories.entries()) {
         const result = await this.tryUpdateAsync(update, repository, path.join(root, String(index)));
         isSuccessful &&= result.isSuccessful;
-        lines.push(result.message);
+        if (this.output === undefined)
+          lines.push(result.message);
+        else if (result.isSuccessful)
+          this.output.writeSuccess(result.message);
+        else
+          this.output.writeFailure(result.message);
       }
     }
     finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
 
-    const message = [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator);
+    const message = this.output === undefined
+      ? [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator)
+      : Resources.formatDependentsWritten(packageNames, version, repositories.length);
 
     return isSuccessful ? StepResult.succeeded(message) : StepResult.failed(message);
   }
@@ -107,18 +134,28 @@ export class DependentsStep implements IStep {
 
     const git = new Git(this.processRunner, directory);
     const filePaths = (await git.listTrackedFilesAsync()).map(t => t.filePath);
-    const moves = filePaths
-      .filter(t => path.posix.basename(t) === Resources.manifestFileName)
-      .flatMap(t => DependentsStep.movePins(path.join(directory, t), t, update.packageNames, update.version));
+    const manifestPaths = filePaths.filter(t => path.posix.basename(t) === Resources.manifestFileName);
+    const released = update.packageNames.map(t => ({ packageName: t, version: update.version, reason: null }));
+    const moves = manifestPaths.flatMap(t => DependentsStep.movePins(path.join(directory, t), t, released));
     if (moves.length === 0)
       return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
 
+    const peerMoves = manifestPaths.flatMap(t => DependentsStep.movePins(path.join(directory, t), t, update.peerPins));
+    const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const lockFilePaths = filePaths.filter(t => path.posix.basename(t) === Resources.lockFileName);
+    const blockers = lockFilePaths.flatMap(t => DependentsStep.findConflicts(path.join(directory, t), t, expected));
+    if (blockers.length > 0)
+      return StepResult.succeeded(Resources.formatRepositoryBlocked(repository, update.version, blockers));
+
     for (const lockFilePath of lockFilePaths) {
       const result = await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables);
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)));
     }
+
+    const conflicts = lockFilePaths.flatMap(t => DependentsStep.findConflicts(path.join(directory, t), t, null));
+    if (conflicts.length > 0)
+      return StepResult.succeeded(Resources.formatRepositoryConflicted(repository, update.version, conflicts));
 
     const title = Resources.formatUpdateTitle(update.source, update.version);
     await git.commitAllAsync(title);
@@ -133,12 +170,26 @@ export class DependentsStep implements IStep {
     if (push !== null)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
-    const body = Resources.formatUpdateBody(update.source, update.version, update.commit, moves, lockFilePaths, update.notes);
+    const body = Resources.formatUpdateBody(update.source, update.version, update.commit, [...moves, ...peerMoves].map(t => t.line), lockFilePaths, update.notes);
     const proposal = await this.updateHost.proposeAsync(repository, branch, title, body);
     if (proposal instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, proposal.message));
 
-    return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, moves.length));
+    return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, moves.length + peerMoves.length));
+  }
+
+  private static readPeerPins(manifests: readonly JsonReader[], packageNames: readonly string[], releasedVersion: string): readonly PinTarget[] {
+    const pins = new Map<string, PinTarget>();
+    for (const manifest of manifests.filter(t => t.hasField(Resources.peerDependenciesField))) {
+      const reason = Resources.formatPeerReason(manifest.readString(Resources.nameField), releasedVersion);
+      for (const [packageName, value] of Object.entries(manifest.readObject(Resources.peerDependenciesField).toJson())) {
+        const version = String(value);
+        if (Resources.exactVersionPattern.test(version) && !packageNames.includes(packageName) && !pins.has(packageName))
+          pins.set(packageName, { packageName, version, reason });
+      }
+    }
+
+    return [...pins.values()];
   }
 
   private static async isOwnCommitAsync(git: Git, commit: string, source: string): Promise<boolean> {
@@ -146,16 +197,49 @@ export class DependentsStep implements IStep {
       && (await git.readSubjectAsync(commit)).startsWith(Resources.formatUpdateTitlePrefix(source));
   }
 
-  private static movePins(fullPath: string, filePath: string, packageNames: readonly string[], version: string): readonly string[] {
-    const target = Version.parse(version);
-    const moves: string[] = [];
+  private static findConflicts(fullPath: string, filePath: string, expected: ReadonlyMap<string, string> | null): readonly string[] {
+    const lock: LockFile = JSON.parse(fs.readFileSync(fullPath, Resources.textEncoding));
+    const packages = lock.packages ?? {};
+    const conflicts = new Set<string>();
+    for (const [key, entry] of Object.entries(packages)) {
+      const index = key.lastIndexOf(Resources.nodeModulesSegment);
+      const name = key.slice(index + Resources.nodeModulesSegment.length);
+      if (index < 0 || expected?.has(name) === true)
+        continue;
+
+      for (const [peerName, range] of Object.entries(entry.peerDependencies ?? {})) {
+        const found = expected === null ? DependentsStep.findLocked(packages, key, peerName)?.version : expected.get(peerName);
+        if (found !== undefined && found !== range && Resources.exactVersionPattern.test(range))
+          conflicts.add(Resources.formatPeerBlocker(filePath, name, entry.version, peerName, range));
+      }
+    }
+
+    return [...conflicts];
+  }
+
+  private static findLocked(packages: Readonly<Record<string, LockedPackage>>, key: string, name: string): LockedPackage | undefined {
+    let base = key;
+    for (;;) {
+      const found = packages[`${base}/${Resources.nodeModulesSegment}${name}`];
+      const index = base.lastIndexOf(`/${Resources.nodeModulesSegment}`);
+      if (found !== undefined || index < 0)
+        return found ?? packages[`${Resources.nodeModulesSegment}${name}`];
+
+      base = base.slice(0, index);
+    }
+  }
+
+  private static movePins(fullPath: string, filePath: string, targets: readonly PinTarget[]): readonly PinMove[] {
+    const moves: PinMove[] = [];
     let text = fs.readFileSync(fullPath, Resources.textEncoding);
-    for (const packageName of packageNames) {
+    for (const { packageName, version, reason } of targets) {
+      const target = Version.parse(version);
       text = text.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
         if (!Resources.exactVersionPattern.test(found) || Version.parse(found).compareTo(target) >= 0)
           return pin;
 
-        moves.push(Resources.formatPinMoved(filePath, packageName, found, version));
+        const line = Resources.formatPinMoved(filePath, packageName, found, version);
+        moves.push({ packageName, line: reason === null ? line : `${line}${reason}` });
 
         return `${prefix}${version}${suffix}`;
       });
