@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, Git, ProcessResult, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, Git, Npm, ProcessResult, ProcessRunner, Tar } from "@noldova/tools.pipelines";
 
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 
@@ -25,6 +25,26 @@ class FixedTar extends Tar {
   }
 
   public override async readFileAsync(): Promise<ProcessResult> {
+    return this.result;
+  }
+}
+
+class UnextractableTar extends Tar {
+  public override async extractAsync(): Promise<ProcessResult> {
+    return new ProcessResult(2, "", "tar: Unexpected end of archive\n");
+  }
+}
+
+class ListingNpm extends Npm {
+  private readonly result: ProcessResult;
+
+  public constructor(directory: string, result: ProcessResult) {
+    super(new ProcessRunner(), directory);
+
+    this.result = result;
+  }
+
+  public override async listCopiesAsync(): Promise<ProcessResult> {
     return this.result;
   }
 }
@@ -75,7 +95,142 @@ export class ArchiveStepTests {
     const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
 
     Assert.isTrue(result.isSuccessful, result.message);
-    Assert.areEqual(`noldova-a-0.0.4.tgz: @noldova/a@0.0.4 from commit ${commit}\nnoldova-b-0.0.4.tgz: @noldova/b@0.0.4 from commit ${commit}`, result.message);
+    Assert.areEqual(`noldova-a-0.0.4.tgz: @noldova/a@0.0.4 from commit ${commit}\nnoldova-b-0.0.4.tgz: @noldova/b@0.0.4 from commit ${commit}\nThe build copies no file into a package.`, result.message);
+  }
+
+  @TestMethod
+  public async succeedsWhenEachArchiveHoldsTheFilesTheBuildCopiesInAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "LICENSE": "MIT License", "documents/NOTICE.txt": "Notice" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B, { "package/dist/NOTICE.txt": "Notice" });
+    const copies = "LICENSE\t@noldova/a\tLICENSE\r\n\r\nLICENSE\t@noldova/b\tLICENSE\n  \ndocuments/NOTICE.txt\t@noldova/a\tdist/NOTICE.txt\n";
+
+    const result = await ArchiveStepTests.createStep(repository.directory, copies).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("Each of the 3 files the build copies in matches its source.", result.message.split("\n").at(-1));
+  }
+
+  @TestMethod
+  public async namesTheOneFileTheBuildCopiesInAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "LICENSE": "MIT License" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory, "LICENSE\t@noldova/b\tLICENSE\n").runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("The file the build copies in matches its source.", result.message.split("\n").at(-1));
+  }
+
+  @TestMethod
+  public async failsWithNpmsMessageWhenTheBuildCannotListItsCopiesAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+    const step = ArchiveStepTests.createStep(repository.directory, new ProcessResult(1, "", "npm error Missing script: \"build\"\n"));
+
+    const result = await step.runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("The build could not list the files it copies in: npm run build --silent -- --list-copies exited with code 1: npm error Missing script: \"build\"", result.message);
+  }
+
+  @TestMethod
+  public async leavesTheCopiesToRunWhenItOnlyChecksAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+    const step = ArchiveStepTests.createStep(repository.directory, new ProcessResult(1, "", "npm error\n"));
+
+    const check = await step.checkAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(check.result.isSuccessful, check.result.message);
+  }
+
+  @TestData("LICENSE\t@noldova/a")
+  @TestData("LICENSE\t@noldova/a\tLICENSE\textra")
+  @TestData("LICENSE @noldova/a LICENSE")
+  @TestMethod
+  public async failsForACopyLineThatIsNotThreeFieldsAsync(line: string): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory, `${line}\n`).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`"${line}" is not a copy the build lists: a source path from the repository's root, a package's name and a path inside the package, separated by tabs.`, result.message);
+  }
+
+  @TestData("/etc/LICENSE")
+  @TestData("C:/LICENSE")
+  @TestData("documents\\LICENSE")
+  @TestData("../LICENSE")
+  @TestData("documents/./LICENSE")
+  @TestData("documents//LICENSE")
+  @TestData("")
+  @TestMethod
+  public async failsForACopyPathOutsideItsFolderAsync(filePath: string): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+    const lines = [`${filePath}\t@noldova/a\tLICENSE`, `LICENSE\t@noldova/b\t${filePath}`];
+
+    const result = await ArchiveStepTests.createStep(repository.directory, lines.join("\n")).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(lines.map(t => `"${t}": "${filePath}" is not a path inside its folder, with / between its parts.`).join("\n"), result.message);
+  }
+
+  @TestMethod
+  public async failsForACopyIntoAPackageWithoutAnArchiveAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "LICENSE": "MIT License" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory, "LICENSE\t@noldova/c\tLICENSE").runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("\"LICENSE\t@noldova/c\tLICENSE\": @noldova/c has no archive to check.", result.message);
+  }
+
+  @TestMethod
+  public async failsForACopyWhoseSourceIsNotAFileAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory, "NOTICE.txt\t@noldova/a\tNOTICE.txt\nsrc\t@noldova/b\tLICENSE").runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("NOTICE.txt, which the build lists as a copy, is not a file.\nsrc, which the build lists as a copy, is not a file.", result.message);
+  }
+
+  @TestMethod
+  public async failsForACopyAnArchiveLacksOrHoldsWithOtherBytesAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "LICENSE": "MIT License\n", "NOTICE.txt": "Notice" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory, "LICENSE\t@noldova/a\tLICENSE\nNOTICE.txt\t@noldova/b\tdist/NOTICE.txt").runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("noldova-a-0.0.4.tgz: its package/LICENSE differs from LICENSE.\nnoldova-b-0.0.4.tgz: it has no package/dist/NOTICE.txt, the copy of NOTICE.txt.", result.message);
+  }
+
+  @TestMethod
+  public async failsWithTarsMessageWhenItCannotExtractAnArchiveAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "LICENSE": "MIT License" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+    const npm = new ListingNpm(repository.directory, new ProcessResult(0, "LICENSE\t@noldova/a\tLICENSE\nNOTICE.txt\t@noldova/a\tNOTICE.txt\n", ""));
+    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new UnextractableTar(new ProcessRunner()), npm);
+
+    const result = await step.runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("noldova-a-0.0.4.tgz: tar could not extract it and exited with code 2: tar: Unexpected end of archive\nNOTICE.txt, which the build lists as a copy, is not a file.", result.message);
   }
 
   @TestMethod
@@ -294,7 +449,7 @@ export class ArchiveStepTests {
     const commit = repository.commit(ArchiveStepTests.PACKAGES);
     const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
     const errorOutput = "\ngzip: stdin: not in gzip format\r\ntar: Child returned status 1\n  tar: Error is not recoverable: exiting now\n";
-    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new FixedTar(new ProcessResult(2, "", errorOutput)));
+    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new FixedTar(new ProcessResult(2, "", errorOutput)), new Npm(new ProcessRunner(), repository.directory));
 
     const result = await step.runAsync([folder, "0.0.4", commit, "@noldova"]);
 
@@ -312,7 +467,7 @@ export class ArchiveStepTests {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(ArchiveStepTests.PACKAGES);
     const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
-    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new FixedTar(new ProcessResult(2, "", " \n")));
+    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new FixedTar(new ProcessResult(2, "", " \n")), new Npm(new ProcessRunner(), repository.directory));
 
     const result = await step.runAsync([folder, "0.0.4", commit, "@noldova"]);
 
@@ -405,7 +560,7 @@ export class ArchiveStepTests {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(ArchiveStepTests.PACKAGES);
     const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
-    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new UnlistableTar(new ProcessResult(2, "", "tar: Unexpected end of archive\n")));
+    const step = new ArchiveStep(new Git(new ProcessRunner(), repository.directory), new UnlistableTar(new ProcessResult(2, "", "tar: Unexpected end of archive\n")), new Npm(new ProcessRunner(), repository.directory));
 
     const result = await step.runAsync([folder, "0.0.4", commit, "@noldova"]);
 
@@ -437,10 +592,11 @@ export class ArchiveStepTests {
     Assert.isTrue(exception.path.startsWith("src/noldova.b/package.json"), exception.path);
   }
 
-  private static createStep(directory: string): ArchiveStep {
+  private static createStep(directory: string, copies: string | ProcessResult = ""): ArchiveStep {
     const processRunner = new ProcessRunner();
+    const listed = typeof copies === "string" ? new ProcessResult(0, copies, "") : copies;
 
-    return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner));
+    return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner), new ListingNpm(directory, listed));
   }
 
   private static packArchives(repository: GitRepositoryFixture, manifestA: string, manifestB: string, filesA: Readonly<Record<string, string>> = {}): string {

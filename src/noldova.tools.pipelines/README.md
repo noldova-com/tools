@@ -74,14 +74,18 @@ It succeeds only when:
 - the checkout is at the commit;
 - the folder holds one archive for each package at the version, named as `npm pack` names it, such as `noldova-tools.pipelines-0.0.4.tgz`, and nothing else;
 - each archive's `package/package.json` has the package's name, inside the scope, the version, and the commit as its `gitHead`, isn't `"private": true`, has a `license`, and lists any other expected package under `dependencies` at exactly the version;
-- each archive holds `package/LICENSE`, and no file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any folder and whatever its case.
+- each archive holds `package/LICENSE`, and no file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any folder and whatever its case;
+- each archive holds every file the build copies into its package, with the same bytes as the file's source.
+
+The step asks the build for those copies with `npm run build --silent -- --list-copies`, in the folder the `Npm` it's given works in, the checkout's root.
+The build script prints one line for each copy, with tabs between its source's path from the checkout's root, the package's name, and its path inside the package, such as `LICENSE`, `@noldova/tools.pipelines` and `LICENSE`, with `/` between a path's parts; it prints nothing when it copies nothing, and builds nothing.
 
 ```ts
-import { ArchiveStep, CommandLine, Git, ProcessRunner, SourceStep, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, CommandLine, Git, Npm, ProcessRunner, SourceStep, Tar } from "@noldova/tools.pipelines";
 
 const processRunner = new ProcessRunner();
 const git = new Git(processRunner, process.cwd());
-const commandLine = new CommandLine("pipelines", [new SourceStep(git), new ArchiveStep(git, new Tar(processRunner))], {
+const commandLine = new CommandLine("pipelines", [new SourceStep(git), new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd()))], {
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -92,6 +96,7 @@ process.exitCode = await commandLine.runAsync(["archive", "archives", "0.0.4", "
 A wrong value, a checkout at another commit or a missing folder fails with that one message.
 Otherwise the step fails with one line for each problem it finds with the archives, such as `archives has no noldova-tools.pipelines-0.0.4.tgz.` or `noldova-tools.pipelines-0.0.4.tgz: its version is 0.0.3, not 0.0.4.`
 It reads each manifest and lists each archive's files with the `tar` program, which must be on the `PATH`; an archive `tar` can't read or list is one of those lines, with `tar`'s exit code and message.
+When the archives pass, the step checks the copies, extracting each archive with `tar` into a new temporary folder that it removes after, and adds one line, such as `Each of the 2 files the build copies in matches its source.`; it fails with npm's exit code and message when the build can't list its copies, and otherwise with one line for each copy the build lists that isn't three fields, has a path that isn't inside its folder or a package without an archive, a source that isn't a file, an archive `tar` can't extract, and a copy an archive lacks or holds with other bytes.
 A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, has a `gitHead` or a `license` that isn't a text, or has a `private` that isn't `true` or `false` or `dependencies` that aren't an object of texts.
 
 ### The publish step
@@ -105,7 +110,7 @@ The step passes no token: `npm` takes its credentials from its own configuration
 import { ArchiveStep, CommandLine, Git, Npm, ProcessRunner, PublishStep, Tar } from "@noldova/tools.pipelines";
 
 const processRunner = new ProcessRunner();
-const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
 const commandLine = new CommandLine("pipelines", [archiveStep, new PublishStep(archiveStep, new Npm(processRunner, process.cwd()))], {
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
@@ -116,7 +121,7 @@ process.exitCode = await commandLine.runAsync(["publish", "archives", "0.0.4", "
 
 The step:
 
-1. runs the archive step's checks, and fails with their message when they fail;
+1. runs the archive step's checks, except the build's copies, and fails with their message when they fail;
 2. asks the registry about each package, and fails, publishing nothing, with one line for each version it already has from another archive and each version that isn't newer than the version a tag it must pass points to; a version it already has from the same archive is skipped;
 3. publishes the rest in turn, and stops at the first publish that fails;
 4. waits until the registry serves each version it published with the same archive, up to 10 minutes, asking every 10 seconds, also after a failed publish, so a rerun skips the versions already published.
@@ -134,7 +139,8 @@ import { ArchiveStep, CommandLine, Git, NightlyStep, Npm, ProcessRunner, Tar } f
 
 const processRunner = new ProcessRunner();
 const git = new Git(processRunner, process.cwd());
-const nightlyStep = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
+const npm = new Npm(processRunner, process.cwd());
+const nightlyStep = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner), npm), npm);
 const commandLine = new CommandLine("pipelines", [nightlyStep], {
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
@@ -153,7 +159,7 @@ It lists and deletes versions, and reads the lock files, through the host's `IRe
 Since the step deletes, a pipeline runs it only in a release whose publish an environment's reviewers approve.
 
 ```ts
-import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, Git, type IRegistryHost, Npm, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
 
 const processRunner = new ProcessRunner();
 const git = new Git(processRunner, process.cwd());
@@ -164,7 +170,7 @@ const host: IRegistryHost = {
   deleteVersionAsync: async (packageName, version) => versions.delete(version),
   readLockFilesAsync: async () => new Map([["app/package-lock.json", JSON.stringify({ packages: { "node_modules/@noldova/a": { version: "0.0.3" } } })]])
 };
-const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
+const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd())), host);
 const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://npm.pkg.github.com/", "1"]);
 result.message; // "@noldova/a@0.0.3 kept, since app/package-lock.json locks it.\n@noldova/a@0.0.2 deleted." when the commit holds only @noldova/a
 ```
@@ -273,7 +279,7 @@ import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessRunner,
 
 declare const host: IUpdateHost;
 const processRunner = new ProcessRunner();
-const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
 const step = new DependentsStep(archiveStep, host, processRunner, new Npm(processRunner, process.cwd()));
 const result = await step.runAsync(["0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"]);
 result.message; // "Looked for exact pins of @noldova/a, @noldova/b older than 0.0.4 in 2 repositories: …"

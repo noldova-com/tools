@@ -12,6 +12,7 @@
  * npm run build - builds every package.
  * npm run build <package...> - builds the named packages, such as noldova.tools.pipelines.
  * npm run build -- --version <version> [package...] - builds at that version instead of version.json's, such as 0.0.5-nightly.20261102.
+ * npm run build --silent -- --list-copies - builds nothing and prints each file the build copies into a package: its source, the package's name and its path inside the package, separated by tabs.
  */
 
 import path from "node:path";
@@ -30,6 +31,7 @@ export class Build extends Script {
   private static readonly INSTALL_ARGUMENTS: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
   private static readonly INSTALLING_PACKAGES: string = "Installing the locked npm packages…";
   private static readonly LICENSE_FILE_NAME: string = "LICENSE";
+  private static readonly LIST_COPIES_OPTION: string = "--list-copies";
   private static readonly MANIFEST_INDENTATION: number = 2;
   private static readonly NODE_MODULES_DIRECTORY_NAME: string = "node_modules";
   private static readonly PACK_ARGUMENTS: readonly string[] = ["pack", "--silent", "--pack-destination"];
@@ -41,6 +43,11 @@ export class Build extends Script {
 
   public override async runAsync(): Promise<void> {
     const arguments_ = process.argv.slice(2);
+    if (arguments_.includes(Build.LIST_COPIES_OPTION)) {
+      Build.listCopies(arguments_);
+      return;
+    }
+
     const versionOption = Build.readVersionOption(arguments_);
     const packagesInfo = Build.selectPackages(Build.removeVersionOption(arguments_));
     const commit = await this.readHeadCommitAsync();
@@ -114,6 +121,14 @@ export class Build extends Script {
     await this.executeNPMCommandAsync([...Build.INSTALL_ARGUMENTS, ...archives], process.cwd(), true);
   }
 
+  private static listCopies(arguments_: readonly string[]): void {
+    if (arguments_.length !== 1)
+      throw new CommandFailedException(Build.listCopiesAlone(Build.LIST_COPIES_OPTION));
+
+    for (const packageInfo of Config.PACKAGES_INFO)
+      process.stdout.write(`${Build.LICENSE_FILE_NAME}\t${packageInfo.packageName}\t${Build.LICENSE_FILE_NAME}\n`);
+  }
+
   private static readVersionOption(arguments_: readonly string[]): string | undefined {
     if (arguments_.some(t => t.startsWith(`${Build.VERSION_OPTION}${Build.VERSION_OPTION_VALUE_SEPARATOR}`)))
       throw new CommandFailedException(Build.versionMissing(Build.VERSION_OPTION));
@@ -172,6 +187,10 @@ export class Build extends Script {
 
   private static checkoutRootMissing(directory: string): string {
     return `${directory} is not the root of a git checkout.`;
+  }
+
+  private static listCopiesAlone(option: string): string {
+    return `Option ${option} takes no other value.`;
   }
 
   private static optionDuplicated(option: string): string {

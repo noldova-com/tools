@@ -1141,7 +1141,8 @@ export declare class Git {
 }
 
 /**
- * Reads and lists files in `.tgz` archives through the `tar` program.
+ * Reads, lists and extracts files in `.tgz` archives through the `tar`
+ * program.
  */
 export declare class Tar {
   /**
@@ -1199,6 +1200,26 @@ export declare class Tar {
    * ```
    */
   public listFilesAsync(archivePath: string): Promise<ProcessResult>;
+
+  /**
+   * Extracts every file of an archive into the archive's folder; an npm
+   * archive's files land under its `package/` folder.
+   *
+   * @param archivePath The archive's path, such as
+   * `archives/noldova-tools.pipelines-0.0.4.tgz`.
+   * @returns A promise of how `tar` ended; when the archive is not a `.tgz`,
+   * it failed, with `tar`'s message. It rejects with
+   * {@link ProcessException} if `tar` cannot start, such as when it is not
+   * installed or the archive's folder does not exist.
+   * @example
+   * ```ts
+   * import { ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const result = await new Tar(new ProcessRunner()).extractAsync("archives/noldova-tools.pipelines-0.0.4.tgz");
+   * result.isSuccessful; // true when archives/package holds the archive's files
+   * ```
+   */
+  public extractAsync(archivePath: string): Promise<ProcessResult>;
 }
 
 /**
@@ -1224,6 +1245,11 @@ export declare class Npm {
    * ```
    */
   public constructor(processRunner: ProcessRunner, workingDirectory: string, platform?: string);
+
+  /**
+   * The directory `npm` runs in, as the constructor got it.
+   */
+  public readonly workingDirectory: string;
 
   /**
    * Reads a field of a package or a version from the registry, asking the
@@ -1311,6 +1337,26 @@ export declare class Npm {
    * ```
    */
   public buildAsync(directory: string): Promise<ProcessResult>;
+
+  /**
+   * Asks the build script of the package in the working directory which
+   * files it copies into the packages, with
+   * `npm run build --silent -- --list-copies`, or on Windows the same through
+   * `cmd.exe /d /s /c`, a fixed command. The script prints one line for each
+   * copy: the source's path from the repository's root, the package's name
+   * and the copy's path inside the package, separated by tabs, with `/`
+   * between a path's parts; it prints nothing when it copies nothing.
+   *
+   * @returns A promise of npm's exit code and of what it wrote. It rejects
+   * with {@link ProcessException} if the program cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * (await new Npm(new ProcessRunner(), process.cwd()).listCopiesAsync()).output; // "LICENSE\t@noldova/context.text\tLICENSE\n"
+   * ```
+   */
+  public listCopiesAsync(): Promise<ProcessResult>;
 
   /**
    * Refreshes a directory's `package-lock.json` from its `package.json`
@@ -1441,7 +1487,10 @@ export declare class SourceStep implements IStep {
  * file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or
  * `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name
  * ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any
- * folder and whatever its case.
+ * folder and whatever its case. When those checks pass, the step asks the
+ * build which files it copies into the packages, with
+ * {@link Npm.listCopiesAsync}, and each archive must hold every copy into its
+ * package with the same bytes as its source.
  */
 export declare class ArchiveStep implements IStep {
   /**
@@ -1455,21 +1504,23 @@ export declare class ArchiveStep implements IStep {
   public readonly usage: string;
 
   /**
-   * Creates the step over a clone and an archive reader.
+   * Creates the step over a clone, an archive reader and the build.
    *
    * @param git The reader of the clone whose checkout the archives were
    * packed from.
    * @param tar The reader of the archives.
+   * @param npm The runner of the build that packed the archives, working in
+   * the clone's root.
    * @example
    * ```ts
-   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   * import { ArchiveStep, Git, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
-   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * step.name; // "archive"
    * ```
    */
-  public constructor(git: Git, tar: Tar);
+  public constructor(git: Git, tar: Tar, npm: Npm);
 
   /**
    * Checks the release's archives.
@@ -1492,7 +1543,17 @@ export declare class ArchiveStep implements IStep {
    * or an empty one, or an expected package under `dependencies`
    * at anything but exactly the version, an archive `tar` cannot list the
    * files of, with `tar`'s exit code and message, a file of a kind that holds
-   * credentials, and no `package/LICENSE`. It rejects with `JsonException`,
+   * credentials, and no `package/LICENSE`. When the archives pass, it asks
+   * the build for its copies and adds a line, such as
+   * `Each of the 2 files the build copies in matches its source.`, or
+   * `The build copies no file into a package.`; it fails when the build
+   * cannot list them, with npm's exit code and message, or with one line for
+   * each line the build prints that is not three fields, a path that is
+   * absolute, holds `\`, or an empty, `.` or `..` part, or a package without
+   * an archive; otherwise with one line for each source that is not a file,
+   * archive `tar` cannot extract, with `tar`'s exit code and message, copy
+   * the archive lacks, and copy whose bytes differ. It rejects with
+   * `JsonException`,
    * from `@noldova/context.json`, if a `package.json` the step reads is not
    * a JSON object, lacks a `name` or `version` text where it needs one, has
    * a `gitHead` or a `license` that is not a text, or
@@ -1501,10 +1562,10 @@ export declare class ArchiveStep implements IStep {
    * `tar` cannot start or git fails otherwise.
    * @example
    * ```ts
-   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   * import { ArchiveStep, Git, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
-   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * const result = await step.runAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova"]);
    * result.isSuccessful; // true when the folder holds exactly the packages at 0.0.4
    * (await step.runAsync(["archives"])).message; // "The archive step takes <folder> <version> <commit> <scope>."
@@ -1513,9 +1574,9 @@ export declare class ArchiveStep implements IStep {
   public runAsync(values: readonly string[]): Promise<StepResult>;
 
   /**
-   * Checks the release's archives as {@link ArchiveStep.runAsync} does, and
-   * gives the archives it checked with the result, for a step that goes on
-   * to use them.
+   * Checks the release's archives as {@link ArchiveStep.runAsync} does,
+   * except for the build's copies, and gives the archives it checked with the
+   * result, for a step that goes on to use them.
    *
    * @param values The same values as {@link ArchiveStep.runAsync}.
    * @returns A promise of the check: the result, and when it succeeded, each
@@ -1523,10 +1584,10 @@ export declare class ArchiveStep implements IStep {
    * {@link ArchiveStep.runAsync} does.
    * @example
    * ```ts
-   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   * import { ArchiveStep, Git, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
-   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * const check = await step.checkAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova"]);
    * check.archives.map(t => t.packageName); // ["@noldova/tools.pipelines"] when the check succeeded
    * ```
@@ -1544,10 +1605,10 @@ export declare class ArchiveStep implements IStep {
    * {@link ArchiveStep.runAsync} does.
    * @example
    * ```ts
-   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   * import { ArchiveStep, Git, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
-   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * const names = await step.readPackageNamesAsync("225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8");
    * names; // ["@noldova/tools.pipelines"]
    * ```
@@ -1564,10 +1625,10 @@ export declare class ArchiveStep implements IStep {
    * and {@link ProcessException} as {@link ArchiveStep.runAsync} does.
    * @example
    * ```ts
-   * import { ArchiveStep, Git, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   * import { ArchiveStep, Git, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
-   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * const manifests = await step.readPackageManifestsAsync("225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8");
    * manifests.map(t => t.readString("name")); // ["@noldova/tools.pipelines"]
    * ```
@@ -1578,9 +1639,9 @@ export declare class ArchiveStep implements IStep {
 /**
  * The step that publishes a release's archives:
  * `publish <folder> <version> <commit> <scope> <registry> <access>`. It runs
- * {@link ArchiveStep}'s checks first, then publishes each package whose
- * version the registry doesn't have and waits until the registry serves each
- * version it published with the same archive.
+ * {@link ArchiveStep}'s checks first, except the build's copies, then
+ * publishes each package whose version the registry doesn't have and waits
+ * until the registry serves each version it published with the same archive.
  */
 export declare class PublishStep implements IStep {
   /**
@@ -1609,7 +1670,7 @@ export declare class PublishStep implements IStep {
    * import { ArchiveStep, Git, Npm, ProcessRunner, PublishStep, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
-   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * const step = new PublishStep(archiveStep, new Npm(processRunner, process.cwd()));
    * step.name; // "publish"
    * ```
@@ -1646,7 +1707,7 @@ export declare class PublishStep implements IStep {
    * import { ArchiveStep, Git, Npm, ProcessRunner, PublishStep, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
-   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * const step = new PublishStep(archiveStep, new Npm(processRunner, process.cwd()));
    * const result = await step.runAsync(["archives", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://registry.npmjs.org/", "public"]);
    * result.isSuccessful; // true when every package's 0.0.4 is published and served
@@ -1686,7 +1747,8 @@ export declare class NightlyStep implements IStep {
    *
    * const processRunner = new ProcessRunner();
    * const git = new Git(processRunner, process.cwd());
-   * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
+   * const npm = new Npm(processRunner, process.cwd());
+   * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner), npm), npm);
    * step.name; // "nightly"
    * ```
    */
@@ -1721,7 +1783,8 @@ export declare class NightlyStep implements IStep {
    *
    * const processRunner = new ProcessRunner();
    * const git = new Git(processRunner, process.cwd());
-   * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new Npm(processRunner, process.cwd()));
+   * const npm = new Npm(processRunner, process.cwd());
+   * const step = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner), npm), npm);
    * const result = await step.runAsync(["225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "https://registry.npmjs.org/"]);
    * result.message; // "0.0.5-nightly.20261102", or "" when nothing changed
    * ```
@@ -1759,7 +1822,7 @@ export declare class PruneStep implements IStep {
    * registry, and reads the lock files whose versions it keeps.
    * @example
    * ```ts
-   * import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
+   * import { ArchiveStep, Git, type IRegistryHost, Npm, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
    * const git = new Git(processRunner, process.cwd());
@@ -1769,7 +1832,7 @@ export declare class PruneStep implements IStep {
    *   deleteVersionAsync: async () => true,
    *   readLockFilesAsync: async () => new Map()
    * };
-   * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
+   * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd())), host);
    * step.name; // "prune"
    * ```
    */
@@ -1815,7 +1878,7 @@ export declare class PruneStep implements IStep {
    * with anything but an `Error`.
    * @example
    * ```ts
-   * import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
+   * import { ArchiveStep, Git, type IRegistryHost, Npm, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
    *
    * const processRunner = new ProcessRunner();
    * const git = new Git(processRunner, process.cwd());
@@ -1826,7 +1889,7 @@ export declare class PruneStep implements IStep {
    *   deleteVersionAsync: async (packageName, version) => versions.delete(version),
    *   readLockFilesAsync: async () => new Map()
    * };
-   * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
+   * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd())), host);
    * const result = await step.runAsync(["0.0.3", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://npm.pkg.github.com/", "2"]);
    * result.message; // "@noldova/a@0.0.1 deleted." when the commit holds only @noldova/a
    * ```
@@ -2193,7 +2256,7 @@ export declare class DependentsStep implements IStep {
    *
    * declare const host: IUpdateHost;
    * const processRunner = new ProcessRunner();
-   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner));
+   * const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
    * const step = new DependentsStep(archiveStep, host, processRunner, new Npm(processRunner, process.cwd()));
    * step.name; // "dependents"
    * ```

@@ -7,7 +7,7 @@
  */
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, StepResult, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, Git, type IRegistryHost, Npm, ProcessRunner, PruneStep, StepResult, Tar } from "@noldova/tools.pipelines";
 
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 
@@ -354,6 +354,6 @@ export class PruneStepTests {
     const processRunner = new ProcessRunner();
     const git = new Git(processRunner, directory);
 
-    return new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
+    return new PruneStep(git, new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd())), host);
   }
 }
