@@ -589,7 +589,7 @@ export class DependentsStepTests {
   private static createArchiveStep(directory: string): ArchiveStep {
     const processRunner = new ProcessRunner();
 
-    return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner));
+    return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner), new Npm(processRunner, directory));
   }
 
   private static createStep(source: GitRepositoryFixture, host: FakeUpdateHost, npm: Npm): DependentsStep {

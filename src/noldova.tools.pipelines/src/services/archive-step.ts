@@ -7,6 +7,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { JsonReader } from "@noldova/context.json";
@@ -18,22 +19,31 @@ import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
 import type { Git } from "./git.js";
+import type { Npm } from "./npm.js";
 import type { Tar } from "./tar.js";
 
 export class ArchiveStep implements IStep {
   private readonly git: Git;
   private readonly tar: Tar;
+  private readonly npm: Npm;
 
   public readonly name: string = Resources.archiveStepName;
   public readonly usage: string = Resources.archiveStepUsage;
 
-  public constructor(git: Git, tar: Tar) {
+  public constructor(git: Git, tar: Tar, npm: Npm) {
     this.git = git;
     this.tar = tar;
+    this.npm = npm;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
-    return (await this.checkAsync(values)).result;
+    const check = await this.checkAsync(values);
+    if (!check.result.isSuccessful)
+      return check.result;
+
+    const copies = await this.checkCopiesAsync(check.archives);
+
+    return copies.isSuccessful ? StepResult.succeeded([check.result.message, copies.message].join(Resources.lineSeparator)) : copies;
   }
 
   public async checkAsync(values: readonly string[]): Promise<ArchiveCheck> {
@@ -137,6 +147,104 @@ export class ArchiveStep implements IStep {
     findings.push(...await this.checkFilesAsync(archivePath));
 
     return findings;
+  }
+
+  private async checkCopiesAsync(archives: readonly PackageArchive[]): Promise<StepResult> {
+    const listed = await this.npm.listCopiesAsync();
+    if (!listed.isSuccessful)
+      return StepResult.failed(Resources.formatCopiesUnlisted(listed.exitCode, listed.errorOutput));
+
+    const lines = listed.output.split(Resources.lineBreakPattern).filter(t => t.trim().length > 0);
+    if (lines.pop() !== Resources.copiesEndLine)
+      return StepResult.failed(Resources.formatCopiesEndMissing());
+    if (lines.length === 0)
+      return StepResult.succeeded(Resources.copiesNone);
+
+    const findings: string[] = [];
+    const copies: (readonly [archive: PackageArchive, source: string, filePath: string])[] = [];
+    for (const line of lines) {
+      const [source, packageName, filePath, ...rest] = line.split(Resources.copyFieldSeparator);
+      if (source === undefined || packageName === undefined || filePath === undefined || rest.length !== 0) {
+        findings.push(Resources.formatCopyLineInvalid(line));
+        continue;
+      }
+
+      const invalidPath = [source, filePath].find(t => !ArchiveStep.isInsideFolder(t));
+      const archive = archives.find(t => t.packageName === packageName);
+      if (invalidPath !== undefined)
+        findings.push(Resources.formatCopyPathInvalid(line, invalidPath));
+      else if (archive === undefined)
+        findings.push(Resources.formatCopyPackageUnknown(line, packageName));
+      else
+        copies.push([archive, source, filePath]);
+    }
+    if (findings.length > 0)
+      return StepResult.failed(findings.join(Resources.lineSeparator));
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), Resources.copiesTemporaryPrefix));
+    try {
+      findings.push(...await this.compareCopiesAsync(copies, directory));
+    }
+    finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+
+    return findings.length > 0 ? StepResult.failed(findings.join(Resources.lineSeparator)) : StepResult.succeeded(Resources.formatCopiesMatched(copies.length));
+  }
+
+  private async compareCopiesAsync(copies: readonly (readonly [archive: PackageArchive, source: string, filePath: string])[], directory: string): Promise<readonly string[]> {
+    const findings: string[] = [];
+    const targets = new Map<PackageArchive, string | null>();
+    for (const archive of new Set(copies.map(([t]) => t))) {
+      const target = path.join(directory, String(targets.size));
+      const archivePath = path.join(target, path.basename(archive.filePath));
+      fs.mkdirSync(target);
+      fs.copyFileSync(archive.filePath, archivePath);
+      const result = await this.tar.extractAsync(archivePath);
+      if (!result.isSuccessful)
+        findings.push(Resources.formatArchiveUnextracted(path.basename(archive.filePath), result.exitCode, result.errorOutput));
+      targets.set(archive, result.isSuccessful ? target : null);
+    }
+
+    for (const [archive, source, filePath] of copies) {
+      const archiveName = path.basename(archive.filePath);
+      const sourceStats = fs.lstatSync(path.join(this.npm.workingDirectory, source), { throwIfNoEntry: false });
+      const target = targets.get(archive) as string | null;
+      if (sourceStats !== undefined && ArchiveStep.isLinked(this.npm.workingDirectory, source, sourceStats)) {
+        findings.push(Resources.formatCopySourceLinked(source));
+        continue;
+      }
+      if (sourceStats?.isFile() !== true) {
+        findings.push(Resources.formatCopySourceMissing(source));
+        continue;
+      }
+      if (target === null)
+        continue;
+
+      const packagePath = path.join(target, Resources.archivePackageFolder);
+      const copyStats = fs.lstatSync(path.join(packagePath, filePath), { throwIfNoEntry: false });
+      if (copyStats === undefined)
+        findings.push(Resources.formatCopyMissing(archiveName, filePath, source));
+      else if (ArchiveStep.isLinked(packagePath, filePath, copyStats))
+        findings.push(Resources.formatCopyLinked(archiveName, filePath));
+      else if (!copyStats.isFile())
+        findings.push(Resources.formatCopyNotFile(archiveName, filePath, source));
+      else if (!fs.readFileSync(path.join(packagePath, filePath)).equals(fs.readFileSync(path.join(this.npm.workingDirectory, source))))
+        findings.push(Resources.formatCopyDiffers(archiveName, filePath, source));
+    }
+
+    return findings;
+  }
+
+  private static isLinked(folder: string, filePath: string, stats: fs.Stats): boolean {
+    return stats.isSymbolicLink() || fs.realpathSync(path.join(folder, filePath)) !== path.join(fs.realpathSync(folder), filePath);
+  }
+
+  private static isInsideFolder(filePath: string): boolean {
+    return !path.posix.isAbsolute(filePath)
+      && !path.win32.isAbsolute(filePath)
+      && !filePath.includes(Resources.windowsPathSeparator)
+      && filePath.split(Resources.pathSeparator).every(t => !Resources.copyPathSegmentsRefused.includes(t));
   }
 
   private async checkFilesAsync(archivePath: string): Promise<readonly string[]> {

@@ -16,7 +16,7 @@ import type { ProcessRunner } from "./process-runner.js";
 
 export class Npm {
   private readonly processRunner: ProcessRunner;
-  private readonly workingDirectory: string;
+  public readonly workingDirectory: string;
   private readonly platform: string;
 
   public constructor(processRunner: ProcessRunner, workingDirectory: string, platform: string = process.platform) {
@@ -49,6 +49,12 @@ export class Npm {
     return this.platform === Resources.windowsPlatform
       ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmBuildValues, directory)
       : await this.processRunner.runAsync(Resources.npmProgram, Resources.npmBuildValues, directory);
+  }
+
+  public async listCopiesAsync(): Promise<ProcessResult> {
+    return this.platform === Resources.windowsPlatform
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmListCopiesValues, this.workingDirectory)
+      : await this.processRunner.runAsync(Resources.npmProgram, Resources.npmListCopiesValues, this.workingDirectory);
   }
 
   public async lockAsync(directory: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {

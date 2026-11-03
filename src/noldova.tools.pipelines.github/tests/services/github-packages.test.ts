@@ -8,7 +8,7 @@
 
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, Git, ProcessRunner, PruneStep, StepResult, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, Git, Npm, ProcessRunner, PruneStep, StepResult, Tar } from "@noldova/tools.pipelines";
 import { GitHubPackages } from "@noldova/tools.pipelines.github";
 
 import { GitHubApiAnswer, GitHubApiFixture } from "./github-api.fixture.js";
@@ -436,7 +436,7 @@ export class GitHubPackagesTests {
     const processRunner = new ProcessRunner();
     const git = new Git(processRunner, clone.directory);
 
-    return new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), GitHubPackagesTests.createPackages(api));
+    return new PruneStep(git, new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd())), GitHubPackagesTests.createPackages(api));
   }
 
   private static readVersions(result: readonly string[] | StepResult): readonly string[] {

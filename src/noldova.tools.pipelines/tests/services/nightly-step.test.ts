@@ -8,7 +8,7 @@
 
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, Git, NightlyStep, ProcessResult, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, Git, NightlyStep, Npm, ProcessResult, ProcessRunner, Tar } from "@noldova/tools.pipelines";
 
 import { FakeNpm } from "./fake-npm.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
@@ -152,7 +152,7 @@ export class NightlyStepTests {
     const processRunner = new ProcessRunner();
     const git = new Git(processRunner, repository.directory);
 
-    const result = await new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), new FakeNpm({})).runAsync([commit, NightlyStepTests.REGISTRY]);
+    const result = await new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd())), new FakeNpm({})).runAsync([commit, NightlyStepTests.REGISTRY]);
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.isTrue(/^0\.0\.5-nightly\.[0-9]{8}$/.test(result.message), result.message);
@@ -316,7 +316,7 @@ export class NightlyStepTests {
     const processRunner = new ProcessRunner();
     const git = new Git(processRunner, directory);
 
-    return new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner)), npm, () => now);
+    return new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd())), npm, () => now);
   }
 
   private static createNpm(nightlyA: string, gitHeadA: string, nightlyB: string, gitHeadB: string): FakeNpm {

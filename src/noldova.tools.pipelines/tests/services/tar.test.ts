@@ -39,6 +39,29 @@ export class TarTests {
   }
 
   @TestMethod
+  public async extractsAnArchiveIntoAFolderAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const archivePath = repository.pack("archives/example-0.0.4.tgz", { "package/package.json": "{ \"name\": \"example\" }", "package/dist/index.js": "export {};" });
+
+    const result = await new Tar(new ProcessRunner()).extractAsync(archivePath);
+
+    Assert.isTrue(result.isSuccessful, result.errorOutput);
+    Assert.areEqual("export {};", fs.readFileSync(path.join(path.dirname(archivePath), "package", "dist", "index.js"), "utf8"));
+  }
+
+  @TestMethod
+  public async failsToExtractAFileThatIsNotAnArchiveAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const archivePath = path.join(repository.directory, "example-0.0.4.tgz");
+    fs.writeFileSync(archivePath, "not an archive");
+
+    const result = await new Tar(new ProcessRunner()).extractAsync(archivePath);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.isTrue(result.errorOutput.trim().length > 0);
+  }
+
+  @TestMethod
   public async failsToListAFileThatIsNotAnArchiveAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const archivePath = path.join(repository.directory, "example-0.0.4.tgz");

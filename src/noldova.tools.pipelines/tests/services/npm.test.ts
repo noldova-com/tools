@@ -81,6 +81,20 @@ export class NpmTests {
     Assert.areEqual(expected, processRunner.calls.join("\n"));
   }
 
+  @TestData("linux", "release: npm run build --silent -- --list-copies")
+  @TestData("win32", "release: cmd.exe /d /s /c npm.cmd run build --silent -- --list-copies")
+  @TestMethod
+  public async listsTheBuildsCopiesInItsDirectoryAsTheirPlatformRunsItAsync(platform: string, expected: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "LICENSE\t@noldova/a\tLICENSE\n", ""));
+    const npm = new Npm(processRunner, "release", platform);
+
+    const result = await npm.listCopiesAsync();
+
+    Assert.areEqual("LICENSE\t@noldova/a\tLICENSE\n", result.output);
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
+    Assert.areEqual("release", npm.workingDirectory);
+  }
+
   @TestData("linux", "locked: npm install --package-lock-only --ignore-scripts --no-audit --no-fund")
   @TestData("win32", "locked: cmd.exe /d /s /c npm.cmd install --package-lock-only --ignore-scripts --no-audit --no-fund")
   @TestMethod
