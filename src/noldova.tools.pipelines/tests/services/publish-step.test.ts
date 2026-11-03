@@ -295,7 +295,7 @@ export class PublishStepTests {
   private static createArchiveStep(directory: string): ArchiveStep {
     const processRunner = new ProcessRunner();
 
-    return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner));
+    return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner), new Npm(processRunner, directory));
   }
 
   private static packArchives(repository: GitRepositoryFixture, version: string = "0.0.4"): string {

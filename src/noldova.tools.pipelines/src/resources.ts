@@ -11,6 +11,13 @@ import type { BinaryToTextEncoding } from "node:crypto";
 export class Resources {
   public static readonly accessLevels: readonly string[] = ["public", "restricted"];
   public static readonly archiveLicensePath: string = "package/LICENSE";
+  public static readonly archivePackageFolder: string = "package";
+  public static readonly copiesEndLine: string = "end of copies";
+  public static readonly copiesNone: string = "The build copies no file into a package.";
+  public static readonly copiesTemporaryPrefix: string = "pipelines-copies-";
+  public static readonly copyFieldSeparator: string = "\t";
+  public static readonly copyPathSegmentsRefused: readonly string[] = ["", ".", ".."];
+  public static readonly windowsPathSeparator: string = "\\";
   public static readonly archiveFileExtension: string = ".tgz";
   public static readonly archiveManifestPath: string = "package/package.json";
   public static readonly archiveStepName: string = "archive";
@@ -84,6 +91,7 @@ export class Resources {
   public static readonly nodeVersionPrefix: string = "v";
   public static readonly npmAccessValues: readonly string[] = ["--access"];
   public static readonly npmBuildValues: readonly string[] = ["run", "build"];
+  public static readonly npmListCopiesValues: readonly string[] = ["run", "build", "--silent", "--", "--list-copies"];
   public static readonly npmIntegrityField: string = "dist.integrity";
   public static readonly lockPackagesField: string = "packages";
   public static readonly nodeModulesSegment: string = "node_modules/";
@@ -124,6 +132,7 @@ export class Resources {
   public static readonly tagStepName: string = "tag";
   public static readonly tagStepUsage: string = "<version> <commit>";
   public static readonly tarProgram: string = "tar";
+  public static readonly tarExtractValues: readonly string[] = ["-xzf"];
   public static readonly tarListFilesValues: readonly string[] = ["-tzf"];
   public static readonly tarReadFileValues: readonly string[] = ["-xzOf"];
   public static readonly testsFolderName: string = "tests";
@@ -143,6 +152,7 @@ export class Resources {
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
   public static readonly windowsNpmBuildValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd run build"];
+  public static readonly windowsNpmListCopiesValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd run build --silent -- --list-copies"];
   public static readonly windowsNpmLockValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd install --package-lock-only --ignore-scripts --no-audit --no-fund"];
   public static readonly windowsNpmVersionValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd --version"];
   public static readonly windowsPlatform: string = "win32";
@@ -354,6 +364,58 @@ export class Resources {
 
   public static formatArchiveCredentialFile(archiveName: string, filePath: string): string {
     return `${archiveName}: it holds ${filePath}, a file of a kind that holds credentials, which is never published.`;
+  }
+
+  public static formatCopiesUnlisted(exitCode: number | null, errorOutput: string): string {
+    return Resources.formatFailureLine(`The build could not list the files it copies in: npm ${Resources.npmListCopiesValues.join(Resources.valueSeparator)} exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatCopiesEndMissing(): string {
+    return `The build did not end its list of copies with the line "${Resources.copiesEndLine}": its build script must take --list-copies, print each file it copies into a package, and end with that line.`;
+  }
+
+  public static formatCopyLineInvalid(line: string): string {
+    return `"${line}" is not a copy the build lists: a source path from the repository's root, a package's name and a path inside the package, separated by tabs.`;
+  }
+
+  public static formatCopyPathInvalid(line: string, filePath: string): string {
+    return `"${line}": "${filePath}" is not a path inside its folder, with / between its parts.`;
+  }
+
+  public static formatCopyPackageUnknown(line: string, packageName: string): string {
+    return `"${line}": ${packageName} has no archive to check.`;
+  }
+
+  public static formatCopySourceMissing(source: string): string {
+    return `${source}, which the build lists as a copy, is not a file.`;
+  }
+
+  public static formatCopySourceLinked(source: string): string {
+    return `${source}, which the build lists as a copy, is a symbolic link or lies under one.`;
+  }
+
+  public static formatCopyLinked(archiveName: string, filePath: string): string {
+    return `${archiveName}: its ${Resources.archivePackageFolder}/${filePath} is a symbolic link or lies under one.`;
+  }
+
+  public static formatCopyNotFile(archiveName: string, filePath: string, source: string): string {
+    return `${archiveName}: its ${Resources.archivePackageFolder}/${filePath}, the copy of ${source}, is not a file.`;
+  }
+
+  public static formatArchiveUnextracted(archiveName: string, exitCode: number | null, errorOutput: string): string {
+    return Resources.formatFailureLine(`${archiveName}: ${Resources.tarProgram} could not extract it and exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatCopyMissing(archiveName: string, filePath: string, source: string): string {
+    return `${archiveName}: it has no ${Resources.archivePackageFolder}/${filePath}, the copy of ${source}.`;
+  }
+
+  public static formatCopyDiffers(archiveName: string, filePath: string, source: string): string {
+    return `${archiveName}: its ${Resources.archivePackageFolder}/${filePath} differs from ${source}.`;
+  }
+
+  public static formatCopiesMatched(count: number): string {
+    return count === 1 ? "The file the build copies in matches its source." : `Each of the ${count} files the build copies in matches its source.`;
   }
 
   public static formatArchiveLicenseMissing(archiveName: string): string {
