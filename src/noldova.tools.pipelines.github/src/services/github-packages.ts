@@ -71,6 +71,87 @@ export class GitHubPackages implements IRegistryHost {
     return listed.has(version) ? StepResult.failed(Resources.formatVersionStillListed(packageName, version)) : false;
   }
 
+  public async readLockFilesAsync(): Promise<ReadonlyMap<string, string> | StepResult> {
+    const missing = [Resources.apiUrlVariable, Resources.repositoriesTokenVariable].find(t => this.readVariable(t).length === 0);
+    if (missing !== undefined)
+      return StepResult.failed(Resources.formatPruneVariableMissing(missing));
+
+    const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.repositoriesTokenVariable), this.timeoutMilliseconds, this.waitAsync, this.createSignal);
+    const repositories = await GitHubPackages.listRepositoriesAsync(api);
+    if (repositories instanceof StepResult)
+      return repositories;
+
+    const lockFiles = new Map<string, string>();
+    for (const [repository, branch] of repositories) {
+      const read = await GitHubPackages.readRepositoryLockFilesAsync(api, repository, branch, lockFiles);
+      if (read !== null)
+        return read;
+    }
+
+    const relisted = await GitHubPackages.listRepositoriesAsync(api);
+    if (relisted instanceof StepResult)
+      return relisted;
+    if (JSON.stringify(relisted) !== JSON.stringify(repositories))
+      return StepResult.failed(Resources.repositoriesChanged);
+
+    return lockFiles;
+  }
+
+  private static async listRepositoriesAsync(api: GitHubApi): Promise<readonly (readonly [repository: string, branch: string])[] | StepResult> {
+    const repositories: (readonly [repository: string, branch: string])[] = [];
+    let totalCount = 0;
+    for (let page = 1; ; page++) {
+      const answer = await api.requestAsync(Resources.readMethod, Resources.formatInstallationRepositoriesPage(page));
+      if (answer instanceof StepResult)
+        return answer;
+      if (answer.status !== Resources.foundStatus)
+        return answer.toFailure();
+
+      const body = answer.readBody();
+      const items = body.readObjectArray(Resources.repositoriesField);
+      totalCount = body.readInteger(Resources.totalCountField);
+      repositories.push(...items.map(t => [t.readString(Resources.fullNameField), t.readString(Resources.defaultBranchField)] as const));
+      if (items.length < Resources.repositoriesPageSize)
+        break;
+    }
+
+    if (repositories.length !== totalCount)
+      return StepResult.failed(Resources.formatRepositoriesMiscounted(repositories.length, totalCount));
+
+    return repositories.sort(([t], [u]) => t.localeCompare(u));
+  }
+
+  private static async readRepositoryLockFilesAsync(api: GitHubApi, repository: string, branch: string, lockFiles: Map<string, string>): Promise<StepResult | null> {
+    const tree = await api.requestAsync(Resources.readMethod, Resources.formatTreeResource(repository, branch));
+    if (tree instanceof StepResult)
+      return tree;
+    if (tree.status === Resources.conflictStatus)
+      return null;
+    if (tree.status !== Resources.foundStatus)
+      return tree.toFailure();
+
+    const body = tree.readBody();
+    if (body.readBoolean(Resources.truncatedField))
+      return StepResult.failed(Resources.formatTreeTruncated(repository, branch));
+
+    for (const entry of body.readObjectArray(Resources.treeField)) {
+      const filePath = entry.readString(Resources.pathField);
+      const segments = filePath.split(Resources.pathSeparator);
+      if (entry.readString(Resources.typeField) !== Resources.blobType || segments.at(-1) !== Resources.lockFileName || segments.includes(Resources.vendorFolderName))
+        continue;
+
+      const blob = await api.requestAsync(Resources.readMethod, Resources.formatBlobResource(repository, entry.readString(Resources.shaField)));
+      if (blob instanceof StepResult)
+        return blob;
+      if (blob.status !== Resources.foundStatus)
+        return blob.toFailure();
+
+      lockFiles.set(Resources.formatLockFilePath(repository, filePath), Buffer.from(blob.readBody().readString(Resources.contentField), Resources.blobEncoding).toString(Resources.textEncoding));
+    }
+
+    return null;
+  }
+
   private async readIdsAsync(packageName: string, api: GitHubApi, resource: string): Promise<Map<string, number> | StepResult> {
     const ids = new Map<string, number>();
     for (let page = 1; ; page++) {

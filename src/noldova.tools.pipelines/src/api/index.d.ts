@@ -684,8 +684,8 @@ export declare interface IUpdateHost {
 
 /**
  * How the {@link PruneStep} lists and deletes a package's versions on a
- * registry, which the registry's host implements, such as through the
- * host's API.
+ * registry, and reads the lock files that may still install them, which the
+ * registry's host implements, such as through the host's API.
  */
 export declare interface IRegistryHost {
   /**
@@ -711,7 +711,8 @@ export declare interface IRegistryHost {
    * const host: IRegistryHost = {
    *   registry: "https://npm.pkg.github.com/",
    *   readVersionsAsync: async packageName => versions.get(packageName) ?? [],
-   *   deleteVersionAsync: async () => true
+   *   deleteVersionAsync: async () => true,
+   *   readLockFilesAsync: async () => new Map()
    * };
    * await host.readVersionsAsync("@noldova/a"); // ["0.0.3", "0.0.4"]
    * ```
@@ -735,13 +736,36 @@ export declare interface IRegistryHost {
    * const host: IRegistryHost = {
    *   registry: "https://npm.pkg.github.com/",
    *   readVersionsAsync: async () => [...versions],
-   *   deleteVersionAsync: async (packageName, version) => versions.delete(version)
+   *   deleteVersionAsync: async (packageName, version) => versions.delete(version),
+   *   readLockFilesAsync: async () => new Map()
    * };
    * await host.deleteVersionAsync("@noldova/a", "0.0.3"); // true
    * await host.deleteVersionAsync("@noldova/a", "0.0.3"); // false
    * ```
    */
   deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult>;
+
+  /**
+   * Reads the npm lock files of every repository that may install the
+   * packages, so the prune step keeps each version one of them locks.
+   *
+   * @returns A promise of each lock file's text by a name that says where it
+   * is, such as `noldova-com/tools/package-lock.json`, or a failed
+   * {@link StepResult} that says why the host could not read them all.
+   * @example
+   * ```ts
+   * import type { IRegistryHost } from "@noldova/tools.pipelines";
+   *
+   * const host: IRegistryHost = {
+   *   registry: "https://npm.pkg.github.com/",
+   *   readVersionsAsync: async () => [],
+   *   deleteVersionAsync: async () => true,
+   *   readLockFilesAsync: async () => new Map([["app/package-lock.json", "{ \"packages\": {} }"]])
+   * };
+   * await host.readLockFilesAsync(); // Map { "app/package-lock.json" => "{ \"packages\": {} }" }
+   * ```
+   */
+  readLockFilesAsync(): Promise<ReadonlyMap<string, string> | StepResult>;
 }
 
 /**
@@ -1709,9 +1733,10 @@ export declare class NightlyStep implements IStep {
  * The step that keeps a registry's newest versions after a release:
  * `prune <version> <commit> <scope> <registry> <keep-versions>`. Through
  * the host's {@link IRegistryHost}, it deletes each package's older release
- * versions, keeping the newest; it runs only on the host's registry, never
- * on npm's, and deletes nothing unless the release is every package's
- * newest.
+ * versions, keeping the newest and every version a lock file the host reads
+ * holds; it runs only on the host's registry, never on npm's, and deletes
+ * nothing unless the release is every package's newest and every lock file
+ * could be read.
  */
 export declare class PruneStep implements IStep {
   /**
@@ -1731,7 +1756,7 @@ export declare class PruneStep implements IStep {
    * @param git The reader of the clone that holds the commit.
    * @param archiveStep The step whose expected packages the step prunes.
    * @param registryHost How the step lists and deletes versions on the
-   * registry.
+   * registry, and reads the lock files whose versions it keeps.
    * @example
    * ```ts
    * import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
@@ -1741,7 +1766,8 @@ export declare class PruneStep implements IStep {
    * const host: IRegistryHost = {
    *   registry: "https://npm.pkg.github.com/",
    *   readVersionsAsync: async () => [],
-   *   deleteVersionAsync: async () => true
+   *   deleteVersionAsync: async () => true,
+   *   readLockFilesAsync: async () => new Map()
    * };
    * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
    * step.name; // "prune"
@@ -1767,17 +1793,26 @@ export declare class PruneStep implements IStep {
    * package outside the scope. Otherwise it lists every package's versions
    * first, and fails, deleting nothing, with one line for each package whose
    * versions the host could not list and each whose newest release version
-   * is not the version. Then it deletes each package's release versions
-   * after the newest it keeps, and succeeds with one line for each, such as
+   * is not the version. When a package has release versions after the
+   * newest it keeps, it reads the host's lock files, and fails, deleting
+   * nothing, when the host could not read them or one has no `packages`
+   * object, as a lock file of npm 7 or later has. Then it goes through each
+   * package's release versions after the newest it keeps, and succeeds with
+   * one line for each: it keeps a version any lock file holds under a
+   * `node_modules/` path, by its folder's name or the entry's `name`, such
+   * as `@noldova/tools.pipelines@0.0.2 kept, since app/package-lock.json
+   * locks it.`, and deletes the others, such as
    * `@noldova/tools.pipelines@0.0.1 deleted.` or
-   * `@noldova/tools.pipelines@0.0.1 was already deleted.`, or with one line
-   * saying nothing is deleted when no package has more. It stops at the
+   * `@noldova/tools.pipelines@0.0.1 was already deleted.`. It succeeds with
+   * one line saying nothing is deleted, without reading the lock files,
+   * when no package has more. It stops at the
    * first delete that fails, with the lines before it and the host's
    * answer, or, when the delete rejects with an `Error`, a line naming the
    * version with the error's message. Versions that are not release
    * versions, such as nightly ones, are neither counted nor deleted. It
-   * rejects as {@link ArchiveStep.readPackageNamesAsync} and the host's
-   * list do, and as a delete does that rejects with anything but an `Error`.
+   * rejects as {@link ArchiveStep.readPackageNamesAsync}, the host's list
+   * and its read of the lock files do, and as a delete does that rejects
+   * with anything but an `Error`.
    * @example
    * ```ts
    * import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
@@ -1788,7 +1823,8 @@ export declare class PruneStep implements IStep {
    * const host: IRegistryHost = {
    *   registry: "https://npm.pkg.github.com/",
    *   readVersionsAsync: async () => [...versions],
-   *   deleteVersionAsync: async (packageName, version) => versions.delete(version)
+   *   deleteVersionAsync: async (packageName, version) => versions.delete(version),
+   *   readLockFilesAsync: async () => new Map()
    * };
    * const step = new PruneStep(git, new ArchiveStep(git, new Tar(processRunner)), host);
    * const result = await step.runAsync(["0.0.3", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", "@noldova", "https://npm.pkg.github.com/", "2"]);

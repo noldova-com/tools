@@ -21,6 +21,10 @@ export class GitHubPackagesTests {
   private static readonly FIRST_PAGE: string = `GET ${GitHubPackagesTests.VERSIONS}?per_page=100&page=1`;
   private static readonly SECOND_PAGE: string = `GET ${GitHubPackagesTests.VERSIONS}?per_page=100&page=2`;
   private static readonly TOKEN: string = "test-token-value";
+  private static readonly REPOSITORIES_TOKEN: string = "test-repositories-token-value";
+  private static readonly REPOSITORIES_PAGE: string = "GET /installation/repositories?per_page=100&page=1";
+  private static readonly ONE_REPOSITORY: GitHubApiAnswer = GitHubApiAnswer.json(200, { total_count: 1, repositories: [{ full_name: "noldova-com/one", default_branch: "main", archived: false }] });
+  private static readonly NO_REPOSITORIES: GitHubApiAnswer = GitHubApiAnswer.json(200, { total_count: 0, repositories: [] });
 
   @TestMethod
   public namesItsRegistry(): void {
@@ -261,6 +265,7 @@ export class GitHubPackagesTests {
     using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });
     await using api = await GitHubApiFixture.startAsync({
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 14, name: "0.0.4" }, { id: 13, name: "0.0.3" }, { id: 12, name: "0.0.2" }]),
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.NO_REPOSITORIES,
       [`DELETE ${GitHubPackagesTests.VERSIONS}/13`]: new GitHubApiAnswer(204, "", ""),
       [`DELETE ${GitHubPackagesTests.VERSIONS}/12`]: GitHubApiAnswer.HELD
     });
@@ -283,8 +288,146 @@ export class GitHubPackagesTests {
     Assert.areEqual(1, api.requests.length);
   }
 
+  @TestMethod
+  public async readsTheLockFilesOfEveryRepositoryOfTheInstallationAsync(): Promise<void> {
+    const archived = Array.from({ length: 100 }, (_, index) => ({ full_name: `noldova-com/old-${index}`, default_branch: "main", archived: true }));
+    const lock = "{ \"packages\": {} }\n";
+    const nested = "{ \"packages\": { \"node_modules/@noldova-com/a\": { \"version\": \"0.0.1\" } } }\n";
+    const emptyTrees = Object.fromEntries(archived.map(t => [`GET /repos/${t.full_name}/git/trees/main?recursive=1`, GitHubApiAnswer.json(200, { truncated: false, tree: [] })]));
+    await using api = await GitHubApiFixture.startAsync({
+      ...emptyTrees,
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubApiAnswer.json(200, { total_count: 103, repositories: archived }),
+      "GET /installation/repositories?per_page=100&page=2": GitHubApiAnswer.json(200, {
+        total_count: 103,
+        repositories: [
+          { full_name: "noldova-com/one", default_branch: "main", archived: false },
+          { full_name: "noldova-com/empty", default_branch: "main", archived: false },
+          { full_name: "noldova-com/two", default_branch: "release/1 x", archived: false }
+        ]
+      }),
+      "GET /repos/noldova-com/old-7/git/trees/main?recursive=1": GitHubApiAnswer.json(200, { truncated: false, tree: [{ path: "package-lock.json", type: "blob", sha: "b7" }] }),
+      "GET /repos/noldova-com/old-7/git/blobs/b7": GitHubApiAnswer.json(200, { encoding: "base64", content: Buffer.from(lock).toString("base64") }),
+      "GET /repos/noldova-com/one/git/trees/main?recursive=1": GitHubApiAnswer.json(200, {
+        truncated: false,
+        tree: [
+          { path: "package-lock.json", type: "blob", sha: "a1" },
+          { path: "package.json", type: "blob", sha: "a2" },
+          { path: "src/package-lock.json", type: "tree", sha: "a3" },
+          { path: "src/a/package-lock.json", type: "blob", sha: "a4" },
+          { path: "node_modules/b/package-lock.json", type: "blob", sha: "a5" },
+          { path: "src/old-package-lock.json", type: "blob", sha: "a6" }
+        ]
+      }),
+      "GET /repos/noldova-com/one/git/blobs/a1": GitHubApiAnswer.json(200, { encoding: "base64", content: Buffer.from(lock).toString("base64") }),
+      "GET /repos/noldova-com/one/git/blobs/a4": GitHubApiAnswer.json(200, { encoding: "base64", content: Buffer.from(nested).toString("base64").replace(/(.{20})/g, "$1\n") }),
+      "GET /repos/noldova-com/empty/git/trees/main?recursive=1": GitHubApiAnswer.json(409, { message: "Git Repository is empty." }),
+      "GET /repos/noldova-com/two/git/trees/release/1%20x?recursive=1": GitHubApiAnswer.json(200, { truncated: false, tree: [] })
+    });
+
+    const lockFiles = await GitHubPackagesTests.createPackages(api).readLockFilesAsync();
+
+    if (lockFiles instanceof StepResult)
+      throw new Error(`Expected lock files, not ${lockFiles.message}`);
+    Assert.areEqual(
+      JSON.stringify([["noldova-com/old-7/package-lock.json", lock], ["noldova-com/one/package-lock.json", lock], ["noldova-com/one/src/a/package-lock.json", nested]]),
+      JSON.stringify([...lockFiles]));
+    Assert.areEqual(110, api.requests.length);
+    Assert.areEqual("/installation/repositories?per_page=100&page=2", api.requests.at(-1)?.url);
+    Assert.isTrue(api.requests.every(t => t.headers.authorization === `Bearer ${GitHubPackagesTests.REPOSITORIES_TOKEN}`));
+  }
+
+  @TestMethod
+  public async failsWhenTheListDoesNotHoldEveryRepositoryAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubApiAnswer.json(200, { total_count: 2, repositories: [{ full_name: "noldova-com/one", default_branch: "main", archived: false }] })
+    });
+
+    Assert.areEqual(
+      "GitHub listed 1 of the installation's 2 repositories, so the lock files could not all be found.",
+      GitHubPackagesTests.readFailure(await GitHubPackagesTests.createPackages(api).readLockFilesAsync()));
+    Assert.areEqual(1, api.requests.length);
+  }
+
+  @TestData("added", "{ \"total_count\": 2, \"repositories\": [{ \"full_name\": \"noldova-com/one\", \"default_branch\": \"main\" }, { \"full_name\": \"noldova-com/two\", \"default_branch\": \"main\" }] }")
+  @TestData("renamed", "{ \"total_count\": 1, \"repositories\": [{ \"full_name\": \"noldova-com/uno\", \"default_branch\": \"main\" }] }")
+  @TestData("new default branch", "{ \"total_count\": 1, \"repositories\": [{ \"full_name\": \"noldova-com/one\", \"default_branch\": \"next\" }] }")
+  @TestMethod
+  public async failsWhenTheRepositoriesChangeWhileTheLockFilesAreReadAsync(_: string, relisted: string): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: [GitHubPackagesTests.ONE_REPOSITORY, new GitHubApiAnswer(200, relisted)],
+      "GET /repos/noldova-com/one/git/trees/main?recursive=1": GitHubApiAnswer.json(200, { truncated: false, tree: [] })
+    });
+
+    Assert.areEqual(
+      "The installation's repositories changed while their lock files were read, so the lock files could not all be found.",
+      GitHubPackagesTests.readFailure(await GitHubPackagesTests.createPackages(api).readLockFilesAsync()));
+  }
+
+  @TestData("GITHUB_API_URL")
+  @TestData("REPOSITORIES_TOKEN")
+  @TestMethod
+  public async failsNamingAMissingVariableBeforeReadingLockFilesAsync(name: string): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({});
+    const environment = { GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN, REPOSITORIES_TOKEN: GitHubPackagesTests.REPOSITORIES_TOKEN };
+    const expected = `The environment variable ${name} is not set; the prune step needs it to reach GitHub.`;
+
+    Assert.areEqual(expected, GitHubPackagesTests.readFailure(await new GitHubPackages({ ...environment, [name]: undefined }).readLockFilesAsync()));
+    Assert.areEqual(expected, GitHubPackagesTests.readFailure(await new GitHubPackages({ ...environment, [name]: "" }).readLockFilesAsync()));
+    Assert.areEqual(0, api.requests.length);
+  }
+
+  @TestData("repositories", "GitHub answered GET installation/repositories?per_page=100&page=1 with 401: Bad credentials")
+  @TestData("repositories held", "GitHub gave no answer to GET installation/repositories?per_page=100&page=1: The operation was aborted due to timeout")
+  @TestData("tree", "GitHub answered GET repos/noldova-com/one/git/trees/main?recursive=1 with 404: Not Found")
+  @TestData("tree held", "GitHub gave no answer to GET repos/noldova-com/one/git/trees/main?recursive=1: The operation was aborted due to timeout")
+  @TestData("truncated", "GitHub listed only part of noldova-com/one's files on main, so its lock files could not all be found.")
+  @TestData("blob", "GitHub answered GET repos/noldova-com/one/git/blobs/a1 with 403: Forbidden")
+  @TestData("blob held", "GitHub gave no answer to GET repos/noldova-com/one/git/blobs/a1: The operation was aborted due to timeout")
+  @TestData("repositories again", "GitHub answered GET installation/repositories?per_page=100&page=1 with 502: Bad gateway")
+  @TestMethod
+  public async failsWhenALockFileCannotBeReadAsync(failing: string, expected: string): Promise<void> {
+    const answers: Record<string, GitHubApiAnswer | readonly GitHubApiAnswer[]> = {
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.ONE_REPOSITORY,
+      "GET /repos/noldova-com/one/git/trees/main?recursive=1": GitHubApiAnswer.json(200, { truncated: false, tree: [{ path: "package-lock.json", type: "blob", sha: "a1" }] }),
+      "GET /repos/noldova-com/one/git/blobs/a1": GitHubApiAnswer.json(200, { encoding: "base64", content: "" })
+    };
+    const failures: Readonly<Record<string, readonly [string, GitHubApiAnswer | readonly GitHubApiAnswer[]]>> = {
+      "repositories": [GitHubPackagesTests.REPOSITORIES_PAGE, GitHubApiAnswer.json(401, { message: "Bad credentials" })],
+      "repositories held": [GitHubPackagesTests.REPOSITORIES_PAGE, GitHubApiAnswer.HELD],
+      "tree": ["GET /repos/noldova-com/one/git/trees/main?recursive=1", GitHubApiAnswer.json(404, { message: "Not Found" })],
+      "tree held": ["GET /repos/noldova-com/one/git/trees/main?recursive=1", GitHubApiAnswer.HELD],
+      "truncated": ["GET /repos/noldova-com/one/git/trees/main?recursive=1", GitHubApiAnswer.json(200, { truncated: true, tree: [] })],
+      "blob": ["GET /repos/noldova-com/one/git/blobs/a1", GitHubApiAnswer.json(403, { message: "Forbidden" })],
+      "blob held": ["GET /repos/noldova-com/one/git/blobs/a1", GitHubApiAnswer.HELD],
+      "repositories again": [GitHubPackagesTests.REPOSITORIES_PAGE, [GitHubPackagesTests.ONE_REPOSITORY, new GitHubApiAnswer(502, "Bad gateway", "text/plain")]]
+    };
+    const [route, answer] = failures[failing] ?? ["", GitHubApiAnswer.HELD];
+    await using api = await GitHubApiFixture.startAsync({ ...answers, [route]: answer });
+
+    Assert.areEqual(expected, GitHubPackagesTests.readFailure(await GitHubPackagesTests.createPackages(api).readLockFilesAsync()));
+  }
+
+  @TestMethod
+  public async keepsAVersionALockFileHoldsAsync(): Promise<void> {
+    using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });
+    const lock = JSON.stringify({ packages: { "node_modules/@noldova-com/tools.pipelines": { version: "0.0.3" } } });
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 14, name: "0.0.4" }, { id: 13, name: "0.0.3" }, { id: 12, name: "0.0.2" }]),
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.ONE_REPOSITORY,
+      "GET /repos/noldova-com/one/git/trees/main?recursive=1": GitHubApiAnswer.json(200, { truncated: false, tree: [{ path: "package-lock.json", type: "blob", sha: "a1" }] }),
+      "GET /repos/noldova-com/one/git/blobs/a1": GitHubApiAnswer.json(200, { encoding: "base64", content: Buffer.from(lock).toString("base64") }),
+      [`DELETE ${GitHubPackagesTests.VERSIONS}/12`]: new GitHubApiAnswer(204, "", "")
+    });
+
+    const result = await GitHubPackagesTests.createStep(clone, api).runAsync(["0.0.4", clone.commit, "@noldova-com", "https://npm.pkg.github.com/", "1"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("@noldova-com/tools.pipelines@0.0.3 kept, since noldova-com/one/package-lock.json locks it.\n@noldova-com/tools.pipelines@0.0.2 deleted.", result.message);
+    Assert.areEqual(`Bearer ${GitHubPackagesTests.TOKEN}`, api.requests.at(-1)?.headers.authorization);
+  }
+
   private static createPackages(api: GitHubApiFixture, waits: number[] = []): GitHubPackages {
-    return new GitHubPackages({ GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN }, undefined, async milliseconds => {
+    return new GitHubPackages({ GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN, REPOSITORIES_TOKEN: GitHubPackagesTests.REPOSITORIES_TOKEN }, undefined, async milliseconds => {
       waits.push(milliseconds);
     }, () => api.createAttemptSignal());
   }
@@ -303,7 +446,7 @@ export class GitHubPackagesTests {
     return result;
   }
 
-  private static readFailure(result: readonly string[] | boolean | StepResult): string {
+  private static readFailure(result: readonly string[] | ReadonlyMap<string, string> | boolean | StepResult): string {
     if (!(result instanceof StepResult) || result.isSuccessful)
       throw new Error(`Expected a failed result, not ${String(result)}.`);
 

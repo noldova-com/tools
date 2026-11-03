@@ -27,6 +27,6 @@ This document holds only what is this repository's own; a rule here that is stri
   When a check fails, the step stops with a message that says what is wrong and exits with code 1, without a stack trace.
   A check is for what a person sets, such as the version and the commit a release is given; a fault, such as git failing to start or a file every build reads being malformed, throws and ends the run with its stack trace.
 - No step overwrites a published version.
-  Only the prune step deletes one, and only on GitHub Packages: the release versions older than the newest it keeps.
+  Only the prune step deletes one, and only on GitHub Packages: the release versions older than the newest it keeps that no repository's lock file holds.
   A version on npm's registry is never deleted.
 - Only the dependents step writes to other repositories: its own branch, `pipelines/update-<repository>`, and the issue and pull request that propose it, never their default branch.
