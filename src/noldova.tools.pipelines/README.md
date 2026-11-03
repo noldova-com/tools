@@ -150,7 +150,7 @@ It fails with one line naming the packages when only some have a nightly version
 
 `prune <version> <commit> <scope> <registry> <keep-versions>` runs after a release on a registry that keeps only its newest versions: it deletes each package's older release versions, keeping the newest `<keep-versions>`, a whole number above 0, and every version a repository's lock file still holds, so that repository's `npm ci` keeps working.
 It lists and deletes versions, and reads the lock files, through the host's `IRegistryHost`, which a host's package implements for its own registry, and runs only on that registry; it refuses npm's public registry whatever the host names, so a version published there stays.
-Since the step deletes, a pipeline runs it only from a release job that an environment's reviewers approve.
+Since the step deletes, a pipeline runs it only in a release whose publish an environment's reviewers approve.
 
 ```ts
 import { ArchiveStep, Git, type IRegistryHost, ProcessRunner, PruneStep, Tar } from "@noldova/tools.pipelines";
