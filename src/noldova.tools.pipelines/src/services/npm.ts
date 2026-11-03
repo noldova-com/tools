@@ -55,8 +55,8 @@ export class Npm {
     const environment = Object.fromEntries(hiddenVariables.map(t => [t, undefined]));
 
     return this.platform === Resources.windowsPlatform
-      ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmLockValues, directory, environment)
-      : await this.processRunner.runAsync(Resources.npmProgram, Resources.npmLockValues, directory, environment);
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmLockValues, directory, environment, Resources.npmLockTimeoutMilliseconds)
+      : await this.processRunner.runAsync(Resources.npmProgram, Resources.npmLockValues, directory, environment, Resources.npmLockTimeoutMilliseconds);
   }
 
   public async readVersionAsync(): Promise<string> {

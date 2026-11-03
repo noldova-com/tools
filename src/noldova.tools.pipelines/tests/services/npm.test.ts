@@ -14,6 +14,7 @@ import { Npm, ProcessException, ProcessResult, ProcessRunner } from "@noldova/to
 class RecordingProcessRunner extends ProcessRunner {
   public readonly calls: string[] = [];
   public readonly environments: (Readonly<Record<string, string | undefined>> | undefined)[] = [];
+  public readonly timeouts: (number | undefined)[] = [];
   private readonly result: ProcessResult;
 
   public constructor(result: ProcessResult) {
@@ -22,9 +23,10 @@ class RecordingProcessRunner extends ProcessRunner {
     this.result = result;
   }
 
-  public override async runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>): Promise<ProcessResult> {
+  public override async runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number): Promise<ProcessResult> {
     this.calls.push(`${workingDirectory}: ${program} ${values.join(" ")}`);
     this.environments.push(environment);
+    this.timeouts.push(timeoutMilliseconds);
 
     return this.result;
   }
@@ -90,6 +92,7 @@ export class NpmTests {
     Assert.areEqual(1, result.exitCode);
     Assert.areEqual(expected, processRunner.calls.join("\n"));
     Assert.areEqual("{}", JSON.stringify(processRunner.environments[0]));
+    Assert.areEqual(300000, processRunner.timeouts[0]);
   }
 
   @TestData("linux")

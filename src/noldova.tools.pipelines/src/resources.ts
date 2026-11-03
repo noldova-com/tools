@@ -69,6 +69,7 @@ export class Resources {
   public static readonly mainBranch: string = "origin/main";
   public static readonly mainReference: string = "refs/remotes/origin/main";
   public static readonly majorPartName: string = "major";
+  public static readonly millisecondsPerSecond: number = 1000;
   public static readonly manifestFileName: string = "package.json";
   public static readonly messagePartSeparator: string = "; ";
   public static readonly minorPartName: string = "minor";
@@ -84,6 +85,8 @@ export class Resources {
   public static readonly npmAccessValues: readonly string[] = ["--access"];
   public static readonly npmBuildValues: readonly string[] = ["run", "build"];
   public static readonly npmIntegrityField: string = "dist.integrity";
+  public static readonly nodeModulesSegment: string = "node_modules/";
+  public static readonly npmLockTimeoutMilliseconds: number = 300_000;
   public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmNotFoundCode: string = "E404";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
@@ -98,7 +101,9 @@ export class Resources {
   public static readonly parentFolderName: string = "..";
   public static readonly patchPartName: string = "patch";
   public static readonly pathSeparator: string = "/";
+  public static readonly peerDependenciesField: string = "peerDependencies";
   public static readonly privateField: string = "private";
+  public static readonly processKillSignal: NodeJS.Signals = "SIGKILL";
   public static readonly processReleaseDelayMilliseconds: number = 0;
   public static readonly pruneStepName: string = "prune";
   public static readonly pruneStepUsage: string = "<version> <commit> <scope> <registry> <keep-versions>";
@@ -438,12 +443,32 @@ export class Resources {
     return `Looked for exact pins of ${packageNames.join(", ")} older than ${version} in ${repositoryCount} repositories:`;
   }
 
+  public static formatDependentsWritten(packageNames: readonly string[], version: string, repositoryCount: number): string {
+    return `Looked for exact pins of ${packageNames.join(", ")} older than ${version} in ${repositoryCount} repositories; each one's line is above.`;
+  }
+
   public static formatRepositoryUnpinned(repository: string, version: string): string {
     return `${repository}: pins none of them below ${version}.`;
   }
 
   public static formatRepositoryProposed(repository: string, url: string, moveCount: number): string {
     return `${repository}: moved ${moveCount} pins in ${url}`;
+  }
+
+  public static formatRepositoryBlocked(repository: string, version: string, blockers: readonly string[]): string {
+    return `${repository}: left at its pins until these accept ${version}: ${blockers.join("; ")}.`;
+  }
+
+  public static formatRepositoryConflicted(repository: string, version: string, conflicts: readonly string[]): string {
+    return `${repository}: left at its pins, since the lock files refreshed for ${version} still hold packages whose exact peers differ from what they lock: ${conflicts.join("; ")}.`;
+  }
+
+  public static formatPeerBlocker(filePath: string, packageName: string, version: string, peerName: string, peerVersion: string): string {
+    return `${filePath} locks ${packageName} ${version}, which needs ${peerName} ${peerVersion}`;
+  }
+
+  public static formatPeerReason(packageName: string, version: string): string {
+    return `, which \`${packageName}\` ${version} needs as a peer`;
   }
 
   public static formatRepositoryFailed(repository: string, message: string): string {
@@ -563,6 +588,10 @@ export class Resources {
 
   public static formatProgramFailed(program: string): string {
     return `The program "${program}" failed.`;
+  }
+
+  public static formatProcessTimedOut(program: string, timeoutMilliseconds: number): string {
+    return `"${program}" ran longer than ${timeoutMilliseconds / Resources.millisecondsPerSecond} seconds, so it was stopped.`;
   }
 
   public static formatProcessNotStarted(program: string, reason: string): string {
