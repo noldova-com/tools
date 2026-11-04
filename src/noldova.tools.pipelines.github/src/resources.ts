@@ -72,6 +72,7 @@ export class Resources {
   public static readonly nameField: string = "name";
   public static readonly notFoundStatus: number = 404;
   public static readonly objectField: string = "object";
+  public static readonly privateField: string = "private";
   public static readonly packageNamePattern: RegExp = /^@([^/]+)\/([^/]+)$/;
   public static readonly packagesRegistry: string = "https://npm.pkg.github.com/";
   public static readonly programName: string = "pipelines";
@@ -139,6 +140,10 @@ export class Resources {
 
   public static formatIssueResource(repository: string, number: string): string {
     return Resources.formatResource(repository, `issues/${number}`);
+  }
+
+  public static formatSourceUnread(repository: string, reason: string): string {
+    return `Could not read ${repository}, so it counts as public and only public repositories are checked: ${reason}`;
   }
 
   public static formatRepositoryResource(repository: string): string {
