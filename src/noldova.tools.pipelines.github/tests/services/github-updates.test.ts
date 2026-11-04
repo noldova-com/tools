@@ -183,6 +183,7 @@ export class GitHubUpdatesTests {
   @TestData("[{ \"merge_commit_sha\": \"0123456789abcdef0123456789abcdef01234567\", \"body\": \"# Release notes for 0.0.4\\n- Other.\" }]", "")
   @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"Release notes for 0.0.4\\n\\n# Release notes for 0.0.4\\n- First.\" }]", "# Release notes for 0.0.4\n- First.")
   @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"## Summary\\n- Why.\\n\\n## Release notes\\n- Plain.\\n\\n## Linked issue\" }]", "## Release notes\n- Plain.")
+  @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"## Release notes\\n- Signed.\\n- Agent: not a signature.\\n\\nAgent: Someone (role)\\nAgent-Model: Model\" }]", "## Release notes\n- Signed.\n- Agent: not a signature.")
   @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": null }]", "")
   @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"## Release notes for 0.0.3\\n- Older.\" }]", "")
   @TestData("[]", "")

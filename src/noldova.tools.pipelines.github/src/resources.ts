@@ -40,6 +40,7 @@ export class Resources {
   public static readonly repositoriesPageSize: number = 100;
   public static readonly repositorySeparator: string = "/";
   public static readonly serverUrlVariable: string = "GITHUB_SERVER_URL";
+  public static readonly signaturePattern: RegExp = /^Agent:/;
   public static readonly updateMethod: string = "PATCH";
   public static readonly annotatedTagType: string = "tag";
   public static readonly annotationEscapes: readonly (readonly [string, string])[] = [["%", "%25"], ["\r", "%0D"], ["\n", "%0A"]];
