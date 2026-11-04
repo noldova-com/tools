@@ -334,7 +334,10 @@ export declare class GitHubUpdates implements IUpdateHost {
   /**
    * Lists the repositories the token reaches, through
    * `installation/repositories`, page by page, leaving out archived ones and
-   * the one that released.
+   * the one that released. Unless GitHub answers `repos/<repository>` that the
+   * releasing repository is private, it leaves out private ones too, so a
+   * public repository's run, whose log anyone can read, never names a private
+   * one; a releasing repository it can't read counts as public.
    *
    * @returns A promise of their full names, sorted, or a failed
    * {@link StepResult}: for a missing variable, or with the request, the

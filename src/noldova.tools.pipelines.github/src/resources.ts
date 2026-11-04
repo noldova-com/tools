@@ -72,6 +72,7 @@ export class Resources {
   public static readonly nameField: string = "name";
   public static readonly notFoundStatus: number = 404;
   public static readonly objectField: string = "object";
+  public static readonly privateField: string = "private";
   public static readonly packageNamePattern: RegExp = /^@([^/]+)\/([^/]+)$/;
   public static readonly packagesRegistry: string = "https://npm.pkg.github.com/";
   public static readonly programName: string = "pipelines";

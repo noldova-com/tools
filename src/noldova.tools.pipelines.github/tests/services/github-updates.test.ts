@@ -39,6 +39,7 @@ export class GitHubUpdatesTests {
   private static readonly REPOSITORY: string = "noldova-com/target";
   private static readonly PAGE_1: string = "GET /installation/repositories?per_page=100&page=1";
   private static readonly PAGE_2: string = "GET /installation/repositories?per_page=100&page=2";
+  private static readonly SOURCE: string = "GET /repos/noldova-com/tools";
   private static readonly PULLS_OF_COMMIT: string = `GET /repos/noldova-com/tools/commits/${GitHubUpdatesTests.COMMIT}/pulls`;
   private static readonly OPEN_PULLS: string = "GET /repos/noldova-com/target/pulls?state=open&head=noldova-com%3Apipelines%2Fupdate-tools";
   private static readonly TARGET: string = "GET /repos/noldova-com/target";
@@ -80,11 +81,12 @@ export class GitHubUpdatesTests {
 
   @TestMethod
   public async listsTheInstalledRepositoriesAPageAtATimeButTheSourceAndTheArchivedAsync(): Promise<void> {
-    const firstPage = Array.from({ length: 100 }, (_, index) => ({ full_name: `noldova-com/r${String(index).padStart(3, "0")}`, archived: index === 5 }));
-    firstPage[7] = { full_name: "noldova-com/Tools", archived: false };
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ full_name: `noldova-com/r${String(index).padStart(3, "0")}`, archived: index === 5, private: index % 2 === 0 }));
+    firstPage[7] = { full_name: "noldova-com/Tools", archived: false, private: true };
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubUpdatesTests.SOURCE]: GitHubApiAnswer.json(200, { full_name: "noldova-com/tools", private: true }),
       [GitHubUpdatesTests.PAGE_1]: GitHubApiAnswer.json(200, { total_count: 101, repositories: firstPage }),
-      [GitHubUpdatesTests.PAGE_2]: GitHubApiAnswer.json(200, { total_count: 101, repositories: [{ full_name: "noldova-com/a", archived: false }] })
+      [GitHubUpdatesTests.PAGE_2]: GitHubApiAnswer.json(200, { total_count: 101, repositories: [{ full_name: "noldova-com/a", archived: false, private: false }] })
     });
 
     const repositories = await GitHubUpdatesTests.createUpdates(api).listRepositoriesAsync();
@@ -93,10 +95,38 @@ export class GitHubUpdatesTests {
       throw new Error(repositories.message);
     Assert.areEqual(99, repositories.length);
     Assert.areEqual("noldova-com/a", repositories[0]);
+    Assert.isTrue(repositories.includes("noldova-com/r000"));
     Assert.isFalse(repositories.includes("noldova-com/r005"));
     Assert.isFalse(repositories.includes("noldova-com/Tools"));
-    Assert.areEqual(2, api.requests.length);
+    Assert.areEqual(3, api.requests.length);
     Assert.areEqual(`Bearer ${GitHubUpdatesTests.TOKEN}`, api.requests[0]?.headers.authorization);
+  }
+
+  @TestData("public")
+  @TestData("missing")
+  @TestData("refused")
+  @TestData("held")
+  @TestMethod
+  public async listsOnlyPublicRepositoriesUnlessTheSourceIsPrivateAsync(source: string): Promise<void> {
+    const answers: Readonly<Record<string, GitHubApiAnswer>> = {
+      public: GitHubApiAnswer.json(200, { full_name: "noldova-com/tools", private: false }),
+      refused: GitHubUpdatesTests.createFailure(false),
+      held: GitHubUpdatesTests.createFailure(true)
+    };
+    const sourceAnswer = answers[source];
+    await using api = await GitHubApiFixture.startAsync({
+      ...sourceAnswer === undefined ? {} : { [GitHubUpdatesTests.SOURCE]: sourceAnswer },
+      [GitHubUpdatesTests.PAGE_1]: GitHubApiAnswer.json(200, {
+        total_count: 2,
+        repositories: [{ full_name: "noldova-com/hidden", archived: false, private: true }, { full_name: "noldova-com/open", archived: false, private: false }]
+      })
+    });
+
+    const repositories = await GitHubUpdatesTests.createUpdates(api).listRepositoriesAsync();
+
+    if (repositories instanceof StepResult)
+      throw new Error(repositories.message);
+    Assert.areEqual("noldova-com/open", repositories.join(","));
   }
 
   @TestData(false, "GitHub answered GET installation/repositories?per_page=100&page=1 with 403: Refused")

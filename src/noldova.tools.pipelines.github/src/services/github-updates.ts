@@ -46,7 +46,9 @@ export class GitHubUpdates implements IUpdateHost {
     if (missing !== null)
       return missing;
 
-    const source = this.readVariable(Resources.repositoryVariable).toLowerCase();
+    const source = this.readVariable(Resources.repositoryVariable);
+    const sourceAnswer = await this.requestAsync(Resources.readMethod, Resources.formatRepositoryResource(source));
+    const isSourcePrivate = !(sourceAnswer instanceof StepResult) && sourceAnswer.status === Resources.foundStatus && sourceAnswer.readBody().readBoolean(Resources.privateField);
     const repositories: string[] = [];
     for (let page = 1; ; page++) {
       const answer = await this.requestAsync(Resources.readMethod, Resources.formatInstallationRepositoriesPage(page));
@@ -58,7 +60,7 @@ export class GitHubUpdates implements IUpdateHost {
       const items = answer.readBody().readObjectArray(Resources.repositoriesField);
       for (const item of items) {
         const name = item.readString(Resources.fullNameField);
-        if (!item.readBoolean(Resources.archivedField) && name.toLowerCase() !== source)
+        if (!item.readBoolean(Resources.archivedField) && name.toLowerCase() !== source.toLowerCase() && (isSourcePrivate || !item.readBoolean(Resources.privateField)))
           repositories.push(name);
       }
       if (items.length < Resources.repositoriesPageSize)
