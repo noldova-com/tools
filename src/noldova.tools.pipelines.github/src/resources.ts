@@ -72,6 +72,7 @@ export class Resources {
   public static readonly nameField: string = "name";
   public static readonly notFoundStatus: number = 404;
   public static readonly objectField: string = "object";
+  public static readonly privateField: string = "private";
   public static readonly packageNamePattern: RegExp = /^@([^/]+)\/([^/]+)$/;
   public static readonly packagesRegistry: string = "https://npm.pkg.github.com/";
   public static readonly programName: string = "pipelines";
@@ -185,6 +186,14 @@ export class Resources {
 
   public static createNotesHeadingPattern(version: string): RegExp {
     return new RegExp(`^#{1,6}\\s+Release notes for ${version.replaceAll(".", "\\.")}\\s*$`, "i");
+  }
+
+  public static formatPruneSourcePublic(repository: string): string {
+    return `${repository} is public, so the prune step reads no lock file and deletes nothing: its log would name the private repositories that lock a version, and leaving them out could delete a version they lock.`;
+  }
+
+  public static formatPruneSourceUnread(repository: string, reason: string): string {
+    return `Could not read ${repository}, so the prune step can't tell that it is private, and reads no lock file and deletes nothing: ${reason}`;
   }
 
   public static formatPruneVariableMissing(name: string): string {
