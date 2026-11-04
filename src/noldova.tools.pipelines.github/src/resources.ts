@@ -59,6 +59,7 @@ export class Resources {
   public static readonly deletedStatus: number = 204;
   public static readonly deleteMethod: string = "DELETE";
   public static readonly firstFailureStatus: number = 400;
+  public static readonly forbiddenStatus: number = 403;
   public static readonly foundStatus: number = 200;
   public static readonly idField: string = "id";
   public static readonly itemsField: string = "items";
@@ -270,6 +271,10 @@ export class Resources {
 
   public static formatApiUnanswered(method: string, resource: string, reason: string): string {
     return `GitHub gave no answer to ${method} ${resource}: ${reason}`;
+  }
+
+  public static formatTagForbidden(failure: string): string {
+    return `${failure}; if the token may write the contents, the likely cause is a commit whose workflow files differ from the default branch's, such as one released before a workflow change merged, which only a token with the workflows permission may tag.`;
   }
 
   public static formatTagTargetInvalid(tag: string, type: string): string {

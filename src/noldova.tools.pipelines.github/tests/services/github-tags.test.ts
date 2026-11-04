@@ -186,13 +186,29 @@ export class GitHubTagsTests {
   }
 
   @TestMethod
-  public async failsWithoutReadingWhenGitHubForbidsTheTagAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(403, { message: "Resource not accessible by integration" }) });
+  public async failsWithoutReadingWhenGitHubAnswersTheCreateWithAnotherStatusAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({ [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(404, { message: "Not Found" }) });
 
     const created = await GitHubTagsTests.createTags(api).createTagAsync("v0.0.4", GitHubTagsTests.COMMIT);
 
-    Assert.areEqual("GitHub answered POST repos/noldova-com/tools/git/refs with 403: Resource not accessible by integration", GitHubTagsTests.readFailure(created));
+    Assert.areEqual("GitHub answered POST repos/noldova-com/tools/git/refs with 404: Not Found", GitHubTagsTests.readFailure(created));
     Assert.areEqual(1, api.requests.length);
+  }
+
+  @TestMethod
+  public async failsWithoutReadingNamingTheWorkflowsPermissionWhenGitHubForbidsTheTagAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubTagsTests.REFERENCE]: GitHubApiAnswer.json(404, { message: "Not Found" }),
+      [GitHubTagsTests.CREATE]: GitHubApiAnswer.json(403, { message: "Resource not accessible by integration" })
+    });
+
+    const result = await new TagStep(GitHubTagsTests.createTags(api)).runAsync(["0.0.4", GitHubTagsTests.COMMIT]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      "GitHub answered POST repos/noldova-com/tools/git/refs with 403: Resource not accessible by integration; if the token may write the contents, the likely cause is a commit whose workflow files differ from the default branch's, such as one released before a workflow change merged, which only a token with the workflows permission may tag.",
+      result.message);
+    Assert.areEqual(JSON.stringify(["GET", "POST"]), JSON.stringify(api.requests.map(t => t.method)));
   }
 
   @TestMethod

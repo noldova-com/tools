@@ -71,9 +71,10 @@ It runs only from `main`, on GitHub-hosted runners, with the tool built from the
 | Job | What it does |
 |---|---|
 | Check and build | With read access only: checks that the commit is on `main`, builds the packages, checks the source with `pipelines source` and the archives with `pipelines archive`, and keeps the archives for the next jobs. |
+| Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag` before the publish waits for approval, while the commit is most likely still `main`'s latest, since GitHub refuses a tag at a commit whose workflow files differ from `main`'s to the job's own token; it passes when the tag is already there at the commit. |
 | Publish to npm | Waits in the `release` environment, which npm's trusted publishing names, for a reviewer's approval; then checks the commit out, installs the tool from the checked archives, and checks and publishes them with `pipelines publish` to npm's registry, public, with provenance, through trusted publishing: npm takes the job's ID token, and no npm token is stored. |
-| Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag`, and passes when the tag is already there. |
 
+A version keeps its tag even when its publish is denied or fails, so a rerun can publish it; to release that commit's changes under another version instead, bump `version.json`.
 A rerun never publishes a version twice: the publish step skips a version the registry already holds from the same archive, and fails when it holds a different one.
 "Re-run failed jobs" publishes the archives the first attempt checked.
 "Re-run all jobs" builds and packs the commit again, and the "Build and test" workflow checks that a second build of a commit packs byte-identical archives, so a rerun of a release that was published passes without publishing anything.
