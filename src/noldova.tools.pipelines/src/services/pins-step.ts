@@ -173,7 +173,7 @@ export class PinsStep implements IStep {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
     const body = Resources.formatPinsBody(update.source, update.tag, update.commit, moves, majors, left, update.notes);
-    const proposal = await this.updateHost.proposeAsync(repository, branch, title, body);
+    const proposal = await this.updateHost.proposeAsync(repository, branch, title, body, Resources.formatPinsIssueSummary(update.source, update.tag));
     if (proposal instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, proposal.message));
 

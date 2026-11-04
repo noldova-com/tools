@@ -117,8 +117,8 @@ It runs in a checkout of the released commit, and reads `GITHUB_API_URL`, `GITHU
 - The pins a released package needs as exact peers move with it, in the same pull request; a repository whose lock files hold a package that needs a moved package at another exact version, before or after the refresh, is left as it is, with a line that names that package.
 - The step prints each repository's line as soon as that repository is done, a failed one as an error, so a job stopped by its time limit still shows the repositories it finished; its last line is the summary.
 - A lock refresh that runs longer than 5 minutes is stopped and fails that repository, on Linux and macOS runners only.
-- The release notes are the section of the pull request whose merge commit is the commit, headed `Release notes for <version>`; without one, the proposal has none.
-- When the branch exists, the step replaces it, with `--force-with-lease`, only while it is at a commit of the step's own; then it updates the open pull request and its issue. Otherwise it opens an issue and a pull request that closes it, against the repository's default branch.
+- The release notes are the section of the pull request whose merge commit is the commit, headed `Release notes`, or `Release notes for <version>` with the version, at any heading level; without one, the proposal has none.
+- When the branch exists, the step replaces it, with `--force-with-lease`, only while it is at a commit of the step's own; then it updates the open pull request and its issue. Otherwise it opens an issue, which says what the new version is, and a pull request that closes it, against the repository's default branch.
 - The step fails, naming the variable, when one is missing or empty; it fails for a repository, after trying every other, with git's exit code and error output, or with the request, the status and GitHub's message for an answer it doesn't expect.
 
 ### The pins step

@@ -89,6 +89,7 @@ export class DependentsStepTests {
         "noldova-com/pinned",
         "pipelines/update-source",
         "Move the pins of source's packages to 0.0.4",
+        "A release moved packages this repository pins exactly",
         [
           "## Summary",
           "",
@@ -253,7 +254,7 @@ export class DependentsStepTests {
     const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
 
     Assert.isTrue(result.isSuccessful, result.message);
-    Assert.areEqual(`The pull request that merged ${source.readHead()} has no "Release notes for 0.0.4" section.`, host.proposals[0]?.split("\n").at(-1));
+    Assert.areEqual(`The pull request that merged ${source.readHead()} has no "Release notes" section.`, host.proposals[0]?.split("\n").at(-1));
   }
 
   @TestMethod

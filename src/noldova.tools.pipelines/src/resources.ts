@@ -144,6 +144,7 @@ export class Resources {
   public static readonly trackedFilesMissing: string = "Git lists no tracked file in this folder; run this step in a clone's checkout.";
   public static readonly unchangedStepName: string = "unchanged";
   public static readonly unchangedStepUsage: string = "";
+  public static readonly updateIssueSummary: string = "A release moved packages this repository pins exactly";
   public static readonly textEncoding: BufferEncoding = "utf8";
   public static readonly usesPattern: RegExp = /^([ \t]*(?:-[ \t]+)?uses:[ \t]*)([^@\s#]+)@([0-9a-f]{40})(?:[ \t]+#[ \t]*(\S+))?/gm;
   public static readonly workflowExtensions: readonly string[] = [".yml", ".yaml"];
@@ -579,7 +580,7 @@ export class Resources {
       ...moves.map(t => `- ${t}`),
       ...lockFilePaths.map(t => `- \`${t}\`: refreshed with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\``),
       "",
-      notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes for ${version}" section.` : notes
+      notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes" section.` : notes
     ].join(Resources.lineSeparator);
   }
 
@@ -615,6 +616,10 @@ export class Resources {
     return `\`${filePath}\`: \`${action}\` at ${from}, a commit ${to} doesn't hold`;
   }
 
+  public static formatPinsIssueSummary(source: string, tag: string): string {
+    return `${source} tagged ${tag}, a new version of the shared workflows this repository pins`;
+  }
+
   public static formatPinsTitle(source: string, tag: string): string {
     return `${Resources.formatPinsTitlePrefix(source)}${tag}`;
   }
@@ -633,7 +638,7 @@ export class Resources {
       moves.map(t => `- ${t}`),
       majors.length === 0 ? [] : ["Outside actions moved to a new major version, which may need changes here; read their release notes before merging:", "", ...majors.map(t => `- ${t}`)],
       left.length === 0 ? [] : ["Left as they are, to move by hand:", "", ...left.map(t => `- ${t}`)],
-      [notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes for ${tag.slice(Resources.tagPrefix.length)}" section.` : notes]
+      [notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes" section.` : notes]
     ];
 
     return ["## Summary", ...sections.filter(t => t.length > 0).flatMap(t => ["", ...t])].join(Resources.lineSeparator);

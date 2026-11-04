@@ -171,7 +171,7 @@ export class DependentsStep implements IStep {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
     const body = Resources.formatUpdateBody(update.source, update.version, update.commit, [...moves, ...peerMoves].map(t => t.line), lockFilePaths, update.notes);
-    const proposal = await this.updateHost.proposeAsync(repository, branch, title, body);
+    const proposal = await this.updateHost.proposeAsync(repository, branch, title, body, Resources.updateIssueSummary);
     if (proposal instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, proposal.message));
 

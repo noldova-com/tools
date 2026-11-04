@@ -23,5 +23,5 @@ export interface IUpdateHost {
 
   pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null>;
 
-  proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult>;
+  proposeAsync(repository: string, branch: string, title: string, body: string, summary: string): Promise<string | StepResult>;
 }

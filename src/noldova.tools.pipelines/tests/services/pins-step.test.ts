@@ -130,6 +130,7 @@ export class PinsStepTests {
         "noldova-com/pinned",
         "pipelines/pins-source",
         "Move the pins on source's workflows to v1.2.0",
+        "source tagged v1.2.0, a new version of the shared workflows this repository pins",
         [
           "## Summary",
           "",
@@ -247,7 +248,7 @@ export class PinsStepTests {
     const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]);
 
     Assert.isTrue(result.isSuccessful, result.message);
-    Assert.areEqual(`The pull request that merged ${source.readHead()} has no "Release notes for 1.2.0" section.`, host.proposals[0]?.split("\n").at(-1));
+    Assert.areEqual(`The pull request that merged ${source.readHead()} has no "Release notes" section.`, host.proposals[0]?.split("\n").at(-1));
   }
 
   @TestMethod
