@@ -27,6 +27,7 @@ export { Git } from "../services/git.js";
 export { LineEndingsStep } from "../services/line-endings-step.js";
 export { NightlyStep } from "../services/nightly-step.js";
 export { Npm } from "../services/npm.js";
+export { PinsStep } from "../services/pins-step.js";
 export { ProcessRunner } from "../services/process-runner.js";
 export { PruneStep } from "../services/prune-step.js";
 export { PublishStep } from "../services/publish-step.js";
