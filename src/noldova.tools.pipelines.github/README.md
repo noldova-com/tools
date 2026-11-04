@@ -132,8 +132,9 @@ It runs in a clone of the shared repository that holds the commit, and reads the
   run: pipelines pins "$VERSION" "$COMMIT"
 ```
 
-- A pin moves when it is written `uses: <owner>/<repository>/<path>@<commit> # v<version>`, with the calling repository's owner, and its version is older within the same major version; a pin a major version behind stays, and the proposal names it.
-- The outside actions the shared repository's workflows pin at the commit, such as `actions/checkout`, move in the same pull request when a calling repository pins an older version.
+- A pin moves when it is written `uses: <owner>/<repository>/<path>@<commit> # v<version>`, with the calling repository's owner, and its version is older within the same major version, or it has no version and its commit is in the tag's history; a pin a major version behind, or with no version and a commit the tag doesn't hold, stays, and the proposal names it.
+- The checkout needs the shared repository's whole history, `fetch-depth: 0`, for the pins with no version.
+- The outside actions the shared repository's workflows pin at the commit, such as `actions/checkout`, move in the same pull request when a calling repository pins an older version; the proposal lists apart those that move to a new major version.
 - In a repository with a `.github/dependabot.yml` or `.github/dependabot.yaml`, Dependabot moves the outside actions, and the step moves only the shared repository's pins.
 - The token needs to write the repositories' workflows too, as well as their contents, pull requests and issues.
 - The output, the release notes, the branch and the failures work as in the dependents step.

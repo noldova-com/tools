@@ -2305,10 +2305,12 @@ export declare class DependentsStep implements IStep {
  * workflow of the shared repository under the repository's own owner, such
  * as `uses: <owner>/<source>/.github/workflows/check.yml@<commit> # v1.2.0`,
  * to the commit and tag when the pin's version is older within the same major
- * version, or has none; a pin a major version behind is left as it is and
- * named, since a new major version may need changes in its caller. It moves
- * each outside action older than the shared repository's to the shared one's
- * commit and tag, except in a repository with a tracked
+ * version, or has none and its commit is in the tagged commit's history; a
+ * pin a major version behind, or with no version and a commit the tag doesn't
+ * hold, is left as it is and named, since it may need changes in its caller
+ * or be newer than the tag. It moves each outside action older than the
+ * shared repository's to the shared one's commit and tag, naming apart those
+ * that move to a new major version, except in a repository with a tracked
  * `.github/dependabot.yml` or `.github/dependabot.yaml`, whose outside actions
  * Dependabot moves. Then it commits, pushes the branch `pipelines/pins-<source>`
  * and proposes it, with the moved and the left pins and the release's notes

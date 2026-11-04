@@ -600,7 +600,7 @@ export class Resources {
   }
 
   public static formatRepositoryPinsLeft(repository: string, tag: string, left: readonly string[]): string {
-    return `${repository}: moves nothing to ${tag}; left a major version behind: ${left.join("; ")}.`;
+    return `${repository}: moves nothing to ${tag}; left as they are: ${left.join("; ")}.`;
   }
 
   public static formatWorkflowPinMoved(filePath: string, action: string, from: string, to: string): string {
@@ -609,6 +609,10 @@ export class Resources {
 
   public static formatWorkflowPinLeft(filePath: string, action: string, from: string, to: string): string {
     return `\`${filePath}\`: \`${action}\` at ${from}, a major version behind ${to}`;
+  }
+
+  public static formatWorkflowPinNotTagged(filePath: string, action: string, from: string, to: string): string {
+    return `\`${filePath}\`: \`${action}\` at ${from}, a commit ${to} doesn't hold`;
   }
 
   public static formatPinsTitle(source: string, tag: string): string {
@@ -623,17 +627,16 @@ export class Resources {
     return `pipelines/pins-${source}`;
   }
 
-  public static formatPinsBody(source: string, tag: string, commit: string, moves: readonly string[], left: readonly string[], notes: string): string {
-    return [
-      "## Summary",
-      "",
-      `${source} tagged ${tag} at commit ${commit}; this moves every older pin on its workflows within the same major version, and every outside action older than the one ${source} uses.`,
-      "",
-      ...moves.map(t => `- ${t}`),
-      ...left.length === 0 ? [] : ["", "Left a major version behind, to move by hand after reading the release notes:", "", ...left.map(t => `- ${t}`)],
-      "",
-      notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes for ${tag.slice(Resources.tagPrefix.length)}" section.` : notes
-    ].join(Resources.lineSeparator);
+  public static formatPinsBody(source: string, tag: string, commit: string, moves: readonly string[], majors: readonly string[], left: readonly string[], notes: string): string {
+    const sections = [
+      [`${source} tagged ${tag} at commit ${commit}; this moves every older pin on its workflows within the same major version, and every outside action older than the one ${source} uses.`],
+      moves.map(t => `- ${t}`),
+      majors.length === 0 ? [] : ["Outside actions moved to a new major version, which may need changes here; read their release notes before merging:", "", ...majors.map(t => `- ${t}`)],
+      left.length === 0 ? [] : ["Left as they are, to move by hand:", "", ...left.map(t => `- ${t}`)],
+      [notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes for ${tag.slice(Resources.tagPrefix.length)}" section.` : notes]
+    ];
+
+    return ["## Summary", ...sections.filter(t => t.length > 0).flatMap(t => ["", ...t])].join(Resources.lineSeparator);
   }
 
   public static createPinPattern(packageName: string): RegExp {

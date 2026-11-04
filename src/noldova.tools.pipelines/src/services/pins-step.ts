@@ -36,6 +36,7 @@ interface PinsUpdate {
 
 interface WorkflowChanges {
   readonly moves: readonly string[];
+  readonly majors: readonly string[];
   readonly left: readonly string[];
 }
 
@@ -149,12 +150,13 @@ export class PinsStep implements IStep {
     const filePaths = (await git.listTrackedFilesAsync()).map(t => t.filePath);
     const actions = filePaths.some(t => Resources.dependabotFilePaths.includes(t)) ? new Map<string, ActionPin>() : update.actions;
     const owner = repository.slice(0, repository.indexOf(Resources.repositorySeparator));
-    const changes = filePaths
-      .filter(t => t.startsWith(`${Resources.workflowsFolderPath}/`) && PinsStep.isWorkflow(t))
-      .map(t => PinsStep.movePins(path.join(directory, t), t, update, actions, owner));
+    const workflowPaths = filePaths.filter(t => t.startsWith(`${Resources.workflowsFolderPath}/`) && PinsStep.isWorkflow(t));
+    const ancestors = await this.readAncestorsAsync(workflowPaths.map(t => path.join(directory, t)), update, owner);
+    const changes = workflowPaths.map(t => PinsStep.movePins(path.join(directory, t), t, update, actions, ancestors, owner));
     const moves = changes.flatMap(t => t.moves);
+    const majors = changes.flatMap(t => t.majors);
     const left = changes.flatMap(t => t.left);
-    if (moves.length === 0)
+    if (moves.length + majors.length === 0)
       return StepResult.succeeded(left.length === 0 ? Resources.formatRepositoryPinsCurrent(repository, update.tag) : Resources.formatRepositoryPinsLeft(repository, update.tag, left));
 
     const title = Resources.formatPinsTitle(update.source, update.tag);
@@ -170,22 +172,41 @@ export class PinsStep implements IStep {
     if (push !== null)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
-    const body = Resources.formatPinsBody(update.source, update.tag, update.commit, moves, left, update.notes);
+    const body = Resources.formatPinsBody(update.source, update.tag, update.commit, moves, majors, left, update.notes);
     const proposal = await this.updateHost.proposeAsync(repository, branch, title, body);
     if (proposal instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, proposal.message));
 
-    return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, moves.length));
+    return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, moves.length + majors.length));
   }
 
-  private static movePins(fullPath: string, filePath: string, update: PinsUpdate, actions: ReadonlyMap<string, ActionPin>, owner: string): WorkflowChanges {
+  private async readAncestorsAsync(fullPaths: readonly string[], update: PinsUpdate, owner: string): Promise<ReadonlySet<string>> {
+    const ancestors = new Set<string>();
+    for (const fullPath of fullPaths) {
+      for (const match of fs.readFileSync(fullPath, Resources.textEncoding).matchAll(Resources.usesPattern)) {
+        const [, , action, found, tag] = match as unknown as readonly [string, string, string, string, string | undefined];
+        if (PinsStep.readSharedOwner(action, update.source) === owner.toLowerCase() && PinsStep.readTagVersion(tag) === null
+          && await this.git.hasCommitAsync(found) && await this.git.isAncestorAsync(found, update.commit))
+          ancestors.add(found);
+      }
+    }
+
+    return ancestors;
+  }
+
+  private static movePins(fullPath: string, filePath: string, update: PinsUpdate, actions: ReadonlyMap<string, ActionPin>, ancestors: ReadonlySet<string>, owner: string): WorkflowChanges {
     const moves: string[] = [];
+    const majors: string[] = [];
     const left: string[] = [];
     const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.usesPattern, (pin: string, prefix: string, action: string, found: string, tag: string | undefined) => {
       const version = PinsStep.readTagVersion(tag);
       if (PinsStep.readSharedOwner(action, update.source) === owner.toLowerCase()) {
         if (found === update.commit || version !== null && version.compareTo(update.version) >= 0)
           return pin;
+        if (version === null && !ancestors.has(found)) {
+          left.push(Resources.formatWorkflowPinNotTagged(filePath, action, found, update.tag));
+          return pin;
+        }
         if (version !== null && version.major !== update.version.major) {
           left.push(Resources.formatWorkflowPinLeft(filePath, action, tag as string, update.tag));
           return pin;
@@ -199,13 +220,13 @@ export class PinsStep implements IStep {
       if (target === undefined || version === null || version.compareTo(target.version) >= 0)
         return pin;
 
-      moves.push(Resources.formatWorkflowPinMoved(filePath, action, tag as string, target.tag));
+      (target.version.major === version.major ? moves : majors).push(Resources.formatWorkflowPinMoved(filePath, action, tag as string, target.tag));
       return `${prefix}${action}@${target.commit} # ${target.tag}`;
     });
-    if (moves.length > 0)
+    if (moves.length + majors.length > 0)
       fs.writeFileSync(fullPath, text);
 
-    return { moves, left };
+    return { moves, majors, left };
   }
 
   private static isWorkflow(filePath: string): boolean {

@@ -26,6 +26,7 @@ export class PinsStepTests {
   private static readonly SETUP_5: string = "7".repeat(40);
   private static readonly SETUP_6: string = "8".repeat(40);
   private static readonly OTHER: string = "9".repeat(40);
+  private static readonly PYTHON_42: string = "a".repeat(40);
 
   private static readonly SHARED: Readonly<Record<string, string>> = {
     ".github/workflows/check.yml": [
@@ -36,6 +37,7 @@ export class PinsStepTests {
       `      - uses: actions/checkout@${PinsStepTests.CHECKOUT_5} # v5.0.0`,
       `      - uses: actions/checkout@${PinsStepTests.CHECKOUT_45} # v4.5.0`,
       `      - uses: actions/setup-node@${PinsStepTests.SETUP_5} # v5.0.0`,
+      `      - uses: actions/setup-python@${PinsStepTests.PYTHON_42} # v4.2.0`,
       `      - uses: actions/upload-artifact@${PinsStepTests.OTHER} # main`,
       `      - uses: actions/cache@${PinsStepTests.OTHER}`,
       `  nested:`,
@@ -56,13 +58,19 @@ export class PinsStepTests {
   @TestMethod
   public async movesTheOlderPinsAndProposesThemAsync(): Promise<void> {
     using source = PinsStepTests.createSource();
-    const commit = source.readHead();
+    const earlier = source.readHead();
+    const commit = source.commit({ "later.md": "Later.\n" });
+    const after = source.commit({ "after.md": "After.\n" });
     const workflow = [
       "jobs:",
       "  older:",
       `    uses: noldova-com/source/.github/workflows/check.yml@${PinsStepTests.OLD} # v1.1.0`,
       "  untagged:",
-      `    uses: Noldova-Com/Source/.github/workflows/release.yml@${PinsStepTests.OLD}`,
+      `    uses: Noldova-Com/Source/.github/workflows/release.yml@${earlier}`,
+      "  unreleased:",
+      `    uses: noldova-com/source/.github/workflows/release.yml@${after} # main`,
+      "  unknown:",
+      `    uses: noldova-com/source/.github/workflows/release.yml@${PinsStepTests.OLD}`,
       "  major:",
       `    uses: noldova-com/source/.github/workflows/check.yml@${PinsStepTests.OLDER} # v0.9.0`,
       "  newer:",
@@ -75,6 +83,7 @@ export class PinsStepTests {
       "    steps:",
       `      - uses: actions/checkout@${PinsStepTests.OLD} # v4.0.0`,
       `      - uses: actions/setup-node@${PinsStepTests.SETUP_6} # v6.0.0`,
+      `      - uses: actions/setup-python@${PinsStepTests.OLD} # v4.1.0`,
       `      - uses: actions/cache@${PinsStepTests.OLD} # v1.0.0`,
       `      - uses: actions/checkout@${PinsStepTests.OLD}`,
       `      - uses: actions/checkout@${PinsStepTests.OLD} # vNext`,
@@ -98,7 +107,7 @@ export class PinsStepTests {
     Assert.areEqual(
       [
         "Looked for pins on source's workflows older than v1.2.0 in 2 repositories:",
-        "noldova-com/pinned: moved 3 pins in https://example.test/noldova-com/pinned/pull/1",
+        "noldova-com/pinned: moved 4 pins in https://example.test/noldova-com/pinned/pull/1",
         "noldova-com/current: pins nothing older than v1.2.0."
       ].join("\n"),
       result.message);
@@ -108,8 +117,9 @@ export class PinsStepTests {
     Assert.areEqual(
       workflow
         .replace(`check.yml@${PinsStepTests.OLD} # v1.1.0`, `check.yml@${commit} # v1.2.0`)
-        .replace(`release.yml@${PinsStepTests.OLD}`, `release.yml@${commit} # v1.2.0`)
-        .replace(`checkout@${PinsStepTests.OLD} # v4.0.0`, `checkout@${PinsStepTests.CHECKOUT_5} # v5.0.0`),
+        .replace(`release.yml@${earlier}`, `release.yml@${commit} # v1.2.0`)
+        .replace(`checkout@${PinsStepTests.OLD} # v4.0.0`, `checkout@${PinsStepTests.CHECKOUT_5} # v5.0.0`)
+        .replace(`setup-python@${PinsStepTests.OLD} # v4.1.0`, `setup-python@${PinsStepTests.PYTHON_42} # v4.2.0`),
       pushed?.[".github/workflows/ci.yaml"]);
     Assert.areEqual("jobs: {}\n", pushed?.[".github/workflows/plain.yml"]);
     Assert.areEqual(`uses: actions/checkout@${PinsStepTests.OLD} # v4.0.0\n`, pushed?.[".github/workflows/notes.md"]);
@@ -126,11 +136,17 @@ export class PinsStepTests {
           `source tagged v1.2.0 at commit ${commit}; this moves every older pin on its workflows within the same major version, and every outside action older than the one source uses.`,
           "",
           "- `.github/workflows/ci.yaml`: `noldova-com/source/.github/workflows/check.yml` from v1.1.0 to v1.2.0",
-          `- \`.github/workflows/ci.yaml\`: \`Noldova-Com/Source/.github/workflows/release.yml\` from ${PinsStepTests.OLD} to v1.2.0`,
+          `- \`.github/workflows/ci.yaml\`: \`Noldova-Com/Source/.github/workflows/release.yml\` from ${earlier} to v1.2.0`,
+          "- `.github/workflows/ci.yaml`: `actions/setup-python` from v4.1.0 to v4.2.0",
+          "",
+          "Outside actions moved to a new major version, which may need changes here; read their release notes before merging:",
+          "",
           "- `.github/workflows/ci.yaml`: `actions/checkout` from v4.0.0 to v5.0.0",
           "",
-          "Left a major version behind, to move by hand after reading the release notes:",
+          "Left as they are, to move by hand:",
           "",
+          `- \`.github/workflows/ci.yaml\`: \`noldova-com/source/.github/workflows/release.yml\` at ${after}, a commit v1.2.0 doesn't hold`,
+          `- \`.github/workflows/ci.yaml\`: \`noldova-com/source/.github/workflows/release.yml\` at ${PinsStepTests.OLD}, a commit v1.2.0 doesn't hold`,
           "- `.github/workflows/ci.yaml`: `noldova-com/source/.github/workflows/check.yml` at v0.9.0, a major version behind v1.2.0",
           "",
           "## Release notes for 0.0.4",
@@ -139,6 +155,22 @@ export class PinsStepTests {
         ].join("\n")
       ].join("\n---\n"),
       host.proposals.join("\n===\n"));
+  }
+
+  @TestMethod
+  public async proposesOutsideActionsMovedToANewMajorVersionOnlyAsync(): Promise<void> {
+    using source = PinsStepTests.createSource();
+    using pinned = PinsStepTests.createTarget({ ".github/workflows/ci.yml": `jobs:\n  check:\n    steps:\n      - uses: actions/checkout@${PinsStepTests.OLD} # v4.0.0\n` });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 1 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    Assert.isTrue(
+      (host.proposals[0] ?? "").includes("uses.\n\nOutside actions moved to a new major version, which may need changes here; read their release notes before merging:\n\n- `.github/workflows/ci.yml`: `actions/checkout` from v4.0.0 to v5.0.0\n\n## Release notes"),
+      host.proposals[0]);
   }
 
   @TestMethod
@@ -152,7 +184,7 @@ export class PinsStepTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(
-      "noldova-com/behind: moves nothing to v1.2.0; left a major version behind: `.github/workflows/ci.yml`: `noldova-com/source/.github/workflows/check.yml` at v0.9.0, a major version behind v1.2.0.",
+      "noldova-com/behind: moves nothing to v1.2.0; left as they are: `.github/workflows/ci.yml`: `noldova-com/source/.github/workflows/check.yml` at v0.9.0, a major version behind v1.2.0.",
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has("noldova-com/behind"));
   }

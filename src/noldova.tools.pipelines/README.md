@@ -315,8 +315,9 @@ result.message; // "Looked for pins on .github's workflows older than v1.2.0 in 
 
 - It fails, before asking the host, unless the version is a release version and the commit is its full id.
 - It reads the outside actions the commit's `.github/workflows` pin as `uses: <action>@<commit> # v<version>`, keeping the highest version of each.
-- In each repository's tracked `.github/workflows/*.yml` and `*.yaml`, it moves each `uses: <owner>/<source>/<path>@<commit>`, with that repository's owner, to the new commit and `# v<version>` when its version comment is older within the same major version, or missing; a pin a major version behind stays, and the repository's line and the proposal name it.
-- It moves each outside action pinned at an older version than the shared repository's to the shared one's commit and version, except in a repository with a tracked `.github/dependabot.yml` or `.github/dependabot.yaml`, whose outside actions Dependabot moves.
+- In each repository's tracked `.github/workflows/*.yml` and `*.yaml`, it moves each `uses: <owner>/<source>/<path>@<commit>`, with that repository's owner, to the new commit and `# v<version>` when its version comment is older within the same major version, or is missing and its commit is in the tagged commit's history; a pin a major version behind, or with no version and a commit the tag doesn't hold, stays, and the repository's line and the proposal name it.
+- A pin with no version is checked against the clone the step runs in, so that clone needs the shared repository's whole history, such as `fetch-depth: 0`; a commit the clone doesn't hold stays.
+- It moves each outside action pinned at an older version than the shared repository's to the shared one's commit and version, and the proposal lists apart those that move to a new major version, except in a repository with a tracked `.github/dependabot.yml` or `.github/dependabot.yaml`, whose outside actions Dependabot moves.
 - When it moved any, it commits, pushes the branch `pipelines/pins-<source>` and proposes it with the moved and the left pins and the release's notes; the branch, the lines, the output and the temporary folder work as in the dependents step.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
