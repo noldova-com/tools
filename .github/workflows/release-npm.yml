@@ -113,9 +113,40 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ needs.versions.outputs.retention-days }}
 
+  tag:
+    name: Tag the commit
+    needs: [versions, check]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ needs.versions.outputs.node-version }}
+          package-manager-cache: false
+
+      - name: Take the checked archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: archives
+          path: ${{ runner.temp }}/archives
+
+      - name: Install the tool from the checked archives
+        run: |
+          npm install --prefix "$RUNNER_TEMP/tool" --no-audit --no-fund "$RUNNER_TEMP"/archives/*.tgz
+          echo "$RUNNER_TEMP/tool/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Tag the commit with the version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pipelines tag "$RELEASE_VERSION" "$RELEASE_COMMIT"
+
   publish:
     name: Publish to npm
-    needs: [versions, check]
+    needs: [versions, check, tag]
     if: github.ref == 'refs/heads/main'
     runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
     timeout-minutes: 20
@@ -164,34 +195,3 @@ jobs:
           RELEASE_SCOPE: ${{ needs.versions.outputs.publish-scope }}
           RELEASE_ACCESS: ${{ needs.versions.outputs.publish-access }}
         run: pipelines publish "$RUNNER_TEMP/archives" "$RELEASE_VERSION" "$RELEASE_COMMIT" "$RELEASE_SCOPE" "$RELEASE_REGISTRY" "$RELEASE_ACCESS"
-
-  tag:
-    name: Tag the commit
-    needs: [versions, publish]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: ${{ needs.versions.outputs.node-version }}
-          package-manager-cache: false
-
-      - name: Take the checked archives
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: archives
-          path: ${{ runner.temp }}/archives
-
-      - name: Install the tool from the checked archives
-        run: |
-          npm install --prefix "$RUNNER_TEMP/tool" --no-audit --no-fund "$RUNNER_TEMP"/archives/*.tgz
-          echo "$RUNNER_TEMP/tool/node_modules/.bin" >> "$GITHUB_PATH"
-
-      - name: Tag the commit with the version
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: pipelines tag "$RELEASE_VERSION" "$RELEASE_COMMIT"

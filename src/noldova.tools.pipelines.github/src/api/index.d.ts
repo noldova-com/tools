@@ -275,8 +275,12 @@ export declare class GitHubTags implements ITagHost {
    * finds it, such as one another run made, or an earlier attempt whose
    * answer was lost. Otherwise it is a failed
    * {@link StepResult}, as {@link GitHubTags.readTagAsync} gives one: with the
-   * 422's message when reading finds no tag, and with the read's failure when
-   * the read fails. It rejects as {@link GitHubTags.readTagAsync} does.
+   * 422's message when reading finds no tag, with the read's failure when
+   * the read fails, and, for a 403, with GitHub's message and, as the likely
+   * cause when the token may write the contents, a commit whose workflow
+   * files differ from the default branch's, which only a token with the
+   * workflows permission may tag. It rejects as
+   * {@link GitHubTags.readTagAsync} does.
    * @example
    * ```ts
    * import { GitHubTags } from "@noldova/tools.pipelines.github";
