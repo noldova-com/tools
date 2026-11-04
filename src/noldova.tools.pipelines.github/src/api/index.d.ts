@@ -362,7 +362,9 @@ export declare class GitHubUpdates implements IUpdateHost {
   /**
    * Reads the release notes from the pull request that merged the commit:
    * its section whose heading is `Release notes`, or `Release notes for
-   * <version>` with the version, at any heading level, up to the next heading of that level or higher.
+   * <version>` with the version, at any heading level, up to the next
+   * heading of that level or higher, or a line that starts with `Agent:`, a
+   * pull request's signature.
    *
    * @param version The version.
    * @param commit The commit.
