@@ -187,7 +187,8 @@ export declare class GitHubPackages implements IRegistryHost {
    * with an unexpected status, a timeout or a lost connection, as
    * {@link GitHubPackages.readVersionsAsync} gives one. It rejects with
    * `JsonException`, from `@noldova/context.json`, for an answer that is not
-   * the JSON GitHub's list of repositories, tree or blob gives.
+   * the JSON GitHub's releasing repository, list of repositories, tree or blob
+   * gives, such as a releasing repository without a boolean `private`.
    * @example
    * ```ts
    * import { GitHubPackages } from "@noldova/tools.pipelines.github";

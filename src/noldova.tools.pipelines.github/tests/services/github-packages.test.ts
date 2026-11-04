@@ -442,6 +442,21 @@ export class GitHubPackagesTests {
     Assert.isFalse(api.requests.some(t => t.url.startsWith("/installation/")));
   }
 
+  @TestData("not JSON")
+  @TestData("{ \"full_name\": \"noldova-com/source\" }")
+  @TestData("{ \"full_name\": \"noldova-com/source\", \"private\": null }")
+  @TestData("{ \"full_name\": \"noldova-com/source\", \"private\": \"true\" }")
+  @TestMethod
+  public async rejectsWithJsonExceptionForAReleasingRepositoryAnswerWithoutItsVisibilityAsync(body: string): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: new GitHubApiAnswer(200, body),
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.ONE_REPOSITORY
+    });
+
+    await Assert.throwsAsync(() => GitHubPackagesTests.createPackages(api).readLockFilesAsync(), JsonException);
+    Assert.isFalse(api.requests.some(t => t.url.startsWith("/installation/")));
+  }
+
   @TestMethod
   public async keepsAVersionALockFileHoldsAsync(): Promise<void> {
     using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });

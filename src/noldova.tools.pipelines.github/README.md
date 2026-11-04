@@ -87,7 +87,7 @@ It runs in a checkout of the commit, and reads `GITHUB_API_URL` and `GITHUB_REPO
 ```
 
 The job needs `permissions: packages: write`, and runs in a release whose publish approval covers its deletes.
-The step runs only from a private repository: it first reads the releasing repository with `REPOSITORIES_TOKEN`, and fails, reading no lock file and deleting nothing, when that repository is public or can't be read, since its lines name the repositories that lock a version and a public run's log anyone can read.
+The step reads lock files and deletes versions only from a private repository: before it reads any lock file, it reads the releasing repository with `REPOSITORIES_TOKEN`, and fails, reading no lock file and deleting nothing, when that repository is public or can't be read, since its lines name the repositories that lock a version and a public run's log anyone can read.
 So the App installation behind `REPOSITORIES_TOKEN` must reach the releasing repository too; one that doesn't makes the step fail the same way.
 The step lists the installation's repositories before it reads any lock file, and again after; when a list doesn't hold as many as GitHub counts, the two lists differ, GitHub lists only part of a repository's files, or a read fails, it deletes nothing.
 The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as GitHub refusing to delete a package's last version.
