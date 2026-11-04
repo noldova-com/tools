@@ -87,7 +87,7 @@ export class GitHubUpdatesTests {
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.checkOutAsync(GitHubUpdatesTests.REPOSITORY, "target")));
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await missing.pushAsync(GitHubUpdatesTests.REPOSITORY, "target", GitHubUpdatesTests.BRANCH, null)));
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.fetchBranchAsync(GitHubUpdatesTests.REPOSITORY, "target", GitHubUpdatesTests.BRANCH)));
-    Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Title", "Body")));
+    Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Title", "Body", "Summary")));
     Assert.areEqual(0, api.requests.length);
   }
 
@@ -182,6 +182,7 @@ export class GitHubUpdatesTests {
   @TestData("[{ \"merge_commit_sha\": null, \"body\": \"# Release notes for 0.0.4\\n- Open.\" }]", "")
   @TestData("[{ \"merge_commit_sha\": \"0123456789abcdef0123456789abcdef01234567\", \"body\": \"# Release notes for 0.0.4\\n- Other.\" }]", "")
   @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"Release notes for 0.0.4\\n\\n# Release notes for 0.0.4\\n- First.\" }]", "# Release notes for 0.0.4\n- First.")
+  @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"## Summary\\n- Why.\\n\\n## Release notes\\n- Plain.\\n\\n## Linked issue\" }]", "## Release notes\n- Plain.")
   @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": null }]", "")
   @TestData("[{ \"merge_commit_sha\": \"225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8\", \"body\": \"## Release notes for 0.0.3\\n- Older.\" }]", "")
   @TestData("[]", "")
@@ -326,14 +327,14 @@ export class GitHubUpdatesTests {
   public async proposesANewPullRequestWithItsOwnIssueAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync(GitHubUpdatesTests.createNewProposalAnswers());
 
-    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.");
+    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
 
     Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
     Assert.areEqual(
       [GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.TARGET, GitHubUpdatesTests.CREATE_ISSUE, GitHubUpdatesTests.CREATE_PULL].join("\n"),
       api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
     Assert.areEqual(
-      JSON.stringify({ title: "Move the pins", body: "A release moved packages this repository pins exactly; the pull request from `pipelines/update-tools` moves the pins." }),
+      JSON.stringify({ title: "Move the pins", body: "source tagged v1.2.0, a new version of the shared workflows this repository pins; the pull request from `pipelines/update-tools` moves the pins." }),
       api.requests[2]?.body);
     Assert.areEqual(
       JSON.stringify({ title: "Move the pins", head: GitHubUpdatesTests.BRANCH, base: "develop", body: "Moves the pins.\n\n## Linked issue\n\nCloses #9" }),
@@ -344,13 +345,13 @@ export class GitHubUpdatesTests {
   public async updatesTheOpenPullRequestAndRenamesItsIssueAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync(GitHubUpdatesTests.createExistingProposalAnswers("Old.\n\n## Linked issue\n\nCloses #9"));
 
-    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.");
+    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
 
     Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
     Assert.areEqual(
       [GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.RENAME_ISSUE, GitHubUpdatesTests.UPDATE_PULL].join("\n"),
       api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
-    Assert.areEqual(JSON.stringify({ title: "Move the pins" }), api.requests[1]?.body);
+    Assert.areEqual(JSON.stringify({ title: "Move the pins", body: "source tagged v1.2.0, a new version of the shared workflows this repository pins; the pull request from `pipelines/update-tools` moves the pins." }), api.requests[1]?.body);
     Assert.areEqual(JSON.stringify({ title: "Move the pins", body: "Moves the pins.\n\n## Linked issue\n\nCloses #9" }), api.requests[2]?.body);
   }
 
@@ -360,7 +361,7 @@ export class GitHubUpdatesTests {
   public async updatesAnOpenPullRequestWithoutALinkedIssueAloneAsync(body: string | null): Promise<void> {
     await using api = await GitHubApiFixture.startAsync(GitHubUpdatesTests.createExistingProposalAnswers(body));
 
-    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.");
+    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
 
     Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
     Assert.areEqual([GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.UPDATE_PULL].join("\n"), api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
@@ -379,7 +380,7 @@ export class GitHubUpdatesTests {
   public async failsWithTheRequestThatFailedWhenProposingANewPullRequestAsync(request: string, isHeld: boolean): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesTests.createNewProposalAnswers(), [request]: GitHubUpdatesTests.createFailure(isHeld) });
 
-    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.");
+    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
 
     Assert.areEqual(GitHubUpdatesTests.formatFailure(request, isHeld), GitHubUpdatesTests.readFailure(result));
   }
@@ -392,7 +393,7 @@ export class GitHubUpdatesTests {
   public async failsWithTheRequestThatFailedWhenUpdatingAPullRequestAsync(request: string, isHeld: boolean): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesTests.createExistingProposalAnswers("Closes #9"), [request]: GitHubUpdatesTests.createFailure(isHeld) });
 
-    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.");
+    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
 
     Assert.areEqual(GitHubUpdatesTests.formatFailure(request, isHeld), GitHubUpdatesTests.readFailure(result));
   }

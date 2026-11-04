@@ -130,7 +130,7 @@ export class GitHubUpdates implements IUpdateHost {
     return await this.runGitAsync(values, directory);
   }
 
-  public async proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult> {
+  public async proposeAsync(repository: string, branch: string, title: string, body: string, summary: string): Promise<string | StepResult> {
     const missing = this.findMissingVariable();
     if (missing !== null)
       return missing;
@@ -146,7 +146,7 @@ export class GitHubUpdates implements IUpdateHost {
     if (existing !== undefined) {
       const issue = Resources.linkedIssuePattern.exec(existing.readNullableString(Resources.bodyField) ?? "")?.[1];
       if (issue !== undefined) {
-        const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { title });
+        const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { title, body: Resources.formatIssueBody(summary, branch) });
         if (renamed instanceof StepResult)
           return renamed;
         if (renamed.status !== Resources.foundStatus)
@@ -167,7 +167,7 @@ export class GitHubUpdates implements IUpdateHost {
     if (target.status !== Resources.foundStatus)
       return target.toFailure();
 
-    const issue = await this.requestAsync(Resources.createMethod, Resources.formatIssuesResource(repository), { title, body: Resources.formatIssueBody(branch) });
+    const issue = await this.requestAsync(Resources.createMethod, Resources.formatIssuesResource(repository), { title, body: Resources.formatIssueBody(summary, branch) });
     if (issue instanceof StepResult)
       return issue;
     if (issue.status !== Resources.createdStatus)

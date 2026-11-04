@@ -151,8 +151,8 @@ export class Resources {
     return `repos/${repository}`;
   }
 
-  public static formatIssueBody(branch: string): string {
-    return `A release moved packages this repository pins exactly; the pull request from \`${branch}\` moves the pins.`;
+  public static formatIssueBody(summary: string, branch: string): string {
+    return `${summary}; the pull request from \`${branch}\` moves the pins.`;
   }
 
   public static formatProposalBody(body: string, issue: string | undefined): string {
@@ -190,7 +190,7 @@ export class Resources {
   }
 
   public static createNotesHeadingPattern(version: string): RegExp {
-    return new RegExp(`^#{1,6}\\s+Release notes for ${version.replaceAll(".", "\\.")}\\s*$`, "i");
+    return new RegExp(`^#{1,6}\\s+Release notes(?:\\s+for\\s+${version.replaceAll(".", "\\.")})?\\s*$`, "i");
   }
 
   public static formatPruneSourcePublic(repository: string): string {

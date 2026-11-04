@@ -361,8 +361,8 @@ export declare class GitHubUpdates implements IUpdateHost {
 
   /**
    * Reads the release notes from the pull request that merged the commit:
-   * its section whose heading is `Release notes for <version>`, at any
-   * heading level, up to the next heading of that level or higher.
+   * its section whose heading is `Release notes`, or `Release notes for
+   * <version>` with the version, at any heading level, up to the next heading of that level or higher.
    *
    * @param version The version.
    * @param commit The commit.
@@ -412,19 +412,22 @@ export declare class GitHubUpdates implements IUpdateHost {
   public pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null>;
 
   /**
-   * Opens an issue with the title and a pull request from the branch into the
-   * default branch whose description ends with `Closes #<issue>`, or, when a
-   * pull request from the branch is open, gives it and the issue its
-   * description names the title, and the pull request the description.
+   * Opens an issue with the title and the summary, and a pull request from
+   * the branch into the default branch whose description ends with
+   * `Closes #<issue>`, or, when a pull request from the branch is open, gives
+   * it and the issue its description names the title, the issue the summary,
+   * and the pull request the description.
    *
    * @param repository The repository's full name.
    * @param branch The pushed branch.
    * @param title The title.
    * @param body The description, before its linked issue.
+   * @param summary The sentence the issue's description starts with, which
+   * says why the change is proposed.
    * @returns A promise of the pull request's address, or a failed
    * {@link StepResult} with the request, the status and GitHub's message.
    */
-  public proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult>;
+  public proposeAsync(repository: string, branch: string, title: string, body: string, summary: string): Promise<string | StepResult>;
 }
 
 /**

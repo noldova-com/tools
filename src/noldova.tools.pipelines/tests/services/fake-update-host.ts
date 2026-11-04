@@ -83,12 +83,12 @@ export class FakeUpdateHost implements IUpdateHost {
     return null;
   }
 
-  public async proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult> {
+  public async proposeAsync(repository: string, branch: string, title: string, body: string, summary: string): Promise<string | StepResult> {
     const failure = this.failures.get(`propose ${repository}`);
     if (failure !== undefined)
       return failure;
 
-    this.proposals.push([repository, branch, title, body].join("\n---\n"));
+    this.proposals.push([repository, branch, title, summary, body].join("\n---\n"));
 
     return `https://example.test/${repository}/pull/1`;
   }
