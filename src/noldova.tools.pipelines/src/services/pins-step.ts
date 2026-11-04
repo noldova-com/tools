@@ -147,13 +147,11 @@ export class PinsStep implements IStep {
 
     const git = new Git(this.processRunner, directory);
     const filePaths = (await git.listTrackedFilesAsync()).map(t => t.filePath);
-    if (filePaths.some(t => Resources.dependabotFilePaths.includes(t)))
-      return StepResult.succeeded(Resources.formatRepositoryDependabot(repository));
-
+    const actions = filePaths.some(t => Resources.dependabotFilePaths.includes(t)) ? new Map<string, ActionPin>() : update.actions;
     const owner = repository.slice(0, repository.indexOf(Resources.repositorySeparator));
     const changes = filePaths
       .filter(t => t.startsWith(`${Resources.workflowsFolderPath}/`) && PinsStep.isWorkflow(t))
-      .map(t => PinsStep.movePins(path.join(directory, t), t, update, owner));
+      .map(t => PinsStep.movePins(path.join(directory, t), t, update, actions, owner));
     const moves = changes.flatMap(t => t.moves);
     const left = changes.flatMap(t => t.left);
     if (moves.length === 0)
@@ -180,7 +178,7 @@ export class PinsStep implements IStep {
     return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, moves.length));
   }
 
-  private static movePins(fullPath: string, filePath: string, update: PinsUpdate, owner: string): WorkflowChanges {
+  private static movePins(fullPath: string, filePath: string, update: PinsUpdate, actions: ReadonlyMap<string, ActionPin>, owner: string): WorkflowChanges {
     const moves: string[] = [];
     const left: string[] = [];
     const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.usesPattern, (pin: string, prefix: string, action: string, found: string, tag: string | undefined) => {
@@ -197,7 +195,7 @@ export class PinsStep implements IStep {
         return `${prefix}${action}@${update.commit} # ${update.tag}`;
       }
 
-      const target = update.actions.get(action);
+      const target = actions.get(action);
       if (target === undefined || version === null || version.compareTo(target.version) >= 0)
         return pin;
 

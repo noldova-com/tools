@@ -315,9 +315,8 @@ result.message; // "Looked for pins on .github's workflows older than v1.2.0 in 
 
 - It fails, before asking the host, unless the version is a release version and the commit is its full id.
 - It reads the outside actions the commit's `.github/workflows` pin as `uses: <action>@<commit> # v<version>`, keeping the highest version of each.
-- It leaves a repository with a tracked `.github/dependabot.yml` or `.github/dependabot.yaml` to Dependabot.
-- In each other repository's tracked `.github/workflows/*.yml` and `*.yaml`, it moves each `uses: <owner>/<source>/<path>@<commit>`, with that repository's owner, to the new commit and `# v<version>` when its version comment is older within the same major version, or missing; a pin a major version behind stays, and the repository's line and the proposal name it.
-- It moves each outside action pinned at an older version than the shared repository's to the shared one's commit and version.
+- In each repository's tracked `.github/workflows/*.yml` and `*.yaml`, it moves each `uses: <owner>/<source>/<path>@<commit>`, with that repository's owner, to the new commit and `# v<version>` when its version comment is older within the same major version, or missing; a pin a major version behind stays, and the repository's line and the proposal name it.
+- It moves each outside action pinned at an older version than the shared repository's to the shared one's commit and version, except in a repository with a tracked `.github/dependabot.yml` or `.github/dependabot.yaml`, whose outside actions Dependabot moves.
 - When it moved any, it commits, pushes the branch `pipelines/pins-<source>` and proposes it with the moved and the left pins and the release's notes; the branch, the lines, the output and the temporary folder work as in the dependents step.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.

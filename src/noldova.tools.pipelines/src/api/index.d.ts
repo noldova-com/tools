@@ -2300,16 +2300,17 @@ export declare class DependentsStep implements IStep {
  * repository after it tags `v<version>` at the commit, it reads the outside
  * actions the commit's `.github/workflows` pin, as
  * `uses: <action>@<commit> # v<version>`, keeping the highest version of each,
- * and checks out each repository the {@link IUpdateHost} lists. A repository
- * with a tracked `.github/dependabot.yml` or `.github/dependabot.yaml` is left
- * to Dependabot. In the others' tracked workflows, it moves each pin on a
+ * and checks out each repository the {@link IUpdateHost} lists. In each
+ * one's tracked workflows, it moves each pin on a
  * workflow of the shared repository under the repository's own owner, such
  * as `uses: <owner>/<source>/.github/workflows/check.yml@<commit> # v1.2.0`,
  * to the commit and tag when the pin's version is older within the same major
  * version, or has none; a pin a major version behind is left as it is and
  * named, since a new major version may need changes in its caller. It moves
  * each outside action older than the shared repository's to the shared one's
- * commit and tag. Then it commits, pushes the branch `pipelines/pins-<source>`
+ * commit and tag, except in a repository with a tracked
+ * `.github/dependabot.yml` or `.github/dependabot.yaml`, whose outside actions
+ * Dependabot moves. Then it commits, pushes the branch `pipelines/pins-<source>`
  * and proposes it, with the moved and the left pins and the release's notes
  * in its description. When the branch exists, it replaces it only when the
  * branch is at a commit of its own, made by the same committer with its
@@ -2361,7 +2362,7 @@ export declare class PinsStep implements IStep {
    * @returns A promise of the result, with a line for each repository, or,
    * given an output, only the summary: the proposal's address and how many
    * pins moved, that it pins nothing older, the pins left a major version
-   * behind, that Dependabot moves its pins, or why it failed. It fails for any
+   * behind, or why it failed. It fails for any
    * number of values but two, a version that isn't one or is a nightly, a
    * commit that isn't a full id, what the host can't answer, and when any
    * repository fails, after trying every other; an error in one repository,
@@ -2374,7 +2375,7 @@ export declare class PinsStep implements IStep {
    * (await step.runAsync(["1.2.0", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message;
    * // Looked for pins on .github's workflows older than v1.2.0 in 2 repositories:
    * // noldova-com/example: moved 3 pins in https://github.com/noldova-com/example/pull/7
-   * // noldova-com/sample: has a Dependabot file, so Dependabot moves its pins.
+   * // noldova-com/sample: pins nothing older than v1.2.0.
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

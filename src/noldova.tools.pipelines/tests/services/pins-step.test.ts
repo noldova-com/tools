@@ -160,20 +160,23 @@ export class PinsStepTests {
   @TestData(".github/dependabot.yml")
   @TestData(".github/dependabot.yaml")
   @TestMethod
-  public async leavesARepositoryWithADependabotFileAsync(filePath: string): Promise<void> {
+  public async leavesTheOutsideActionsOfARepositoryWithADependabotFileAsync(filePath: string): Promise<void> {
     using source = PinsStepTests.createSource();
+    const commit = source.readHead();
     using dependabot = PinsStepTests.createTarget({
       [filePath]: "version: 2\n",
-      ".github/workflows/ci.yml": `jobs:\n  check:\n    uses: noldova-com/source/.github/workflows/check.yml@${PinsStepTests.OLD} # v1.1.0\n`
+      ".github/workflows/ci.yml": `jobs:\n  check:\n    uses: noldova-com/source/.github/workflows/check.yml@${PinsStepTests.OLD} # v1.1.0\n    steps:\n      - uses: actions/checkout@${PinsStepTests.OLD} # v4.0.0\n`
     });
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/dependabot", dependabot);
 
-    const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]);
+    const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", commit]);
 
     Assert.isTrue(result.isSuccessful, result.message);
-    Assert.areEqual("noldova-com/dependabot: has a Dependabot file, so Dependabot moves its pins.", result.message.split("\n")[1]);
-    Assert.isFalse(host.pushed.has("noldova-com/dependabot"));
+    Assert.areEqual("noldova-com/dependabot: moved 1 pins in https://example.test/noldova-com/dependabot/pull/1", result.message.split("\n")[1]);
+    Assert.areEqual(
+      `jobs:\n  check:\n    uses: noldova-com/source/.github/workflows/check.yml@${commit} # v1.2.0\n    steps:\n      - uses: actions/checkout@${PinsStepTests.OLD} # v4.0.0\n`,
+      host.pushed.get("noldova-com/dependabot")?.[".github/workflows/ci.yml"]);
   }
 
   @TestMethod

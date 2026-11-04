@@ -595,10 +595,6 @@ export class Resources {
     return `Looked for pins on ${source}'s workflows older than ${tag} in ${repositoryCount} repositories; each one's line is above.`;
   }
 
-  public static formatRepositoryDependabot(repository: string): string {
-    return `${repository}: has a Dependabot file, so Dependabot moves its pins.`;
-  }
-
   public static formatRepositoryPinsCurrent(repository: string, tag: string): string {
     return `${repository}: pins nothing older than ${tag}.`;
   }
