@@ -72,11 +72,18 @@ export class GitHubPackages implements IRegistryHost {
   }
 
   public async readLockFilesAsync(): Promise<ReadonlyMap<string, string> | StepResult> {
-    const missing = [Resources.apiUrlVariable, Resources.repositoriesTokenVariable].find(t => this.readVariable(t).length === 0);
+    const missing = [Resources.apiUrlVariable, Resources.repositoryVariable, Resources.repositoriesTokenVariable].find(t => this.readVariable(t).length === 0);
     if (missing !== undefined)
       return StepResult.failed(Resources.formatPruneVariableMissing(missing));
 
     const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.repositoriesTokenVariable), this.timeoutMilliseconds, this.waitAsync, this.createSignal);
+    const source = this.readVariable(Resources.repositoryVariable);
+    const sourceAnswer = await api.requestAsync(Resources.readMethod, Resources.formatRepositoryResource(source));
+    if (sourceAnswer instanceof StepResult || sourceAnswer.status !== Resources.foundStatus)
+      return StepResult.failed(Resources.formatPruneSourceUnread(source, (sourceAnswer instanceof StepResult ? sourceAnswer : sourceAnswer.toFailure()).message));
+    if (!sourceAnswer.readBody().readBoolean(Resources.privateField))
+      return StepResult.failed(Resources.formatPruneSourcePublic(source));
+
     const repositories = await GitHubPackages.listRepositoriesAsync(api);
     if (repositories instanceof StepResult)
       return repositories;

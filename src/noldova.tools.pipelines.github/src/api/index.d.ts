@@ -169,12 +169,17 @@ export declare class GitHubPackages implements IRegistryHost {
    * files under `node_modules`, with the installation token in
    * `REPOSITORIES_TOKEN`, which it uses for nothing else and which needs only
    * to read contents and metadata. It lists every repository before it reads
-   * any, and lists them again after.
+   * any, and lists them again after. First it reads the releasing repository,
+   * `GITHUB_REPOSITORY`, and goes on only when GitHub answers that it is
+   * private: a public repository's log anyone can read would name the
+   * private repositories that lock a version.
    *
    * @returns A promise of each `package-lock.json`'s text, named
    * `<owner>/<repository>/<path>`, such as `noldova-com/tools/package-lock.json`;
    * an empty repository has none. Or a failed {@link StepResult}: when
-   * `GITHUB_API_URL` or `REPOSITORIES_TOKEN` is missing or empty, naming it;
+   * `GITHUB_API_URL`, `GITHUB_REPOSITORY` or `REPOSITORIES_TOKEN` is missing
+   * or empty, naming it; when the releasing repository is public, or can't be
+   * read, naming only that repository;
    * when the list holds fewer or more repositories than its `total_count`,
    * or the second list differs from the first in a repository's name or
    * default branch; when GitHub lists only part of a repository's files; or
@@ -182,7 +187,8 @@ export declare class GitHubPackages implements IRegistryHost {
    * with an unexpected status, a timeout or a lost connection, as
    * {@link GitHubPackages.readVersionsAsync} gives one. It rejects with
    * `JsonException`, from `@noldova/context.json`, for an answer that is not
-   * the JSON GitHub's list of repositories, tree or blob gives.
+   * the JSON GitHub's releasing repository, list of repositories, tree or blob
+   * gives, such as a releasing repository without a boolean `private`.
    * @example
    * ```ts
    * import { GitHubPackages } from "@noldova/tools.pipelines.github";
