@@ -6,7 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { ArchiveStep, CommandLine, DependentsStep, Git, type IStepOutput, LineEndingsStep, NightlyStep, Npm, ProcessRunner, PruneStep, PublishStep, ReproducibleStep, SourceStep, TagStep, Tar, ToolchainStep, UnchangedStep } from "@noldova/tools.pipelines";
+import { ArchiveStep, CommandLine, DependentsStep, Git, type IStepOutput, LineEndingsStep, NightlyStep, Npm, PinsStep, ProcessRunner, PruneStep, PublishStep, ReproducibleStep, SourceStep, TagStep, Tar, ToolchainStep, UnchangedStep } from "@noldova/tools.pipelines";
 
 import { Resources } from "../resources.js";
 import { GitHubPackages } from "./github-packages.js";
@@ -25,7 +25,7 @@ export class PipelinesProgram {
     const git = new Git(processRunner, process.cwd());
     const npm = new Npm(processRunner, process.cwd());
     const archiveStep = new ArchiveStep(git, new Tar(processRunner), npm);
-    const steps = [new SourceStep(git), archiveStep, new PublishStep(archiveStep, npm), new NightlyStep(git, archiveStep, npm), new PruneStep(git, archiveStep, new GitHubPackages(process.env)), new TagStep(new GitHubTags(process.env)), new ToolchainStep(npm, process.version), new LineEndingsStep(git), new UnchangedStep(git), new ReproducibleStep(git, npm, process.env[Resources.runnerTemporaryVariable]), new DependentsStep(archiveStep, new GitHubUpdates(process.env, processRunner), processRunner, npm, process.env[Resources.runnerTemporaryVariable], this.output)];
+    const steps = [new SourceStep(git), archiveStep, new PublishStep(archiveStep, npm), new NightlyStep(git, archiveStep, npm), new PruneStep(git, archiveStep, new GitHubPackages(process.env)), new TagStep(new GitHubTags(process.env)), new ToolchainStep(npm, process.version), new LineEndingsStep(git), new UnchangedStep(git), new ReproducibleStep(git, npm, process.env[Resources.runnerTemporaryVariable]), new DependentsStep(archiveStep, new GitHubUpdates(process.env, processRunner), processRunner, npm, process.env[Resources.runnerTemporaryVariable], this.output), new PinsStep(git, new GitHubUpdates(process.env, processRunner), processRunner, process.env[Resources.runnerTemporaryVariable], this.output)];
 
     return new CommandLine(Resources.programName, steps, this.output).runAsync(values);
   }
