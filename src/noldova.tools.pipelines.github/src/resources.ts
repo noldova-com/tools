@@ -142,6 +142,10 @@ export class Resources {
     return Resources.formatResource(repository, `issues/${number}`);
   }
 
+  public static formatSourceUnread(repository: string, reason: string): string {
+    return `Could not read ${repository}, so it counts as public and only public repositories are checked: ${reason}`;
+  }
+
   public static formatRepositoryResource(repository: string): string {
     return `repos/${repository}`;
   }

@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ProcessResult, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
+import { type IStepOutput, ProcessResult, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
 import { GitHubUpdates } from "@noldova/tools.pipelines.github";
 
 import { GitHubApiAnswer, GitHubApiFixture } from "./github-api.fixture.js";
@@ -27,6 +27,18 @@ class RecordingProcessRunner extends ProcessRunner {
     this.environments.push(environment ?? {});
 
     return await super.runAsync(program, values, workingDirectory, environment);
+  }
+}
+
+class RecordingOutput implements IStepOutput {
+  public readonly lines: string[] = [];
+
+  public writeSuccess(message: string): void {
+    this.lines.push(`success: ${message}`);
+  }
+
+  public writeFailure(message: string): void {
+    this.lines.push(`failure: ${message}`);
   }
 }
 
@@ -102,12 +114,12 @@ export class GitHubUpdatesTests {
     Assert.areEqual(`Bearer ${GitHubUpdatesTests.TOKEN}`, api.requests[0]?.headers.authorization);
   }
 
-  @TestData("public")
-  @TestData("missing")
-  @TestData("refused")
-  @TestData("held")
+  @TestData("public", "")
+  @TestData("missing", "success: Could not read noldova-com/tools, so it counts as public and only public repositories are checked: GitHub answered GET repos/noldova-com/tools with 404: Not Found")
+  @TestData("refused", "success: Could not read noldova-com/tools, so it counts as public and only public repositories are checked: GitHub answered GET repos/noldova-com/tools with 403: Refused")
+  @TestData("held", "success: Could not read noldova-com/tools, so it counts as public and only public repositories are checked: GitHub gave no answer to GET repos/noldova-com/tools: The operation was aborted due to timeout")
   @TestMethod
-  public async listsOnlyPublicRepositoriesUnlessTheSourceIsPrivateAsync(source: string): Promise<void> {
+  public async listsOnlyPublicRepositoriesUnlessTheSourceIsPrivateAsync(source: string, line: string): Promise<void> {
     const answers: Readonly<Record<string, GitHubApiAnswer>> = {
       public: GitHubApiAnswer.json(200, { full_name: "noldova-com/tools", private: false }),
       refused: GitHubUpdatesTests.createFailure(false),
@@ -122,11 +134,14 @@ export class GitHubUpdatesTests {
       })
     });
 
-    const repositories = await GitHubUpdatesTests.createUpdates(api).listRepositoriesAsync();
+    const output = new RecordingOutput();
+
+    const repositories = await GitHubUpdatesTests.createUpdates(api, output).listRepositoriesAsync();
 
     if (repositories instanceof StepResult)
       throw new Error(repositories.message);
     Assert.areEqual("noldova-com/open", repositories.join(","));
+    Assert.areEqual(line, output.lines.join("\n"));
   }
 
   @TestData(false, "GitHub answered GET installation/repositories?per_page=100&page=1 with 403: Refused")
@@ -424,8 +439,8 @@ export class GitHubUpdatesTests {
     return { GITHUB_API_URL: api.url, GITHUB_SERVER_URL: serverUrl, GITHUB_REPOSITORY: "noldova-com/tools", GITHUB_TOKEN: GitHubUpdatesTests.TOKEN };
   }
 
-  private static createUpdates(api: GitHubApiFixture): GitHubUpdates {
-    return new GitHubUpdates(GitHubUpdatesTests.createEnvironment(api, "."), undefined, undefined, async () => {}, () => api.createAttemptSignal());
+  private static createUpdates(api: GitHubApiFixture, output?: IStepOutput): GitHubUpdates {
+    return new GitHubUpdates(GitHubUpdatesTests.createEnvironment(api, "."), undefined, undefined, async () => {}, () => api.createAttemptSignal(), output);
   }
 
   private static readFailure(result: string | readonly string[] | StepResult | null): string {

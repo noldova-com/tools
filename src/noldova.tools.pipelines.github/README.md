@@ -107,7 +107,7 @@ It runs in a checkout of the released commit, and reads `GITHUB_API_URL`, `GITHU
 ```
 
 - The token is a GitHub App installation's: the repositories the installation is given are the ones the step checks, except the releasing repository and archived ones.
-  From a public repository, whose run logs anyone can read, it checks only public repositories; it checks private ones only when GitHub answers that the releasing repository is private, so a failed read never widens the list.
+  From a public repository, whose run logs anyone can read, it checks only public repositories; it checks private ones only when GitHub answers that the releasing repository is private, so a failed read never widens the list; the step then prints a line saying so, naming only the releasing repository.
   It needs to write their contents, pull requests and issues, and is never written anywhere: git gets it through its environment, not its command line.
 - The workflow sets the commits' author and committer, such as the App's bot account, through git's environment.
 - npm refreshes each repository's lock files from the registries that repository names, without `GITHUB_TOKEN`; one that needs a token to read gets it from the workflow, as for an install.

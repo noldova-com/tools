@@ -307,6 +307,8 @@ export declare class GitHubUpdates implements IUpdateHost {
    * milliseconds. Omitted, it uses a timer.
    * @param createSignal How it makes the signal that ends each attempt, given
    * the timeout. Omitted, the signal is `AbortSignal.timeout`'s.
+   * @param output Where it writes a line when it can't read the releasing
+   * repository, such as the step's own output. Omitted, it writes nothing.
    * @example
    * ```ts
    * import { GitHubUpdates } from "@noldova/tools.pipelines.github";
@@ -314,7 +316,7 @@ export declare class GitHubUpdates implements IUpdateHost {
    * const updates = new GitHubUpdates(process.env);
    * ```
    */
-  public constructor(environment: Readonly<Record<string, string | undefined>>, processRunner?: ProcessRunner, timeoutMilliseconds?: number, waitAsync?: (milliseconds: number) => Promise<void>, createSignal?: (timeoutMilliseconds: number) => AbortSignal);
+  public constructor(environment: Readonly<Record<string, string | undefined>>, processRunner?: ProcessRunner, timeoutMilliseconds?: number, waitAsync?: (milliseconds: number) => Promise<void>, createSignal?: (timeoutMilliseconds: number) => AbortSignal, output?: IStepOutput);
 
   /**
    * The variable that holds the token, `["GITHUB_TOKEN"]`, which npm doesn't
@@ -337,7 +339,8 @@ export declare class GitHubUpdates implements IUpdateHost {
    * the one that released. Unless GitHub answers `repos/<repository>` that the
    * releasing repository is private, it leaves out private ones too, so a
    * public repository's run, whose log anyone can read, never names a private
-   * one; a releasing repository it can't read counts as public.
+   * one; a releasing repository it can't read counts as public, and it
+   * writes a line to its output saying so, naming only that repository.
    *
    * @returns A promise of their full names, sorted, or a failed
    * {@link StepResult}: for a missing variable, or with the request, the
