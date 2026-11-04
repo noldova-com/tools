@@ -50,16 +50,25 @@ The reproducible, dependents and pins steps make their temporary folders in `RUN
 ### The tag step
 
 `pipelines tag <version> <commit>` tags the released commit `v<version>` through GitHub's REST API, and never moves a tag.
-It reads `GITHUB_API_URL` and `GITHUB_REPOSITORY`, which GitHub Actions sets, and `GITHUB_TOKEN`, which the workflow passes in; the token needs to write the repository's contents, and is never written anywhere:
+It reads `GITHUB_API_URL` and `GITHUB_REPOSITORY`, which GitHub Actions sets, and `GITHUB_TOKEN`, which the workflow passes in and is never written anywhere.
+The token needs write access to the repository's contents and the workflows permission: GitHub refuses with 403 a tag at a commit whose workflow files differ from the default branch's, such as a released commit after which a workflow change merged, unless the token may change workflows.
+A job's own `github.token` can't have that permission, so pass a GitHub App installation's token, for the releasing repository only:
 
 ```yaml
+- id: app-token
+  uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+  with:
+    client-id: ${{ vars.APP_CLIENT_ID }}
+    private-key: ${{ secrets.APP_KEY }}
+    repositories: ${{ github.event.repository.name }}
+    permission-contents: write
+    permission-workflows: write
 - env:
-    GITHUB_TOKEN: ${{ github.token }}
+    GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
   run: pipelines tag "$VERSION" "$COMMIT"
 ```
 
-The job needs `permissions: contents: write`.
-The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as a missing permission.
+The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as a missing permission; a 403 to the create also says that a tag at such a commit needs the workflows permission.
 
 ### The prune step
 

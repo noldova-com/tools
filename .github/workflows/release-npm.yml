@@ -171,9 +171,28 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ${{ fromJSON(needs.versions.outputs.runs-on-linux-x64) }}
     timeout-minutes: 10
-    permissions:
-      contents: write
+    environment: version-updates
+    permissions: {}
     steps:
+      - name: Check that the App's key is set
+        env:
+          APP_KEY: ${{ secrets.VERSION_UPDATES_APP_KEY }}
+        run: |
+          if [ -z "$APP_KEY" ]; then
+            echo "::error::VERSION_UPDATES_APP_KEY is empty: set it in the version-updates environment."
+            exit 1
+          fi
+
+      - name: Create the App's token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.VERSION_UPDATES_CLIENT_ID }}
+          private-key: ${{ secrets.VERSION_UPDATES_APP_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-workflows: write
+
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
@@ -193,5 +212,5 @@ jobs:
 
       - name: Tag the commit with the version
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         run: pipelines tag "$RELEASE_VERSION" "$RELEASE_COMMIT"

@@ -69,6 +69,8 @@ export class GitHubTags implements ITagHost {
       return answer;
     if (answer.status === Resources.createdStatus)
       return true;
+    if (answer.status === Resources.forbiddenStatus)
+      return StepResult.failed(Resources.formatTagForbidden(answer.toFailure().message));
     if (answer.status !== Resources.unprocessableStatus)
       return answer.toFailure();
 

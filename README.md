@@ -72,7 +72,7 @@ It runs only from `main`, on GitHub-hosted runners, with the tool built from the
 |---|---|
 | Check and build | With read access only: checks that the commit is on `main`, builds the packages, checks the source with `pipelines source` and the archives with `pipelines archive`, and keeps the archives for the next jobs. |
 | Publish to npm | Waits in the `release` environment, which npm's trusted publishing names, for a reviewer's approval; then checks the commit out, installs the tool from the checked archives, and checks and publishes them with `pipelines publish` to npm's registry, public, with provenance, through trusted publishing: npm takes the job's ID token, and no npm token is stored. |
-| Tag the commit | With write access to the contents: tags the commit `v<version>` with `pipelines tag`, and passes when the tag is already there. |
+| Tag the commit | Runs in the `version-updates` environment, which holds a GitHub App's key, and tags the commit `v<version>` with `pipelines tag` through the App's token for this repository, with write access to the contents and the workflows permission, since GitHub refuses a tag at a commit whose workflow files differ from `main`'s without it; it passes when the tag is already there. |
 
 A rerun never publishes a version twice: the publish step skips a version the registry already holds from the same archive, and fails when it holds a different one.
 "Re-run failed jobs" publishes the archives the first attempt checked.
