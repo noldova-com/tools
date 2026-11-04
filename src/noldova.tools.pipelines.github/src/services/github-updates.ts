@@ -8,7 +8,7 @@
 
 import { setTimeout as delayAsync } from "node:timers/promises";
 
-import { type IUpdateHost, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
+import { type IStepOutput, type IUpdateHost, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
 
 import { GitHubAnswer } from "../models/github-answer.js";
 import { Resources } from "../resources.js";
@@ -20,15 +20,17 @@ export class GitHubUpdates implements IUpdateHost {
   private readonly timeoutMilliseconds: number;
   private readonly waitAsync: (milliseconds: number) => Promise<void>;
   private readonly createSignal: (timeoutMilliseconds: number) => AbortSignal;
+  private readonly output: IStepOutput | undefined;
 
   public readonly credentialVariables: readonly string[] = [Resources.tokenVariable];
 
-  public constructor(environment: Readonly<Record<string, string | undefined>>, processRunner: ProcessRunner = new ProcessRunner(), timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync, createSignal: (timeoutMilliseconds: number) => AbortSignal = GitHubApi.createTimeoutSignal) {
+  public constructor(environment: Readonly<Record<string, string | undefined>>, processRunner: ProcessRunner = new ProcessRunner(), timeoutMilliseconds: number = Resources.apiTimeoutMilliseconds, waitAsync: (milliseconds: number) => Promise<void> = delayAsync, createSignal: (timeoutMilliseconds: number) => AbortSignal = GitHubApi.createTimeoutSignal, output?: IStepOutput) {
     this.environment = environment;
     this.processRunner = processRunner;
     this.timeoutMilliseconds = timeoutMilliseconds;
     this.waitAsync = waitAsync;
     this.createSignal = createSignal;
+    this.output = output;
   }
 
   public readSourceName(): string | StepResult {
@@ -46,7 +48,13 @@ export class GitHubUpdates implements IUpdateHost {
     if (missing !== null)
       return missing;
 
-    const source = this.readVariable(Resources.repositoryVariable).toLowerCase();
+    const source = this.readVariable(Resources.repositoryVariable);
+    const sourceAnswer = await this.requestAsync(Resources.readMethod, Resources.formatRepositoryResource(source));
+    let isSourcePrivate = false;
+    if (sourceAnswer instanceof StepResult || sourceAnswer.status !== Resources.foundStatus)
+      this.output?.writeSuccess(Resources.formatSourceUnread(source, (sourceAnswer instanceof StepResult ? sourceAnswer : sourceAnswer.toFailure()).message));
+    else
+      isSourcePrivate = sourceAnswer.readBody().readBoolean(Resources.privateField);
     const repositories: string[] = [];
     for (let page = 1; ; page++) {
       const answer = await this.requestAsync(Resources.readMethod, Resources.formatInstallationRepositoriesPage(page));
@@ -58,7 +66,7 @@ export class GitHubUpdates implements IUpdateHost {
       const items = answer.readBody().readObjectArray(Resources.repositoriesField);
       for (const item of items) {
         const name = item.readString(Resources.fullNameField);
-        if (!item.readBoolean(Resources.archivedField) && name.toLowerCase() !== source)
+        if (!item.readBoolean(Resources.archivedField) && name.toLowerCase() !== source.toLowerCase() && (isSourcePrivate || !item.readBoolean(Resources.privateField)))
           repositories.push(name);
       }
       if (items.length < Resources.repositoriesPageSize)
