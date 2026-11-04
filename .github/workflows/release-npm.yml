@@ -195,3 +195,16 @@ jobs:
           RELEASE_SCOPE: ${{ needs.versions.outputs.publish-scope }}
           RELEASE_ACCESS: ${{ needs.versions.outputs.publish-access }}
         run: pipelines publish "$RUNNER_TEMP/archives" "$RELEASE_VERSION" "$RELEASE_COMMIT" "$RELEASE_SCOPE" "$RELEASE_REGISTRY" "$RELEASE_ACCESS"
+
+  dependents:
+    name: Propose the version to dependents
+    needs: publish
+    if: github.ref == 'refs/heads/main'
+    uses: noldova-com/.github/.github/workflows/update-dependents.yml@ef1d545271172e4f56fd3dbb75b9ef79b9a66d3e # v2.8.0
+    permissions:
+      contents: read
+      packages: read
+    with:
+      version: ${{ inputs.version }}
+      commit: ${{ inputs.commit }}
+    secrets: inherit
