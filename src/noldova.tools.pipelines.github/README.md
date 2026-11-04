@@ -60,7 +60,7 @@ It reads `GITHUB_API_URL` and `GITHUB_REPOSITORY`, which GitHub Actions sets, an
 
 The job needs `permissions: contents: write`.
 GitHub refuses with 403 a tag at a commit whose workflow files differ from the default branch's, such as a released commit after which a workflow change merged, unless the token has the workflows permission, which a job's own token can't have; so tag the commit before anything that waits, such as a publish's approval, while it is still the default branch's latest.
-The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as a missing permission; a 403 to the create also says that a tag at such a commit needs the workflows permission.
+The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as a missing permission; a 403 to the create also names such a commit as the likely cause when the token may write the contents.
 
 ### The prune step
 

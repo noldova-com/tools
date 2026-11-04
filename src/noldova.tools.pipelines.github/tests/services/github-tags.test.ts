@@ -206,7 +206,7 @@ export class GitHubTagsTests {
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(
-      "GitHub answered POST repos/noldova-com/tools/git/refs with 403: Resource not accessible by integration; a tag at a commit whose workflow files differ from the default branch's, such as one released before a workflow change merged, needs a token with the workflows permission besides write access to the contents.",
+      "GitHub answered POST repos/noldova-com/tools/git/refs with 403: Resource not accessible by integration; if the token may write the contents, the likely cause is a commit whose workflow files differ from the default branch's, such as one released before a workflow change merged, which only a token with the workflows permission may tag.",
       result.message);
     Assert.areEqual(JSON.stringify(["GET", "POST"]), JSON.stringify(api.requests.map(t => t.method)));
   }

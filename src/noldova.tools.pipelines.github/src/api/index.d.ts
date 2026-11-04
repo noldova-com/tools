@@ -276,9 +276,10 @@ export declare class GitHubTags implements ITagHost {
    * answer was lost. Otherwise it is a failed
    * {@link StepResult}, as {@link GitHubTags.readTagAsync} gives one: with the
    * 422's message when reading finds no tag, with the read's failure when
-   * the read fails, and, for a 403, with GitHub's message and that a tag at a
-   * commit whose workflow files differ from the default branch's needs a
-   * token with the workflows permission. It rejects as
+   * the read fails, and, for a 403, with GitHub's message and, as the likely
+   * cause when the token may write the contents, a commit whose workflow
+   * files differ from the default branch's, which only a token with the
+   * workflows permission may tag. It rejects as
    * {@link GitHubTags.readTagAsync} does.
    * @example
    * ```ts

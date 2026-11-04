@@ -274,7 +274,7 @@ export class Resources {
   }
 
   public static formatTagForbidden(failure: string): string {
-    return `${failure}; a tag at a commit whose workflow files differ from the default branch's, such as one released before a workflow change merged, needs a token with the workflows permission besides write access to the contents.`;
+    return `${failure}; if the token may write the contents, the likely cause is a commit whose workflow files differ from the default branch's, such as one released before a workflow change merged, which only a token with the workflows permission may tag.`;
   }
 
   public static formatTagTargetInvalid(tag: string, type: string): string {
