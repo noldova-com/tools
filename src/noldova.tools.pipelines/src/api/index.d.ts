@@ -2293,3 +2293,89 @@ export declare class DependentsStep implements IStep {
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;
 }
+
+/**
+ * The step that moves the repositories that pin a shared repository's
+ * workflows: `pins <version> <commit>`. Run from a clone of the shared
+ * repository after it tags `v<version>` at the commit, it reads the outside
+ * actions the commit's `.github/workflows` pin, as
+ * `uses: <action>@<commit> # v<version>`, keeping the highest version of each,
+ * and checks out each repository the {@link IUpdateHost} lists. A repository
+ * with a tracked `.github/dependabot.yml` or `.github/dependabot.yaml` is left
+ * to Dependabot. In the others' tracked workflows, it moves each pin on a
+ * workflow of the shared repository under the repository's own owner, such
+ * as `uses: <owner>/<source>/.github/workflows/check.yml@<commit> # v1.2.0`,
+ * to the commit and tag when the pin's version is older within the same major
+ * version, or has none; a pin a major version behind is left as it is and
+ * named, since a new major version may need changes in its caller. It moves
+ * each outside action older than the shared repository's to the shared one's
+ * commit and tag. Then it commits, pushes the branch `pipelines/pins-<source>`
+ * and proposes it, with the moved and the left pins and the release's notes
+ * in its description. When the branch exists, it replaces it only when the
+ * branch is at a commit of its own, made by the same committer with its
+ * title, and otherwise fails that repository, so nobody's commits are lost.
+ * A repository with nothing to move is left as it is.
+ */
+export declare class PinsStep implements IStep {
+  /**
+   * The step's name, `"pins"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, `"<version> <commit>"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param git The reader of the shared repository's clone.
+   * @param updateHost What lists, checks out, pushes to and proposes in the
+   * repositories.
+   * @param processRunner What runs git in each repository's clone.
+   * @param temporaryRoot The folder the step makes its temporary folder in,
+   * such as one the pipeline host empties after each job. Omitted or empty,
+   * it is `os.tmpdir()`.
+   * @param output Where each repository's line is written as soon as that
+   * repository is done, as a success or a failure, so a run stopped partway
+   * still shows the repositories it finished; the result's message then holds
+   * only the summary. Omitted, the lines are in the result's message.
+   * @example
+   * ```ts
+   * import { Git, type IUpdateHost, PinsStep, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * declare const host: IUpdateHost;
+   * const processRunner = new ProcessRunner();
+   * const step = new PinsStep(new Git(processRunner, process.cwd()), host, processRunner);
+   * step.name; // "pins"
+   * ```
+   */
+  public constructor(git: Git, updateHost: IUpdateHost, processRunner: ProcessRunner, temporaryRoot?: string, output?: IStepOutput);
+
+  /**
+   * Moves the pins in every repository that has older ones.
+   *
+   * @param values The version, a release version such as `1.2.0`, and the
+   * full id of the commit its tag names.
+   * @returns A promise of the result, with a line for each repository, or,
+   * given an output, only the summary: the proposal's address and how many
+   * pins moved, that it pins nothing older, the pins left a major version
+   * behind, that Dependabot moves its pins, or why it failed. It fails for any
+   * number of values but two, a version that isn't one or is a nightly, a
+   * commit that isn't a full id, what the host can't answer, and when any
+   * repository fails, after trying every other; an error in one repository,
+   * such as git failing, is that repository's line. It removes its temporary
+   * folder whether it succeeds or fails, and rejects with
+   * {@link ProcessException} if git cannot start or fails while it reads the
+   * commit's workflows.
+   * @example
+   * ```ts
+   * (await step.runAsync(["1.2.0", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"])).message;
+   * // Looked for pins on .github's workflows older than v1.2.0 in 2 repositories:
+   * // noldova-com/example: moved 3 pins in https://github.com/noldova-com/example/pull/7
+   * // noldova-com/sample: has a Dependabot file, so Dependabot moves its pins.
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}

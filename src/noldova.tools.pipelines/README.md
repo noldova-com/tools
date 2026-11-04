@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings`, `unchanged`, `reproducible` and `dependents`.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings`, `unchanged`, `reproducible`, `dependents` and `pins`.
 
 ## Install
 
@@ -297,6 +297,28 @@ result.message; // "Looked for exact pins of @noldova/a, @noldova/b older than 0
 - It succeeds with one line for each repository, and fails, after trying every other repository, with the line of each that failed; an error in one repository, such as git failing, is that repository's line.
 - Given an output, it writes each repository's line there instead, as a success or a failure, as soon as that repository is done, so a run stopped partway still shows the repositories it finished; its result's message is then only the summary.
 - It removes its temporary folder whether it succeeds or fails, and makes it in the root its constructor is given, or in `os.tmpdir()`.
+
+### The pins step
+
+`pins <version> <commit>` runs after a shared repository of workflows tags `v<version>` at the commit, in a clone that holds the commit, and proposes the tag to every repository that pins its workflows at an older version.
+It works through the host's `IUpdateHost`, as the dependents step does.
+
+```ts
+import { Git, type IUpdateHost, PinsStep, ProcessRunner } from "@noldova/tools.pipelines";
+
+declare const host: IUpdateHost;
+const processRunner = new ProcessRunner();
+const step = new PinsStep(new Git(processRunner, process.cwd()), host, processRunner);
+const result = await step.runAsync(["1.2.0", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"]);
+result.message; // "Looked for pins on .github's workflows older than v1.2.0 in 2 repositories: …"
+```
+
+- It fails, before asking the host, unless the version is a release version and the commit is its full id.
+- It reads the outside actions the commit's `.github/workflows` pin as `uses: <action>@<commit> # v<version>`, keeping the highest version of each.
+- It leaves a repository with a tracked `.github/dependabot.yml` or `.github/dependabot.yaml` to Dependabot.
+- In each other repository's tracked `.github/workflows/*.yml` and `*.yaml`, it moves each `uses: <owner>/<source>/<path>@<commit>`, with that repository's owner, to the new commit and `# v<version>` when its version comment is older within the same major version, or missing; a pin a major version behind stays, and the repository's line and the proposal name it.
+- It moves each outside action pinned at an older version than the shared repository's to the shared one's commit and version.
+- When it moved any, it commits, pushes the branch `pipelines/pins-<source>` and proposes it with the moved and the left pins and the release's notes; the branch, the lines, the output and the temporary folder work as in the dependents step.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
 

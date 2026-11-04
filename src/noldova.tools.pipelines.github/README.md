@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines.github
 
 Runs the steps of `@noldova/tools.pipelines` on GitHub Actions.
-This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings, unchanged, reproducible and dependents steps, and the prune, tag and dependents steps' access to GitHub.
+This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings, unchanged, reproducible, dependents and pins steps, and the prune, tag, dependents and pins steps' access to GitHub.
 
 ## Install
 
@@ -37,9 +37,10 @@ A job installs the package at an exact version, without install scripts, and cal
 | `unchanged` | none |
 | `reproducible` | `<folder>` |
 | `dependents` | `<version> <commit>` |
+| `pins` | `<version> <commit>` |
 
 `@noldova/tools.pipelines`'s README says what each step checks and does.
-The reproducible and dependents steps make their temporary folders in `RUNNER_TEMP`, which the runner empties after each job, cancelled ones included.
+The reproducible, dependents and pins steps make their temporary folders in `RUNNER_TEMP`, which the runner empties after each job, cancelled ones included.
 
 - A step that succeeds writes its message to standard output and exits with code `0`; an empty message, such as the nightly step's when nothing changed, writes nothing.
 - A step that fails writes its message as one error annotation, which the run's summary shows, and exits with code `1`; so does a first value that names no step, with the usage line of every step.
@@ -116,9 +117,30 @@ It runs in a checkout of the released commit, and reads `GITHUB_API_URL`, `GITHU
 - When the branch exists, the step replaces it, with `--force-with-lease`, only while it is at a commit of the step's own; then it updates the open pull request and its issue. Otherwise it opens an issue and a pull request that closes it, against the repository's default branch.
 - The step fails, naming the variable, when one is missing or empty; it fails for a repository, after trying every other, with git's exit code and error output, or with the request, the status and GitHub's message for an answer it doesn't expect.
 
+### The pins step
+
+`pipelines pins <version> <commit>` proposes a shared repository's new tag `v<version>` to the repositories that call its workflows, each in a pull request from the branch `pipelines/pins-<repository>`, where `<repository>` is the shared repository's name.
+It runs in a clone of the shared repository that holds the commit, and reads the same variables as the dependents step, with a token from the same kind of App installation:
+
+```yaml
+- env:
+    GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+    GIT_AUTHOR_NAME: example[bot]
+    GIT_AUTHOR_EMAIL: 1+example[bot]@users.noreply.github.com
+    GIT_COMMITTER_NAME: example[bot]
+    GIT_COMMITTER_EMAIL: 1+example[bot]@users.noreply.github.com
+  run: pipelines pins "$VERSION" "$COMMIT"
+```
+
+- A pin moves when it is written `uses: <owner>/<repository>/<path>@<commit> # v<version>`, with the calling repository's owner, and its version is older within the same major version; a pin a major version behind stays, and the proposal names it.
+- The outside actions the shared repository's workflows pin at the commit, such as `actions/checkout`, move in the same pull request when a calling repository pins an older version.
+- A repository with a `.github/dependabot.yml` or `.github/dependabot.yaml` is left to Dependabot.
+- The token needs to write the repositories' workflows too, as well as their contents, pull requests and issues.
+- The output, the release notes, the branch and the failures work as in the dependents step.
+
 ### When GitHub is briefly unavailable
 
-The prune, tag and dependents steps send a request again, up to two more times, waiting 5 and then 15 seconds, when GitHub answers 502, 503 or 504, doesn't answer within a minute, or the connection fails.
+The prune, tag, dependents and pins steps send a request again, up to two more times, waiting 5 and then 15 seconds, when GitHub answers 502, 503 or 504, doesn't answer within a minute, or the connection fails.
 A failing answer with a `Retry-After` header of up to 60 seconds is sent again too, after that wait, such as a 403 for a rate limit.
 Any other answer comes back at once, such as a 403 or 404 without that header, or any answer with a longer `Retry-After`.
 The last answer, timeout or failed connection is what the step reports, naming the request.

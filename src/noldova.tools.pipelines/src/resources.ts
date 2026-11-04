@@ -30,6 +30,7 @@ export class Resources {
   public static readonly dependentsFolderPrefix: string = "pipelines-dependents-";
   public static readonly dependentsStepName: string = "dependents";
   public static readonly dependentsStepUsage: string = "<version> <commit>";
+  public static readonly dependabotFilePaths: readonly string[] = [".github/dependabot.yml", ".github/dependabot.yaml"];
   public static readonly failureExitCode: number = 1;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
   public static readonly fileEndByteCount: number = 2;
@@ -73,6 +74,10 @@ export class Resources {
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly lineSeparator: string = "\n";
   public static readonly lockFileName: string = "package-lock.json";
+  public static readonly pinsFolderPrefix: string = "pipelines-pins-";
+  public static readonly pinsStepName: string = "pins";
+  public static readonly pinsStepUsage: string = "<version> <commit>";
+  public static readonly repositorySeparator: string = "/";
   public static readonly mainBranch: string = "origin/main";
   public static readonly mainReference: string = "refs/remotes/origin/main";
   public static readonly majorPartName: string = "major";
@@ -140,6 +145,9 @@ export class Resources {
   public static readonly unchangedStepName: string = "unchanged";
   public static readonly unchangedStepUsage: string = "";
   public static readonly textEncoding: BufferEncoding = "utf8";
+  public static readonly usesPattern: RegExp = /^([ \t]*(?:-[ \t]+)?uses:[ \t]*)([^@\s#]+)@([0-9a-f]{40})(?:[ \t]+#[ \t]*(\S+))?/gm;
+  public static readonly workflowExtensions: readonly string[] = [".yml", ".yaml"];
+  public static readonly workflowsFolderPath: string = ".github/workflows";
   public static readonly toolchainStepName: string = "toolchain";
   public static readonly toolchainStepUsage: string = "<node-version> [<npm-version>]";
   public static readonly urlCredentialsPattern: RegExp = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
@@ -572,6 +580,63 @@ export class Resources {
       ...lockFilePaths.map(t => `- \`${t}\`: refreshed with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\``),
       "",
       notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes for ${version}" section.` : notes
+    ].join(Resources.lineSeparator);
+  }
+
+  public static formatPinsVersionNotRelease(version: string): string {
+    return `${version} is a nightly version; only a release version moves the pins on the shared workflows.`;
+  }
+
+  public static formatPinsSummary(source: string, tag: string, repositoryCount: number): string {
+    return `Looked for pins on ${source}'s workflows older than ${tag} in ${repositoryCount} repositories:`;
+  }
+
+  public static formatPinsWritten(source: string, tag: string, repositoryCount: number): string {
+    return `Looked for pins on ${source}'s workflows older than ${tag} in ${repositoryCount} repositories; each one's line is above.`;
+  }
+
+  public static formatRepositoryDependabot(repository: string): string {
+    return `${repository}: has a Dependabot file, so Dependabot moves its pins.`;
+  }
+
+  public static formatRepositoryPinsCurrent(repository: string, tag: string): string {
+    return `${repository}: pins nothing older than ${tag}.`;
+  }
+
+  public static formatRepositoryPinsLeft(repository: string, tag: string, left: readonly string[]): string {
+    return `${repository}: moves nothing to ${tag}; left a major version behind: ${left.join("; ")}.`;
+  }
+
+  public static formatWorkflowPinMoved(filePath: string, action: string, from: string, to: string): string {
+    return `\`${filePath}\`: \`${action}\` from ${from} to ${to}`;
+  }
+
+  public static formatWorkflowPinLeft(filePath: string, action: string, from: string, to: string): string {
+    return `\`${filePath}\`: \`${action}\` at ${from}, a major version behind ${to}`;
+  }
+
+  public static formatPinsTitle(source: string, tag: string): string {
+    return `${Resources.formatPinsTitlePrefix(source)}${tag}`;
+  }
+
+  public static formatPinsTitlePrefix(source: string): string {
+    return `Move the pins on ${source}'s workflows to `;
+  }
+
+  public static formatPinsBranch(source: string): string {
+    return `pipelines/pins-${source}`;
+  }
+
+  public static formatPinsBody(source: string, tag: string, commit: string, moves: readonly string[], left: readonly string[], notes: string): string {
+    return [
+      "## Summary",
+      "",
+      `${source} tagged ${tag} at commit ${commit}; this moves every older pin on its workflows within the same major version, and every outside action older than the one ${source} uses.`,
+      "",
+      ...moves.map(t => `- ${t}`),
+      ...left.length === 0 ? [] : ["", "Left a major version behind, to move by hand after reading the release notes:", "", ...left.map(t => `- ${t}`)],
+      "",
+      notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes for ${tag.slice(Resources.tagPrefix.length)}" section.` : notes
     ].join(Resources.lineSeparator);
   }
 
