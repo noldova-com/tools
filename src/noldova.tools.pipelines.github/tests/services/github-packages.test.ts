@@ -24,6 +24,8 @@ export class GitHubPackagesTests {
   private static readonly REPOSITORIES_TOKEN: string = "test-repositories-token-value";
   private static readonly REPOSITORIES_PAGE: string = "GET /installation/repositories?per_page=100&page=1";
   private static readonly ONE_REPOSITORY: GitHubApiAnswer = GitHubApiAnswer.json(200, { total_count: 1, repositories: [{ full_name: "noldova-com/one", default_branch: "main", archived: false }] });
+  private static readonly SOURCE: string = "GET /repos/noldova-com/source";
+  private static readonly PRIVATE_SOURCE: GitHubApiAnswer = GitHubApiAnswer.json(200, { full_name: "noldova-com/source", private: true });
   private static readonly NO_REPOSITORIES: GitHubApiAnswer = GitHubApiAnswer.json(200, { total_count: 0, repositories: [] });
 
   @TestMethod
@@ -35,6 +37,7 @@ export class GitHubPackagesTests {
   public async readsEveryVersionAPageAtATimeAsync(): Promise<void> {
     const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: index + 1, name: `0.0.${index + 1}` }));
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, firstPage),
       [GitHubPackagesTests.SECOND_PAGE]: GitHubApiAnswer.json(200, [{ id: 101, name: "0.0.101-nightly.20261102" }])
     });
@@ -51,7 +54,7 @@ export class GitHubPackagesTests {
 
   @TestMethod
   public async readsAnEmptyListAsNoVersionsAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, []) });
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE, [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, []) });
 
     const versions = await GitHubPackagesTests.createPackages(api).readVersionsAsync(GitHubPackagesTests.PACKAGE);
 
@@ -75,7 +78,7 @@ export class GitHubPackagesTests {
   @TestData("@noldova-com/tools/pipelines")
   @TestMethod
   public async failsForANameWithoutAnOwnerWithoutARequestAsync(packageName: string): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({});
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE });
     const packages = GitHubPackagesTests.createPackages(api);
     const expected = `${packageName} has no scope; a package on GitHub Packages is named @<owner>/<name>.`;
 
@@ -88,7 +91,7 @@ export class GitHubPackagesTests {
   @TestData("GITHUB_TOKEN")
   @TestMethod
   public async failsNamingAMissingOrEmptyVariableWithoutARequestAsync(name: string): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({});
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE });
     const environment = { GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN };
     const missing = { ...environment, [name]: undefined };
     const empty = { ...environment, [name]: "" };
@@ -102,6 +105,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async failsWithTheRequestTheStatusAndGitHubsMessageAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, Array.from({ length: 100 }, (_, index) => ({ id: index + 1, name: `0.0.${index + 1}` }))),
       [GitHubPackagesTests.SECOND_PAGE]: GitHubApiAnswer.json(403, { message: "Resource not accessible by integration" })
     });
@@ -121,7 +125,7 @@ export class GitHubPackagesTests {
   @TestData("[{ \"id\": 1 }]")
   @TestMethod
   public async rejectsWithJsonExceptionForAnAnswerThatIsNotAListOfVersionsAsync(body: string): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: new GitHubApiAnswer(200, body) });
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE, [GitHubPackagesTests.FIRST_PAGE]: new GitHubApiAnswer(200, body) });
 
     await Assert.throwsAsync(() => GitHubPackagesTests.createPackages(api).readVersionsAsync(GitHubPackagesTests.PACKAGE), JsonException);
   }
@@ -129,6 +133,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async deletesAVersionByTheIdItsListGaveAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 12, name: "0.0.2" }, { id: 11, name: "0.0.1" }]),
       [`DELETE ${GitHubPackagesTests.VERSIONS}/11`]: new GitHubApiAnswer(204, "", "")
     });
@@ -147,6 +152,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async listsThePackageFirstWhenItHasNotYetAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]),
       [`DELETE ${GitHubPackagesTests.VERSIONS}/11`]: new GitHubApiAnswer(204, "", "")
     });
@@ -159,7 +165,7 @@ export class GitHubPackagesTests {
 
   @TestMethod
   public async answersFalseWithoutARequestForAVersionTheListDoesNotHaveAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 12, name: "0.0.2" }]) });
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE, [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 12, name: "0.0.2" }]) });
 
     const deleted = await GitHubPackagesTests.createPackages(api).deleteVersionAsync(GitHubPackagesTests.PACKAGE, "0.0.1");
 
@@ -170,6 +176,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async answersFalseWhenGitHubNoLongerHasTheVersionAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]), GitHubApiAnswer.json(200, [{ id: 12, name: "0.0.2" }])]
     });
 
@@ -181,7 +188,7 @@ export class GitHubPackagesTests {
 
   @TestMethod
   public async failsWhenGitHubAnswers404ButStillListsTheVersionAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]) });
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE, [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]) });
 
     const deleted = await GitHubPackagesTests.createPackages(api).deleteVersionAsync(GitHubPackagesTests.PACKAGE, "0.0.1");
 
@@ -194,6 +201,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async failsWithTheListsAnswerWhenListingAfterA404FailsAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]), GitHubApiAnswer.json(403, { message: "Forbidden" })]
     });
 
@@ -207,6 +215,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async failsWithGitHubsAnswerWhenItRefusesTheDeleteAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]),
       [`DELETE ${GitHubPackagesTests.VERSIONS}/11`]: GitHubApiAnswer.json(400, { message: "You cannot delete the last version of a package." })
     });
@@ -224,6 +233,7 @@ export class GitHubPackagesTests {
   public async reportsARepeatedDeleteAnswered404AsAlreadyDeletedAsync(isTimeout: boolean): Promise<void> {
     const waits: number[] = [];
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }]), GitHubApiAnswer.json(200, [])],
       [`DELETE ${GitHubPackagesTests.VERSIONS}/11`]: [isTimeout ? GitHubApiAnswer.HELD : GitHubApiAnswer.json(502, { message: "Bad gateway" }), GitHubApiAnswer.json(404, { message: "Not Found" })]
     });
@@ -239,6 +249,7 @@ export class GitHubPackagesTests {
   public async readsThePageAGitHubOutageInterruptedAgainAsync(): Promise<void> {
     const waits: number[] = [];
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: [GitHubApiAnswer.json(503, { message: "Unavailable" }), GitHubApiAnswer.json(200, [{ id: 11, name: "0.0.1" }])]
     });
 
@@ -251,7 +262,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async failsNamingTheRequestWhenListingIsNotAnsweredDeletingNothingAsync(): Promise<void> {
     using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });
-    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.HELD });
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE, [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.HELD });
 
     const result = await GitHubPackagesTests.createStep(clone, api).runAsync(["0.0.4", clone.commit, "@noldova-com", "https://npm.pkg.github.com/", "1"]);
 
@@ -264,6 +275,7 @@ export class GitHubPackagesTests {
   public async keepsTheDeletedLinesWhenADeleteIsNotAnsweredAsync(): Promise<void> {
     using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 14, name: "0.0.4" }, { id: 13, name: "0.0.3" }, { id: 12, name: "0.0.2" }]),
       [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.NO_REPOSITORIES,
       [`DELETE ${GitHubPackagesTests.VERSIONS}/13`]: new GitHubApiAnswer(204, "", ""),
@@ -278,7 +290,7 @@ export class GitHubPackagesTests {
 
   @TestMethod
   public async failsWithTheListsAnswerWhenListingBeforeADeleteFailsAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({});
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE });
 
     const deleted = await GitHubPackagesTests.createPackages(api).deleteVersionAsync(GitHubPackagesTests.PACKAGE, "0.0.1");
 
@@ -295,6 +307,7 @@ export class GitHubPackagesTests {
     const nested = "{ \"packages\": { \"node_modules/@noldova-com/a\": { \"version\": \"0.0.1\" } } }\n";
     const emptyTrees = Object.fromEntries(archived.map(t => [`GET /repos/${t.full_name}/git/trees/main?recursive=1`, GitHubApiAnswer.json(200, { truncated: false, tree: [] })]));
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       ...emptyTrees,
       [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubApiAnswer.json(200, { total_count: 103, repositories: archived }),
       "GET /installation/repositories?per_page=100&page=2": GitHubApiAnswer.json(200, {
@@ -331,7 +344,7 @@ export class GitHubPackagesTests {
     Assert.areEqual(
       JSON.stringify([["noldova-com/old-7/package-lock.json", lock], ["noldova-com/one/package-lock.json", lock], ["noldova-com/one/src/a/package-lock.json", nested]]),
       JSON.stringify([...lockFiles]));
-    Assert.areEqual(110, api.requests.length);
+    Assert.areEqual(111, api.requests.length);
     Assert.areEqual("/installation/repositories?per_page=100&page=2", api.requests.at(-1)?.url);
     Assert.isTrue(api.requests.every(t => t.headers.authorization === `Bearer ${GitHubPackagesTests.REPOSITORIES_TOKEN}`));
   }
@@ -339,13 +352,14 @@ export class GitHubPackagesTests {
   @TestMethod
   public async failsWhenTheListDoesNotHoldEveryRepositoryAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubApiAnswer.json(200, { total_count: 2, repositories: [{ full_name: "noldova-com/one", default_branch: "main", archived: false }] })
     });
 
     Assert.areEqual(
       "GitHub listed 1 of the installation's 2 repositories, so the lock files could not all be found.",
       GitHubPackagesTests.readFailure(await GitHubPackagesTests.createPackages(api).readLockFilesAsync()));
-    Assert.areEqual(1, api.requests.length);
+    Assert.areEqual(2, api.requests.length);
   }
 
   @TestData("added", "{ \"total_count\": 2, \"repositories\": [{ \"full_name\": \"noldova-com/one\", \"default_branch\": \"main\" }, { \"full_name\": \"noldova-com/two\", \"default_branch\": \"main\" }] }")
@@ -354,6 +368,7 @@ export class GitHubPackagesTests {
   @TestMethod
   public async failsWhenTheRepositoriesChangeWhileTheLockFilesAreReadAsync(_: string, relisted: string): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.REPOSITORIES_PAGE]: [GitHubPackagesTests.ONE_REPOSITORY, new GitHubApiAnswer(200, relisted)],
       "GET /repos/noldova-com/one/git/trees/main?recursive=1": GitHubApiAnswer.json(200, { truncated: false, tree: [] })
     });
@@ -364,11 +379,12 @@ export class GitHubPackagesTests {
   }
 
   @TestData("GITHUB_API_URL")
+  @TestData("GITHUB_REPOSITORY")
   @TestData("REPOSITORIES_TOKEN")
   @TestMethod
   public async failsNamingAMissingVariableBeforeReadingLockFilesAsync(name: string): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({});
-    const environment = { GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN, REPOSITORIES_TOKEN: GitHubPackagesTests.REPOSITORIES_TOKEN };
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE });
+    const environment = { GITHUB_API_URL: api.url, GITHUB_REPOSITORY: "noldova-com/source", GITHUB_TOKEN: GitHubPackagesTests.TOKEN, REPOSITORIES_TOKEN: GitHubPackagesTests.REPOSITORIES_TOKEN };
     const expected = `The environment variable ${name} is not set; the prune step needs it to reach GitHub.`;
 
     Assert.areEqual(expected, GitHubPackagesTests.readFailure(await new GitHubPackages({ ...environment, [name]: undefined }).readLockFilesAsync()));
@@ -402,9 +418,43 @@ export class GitHubPackagesTests {
       "repositories again": [GitHubPackagesTests.REPOSITORIES_PAGE, [GitHubPackagesTests.ONE_REPOSITORY, new GitHubApiAnswer(502, "Bad gateway", "text/plain")]]
     };
     const [route, answer] = failures[failing] ?? ["", GitHubApiAnswer.HELD];
-    await using api = await GitHubApiFixture.startAsync({ ...answers, [route]: answer });
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE, ...answers, [route]: answer });
 
     Assert.areEqual(expected, GitHubPackagesTests.readFailure(await GitHubPackagesTests.createPackages(api).readLockFilesAsync()));
+  }
+
+  @TestData("public", "noldova-com/source is public, so the prune step reads no lock file and deletes nothing: its log would name the private repositories that lock a version, and leaving them out could delete a version they lock.")
+  @TestData("missing", "Could not read noldova-com/source, so the prune step can't tell that it is private, and reads no lock file and deletes nothing: GitHub answered GET repos/noldova-com/source with 404: Not Found")
+  @TestData("held", "Could not read noldova-com/source, so the prune step can't tell that it is private, and reads no lock file and deletes nothing: GitHub gave no answer to GET repos/noldova-com/source: The operation was aborted due to timeout")
+  @TestMethod
+  public async readsNoLockFileUnlessTheReleasingRepositoryIsPrivateAsync(source: string, expected: string): Promise<void> {
+    const answers: Readonly<Record<string, GitHubApiAnswer>> = {
+      public: GitHubApiAnswer.json(200, { full_name: "noldova-com/source", private: false }),
+      missing: GitHubApiAnswer.json(404, { message: "Not Found" }),
+      held: GitHubApiAnswer.HELD
+    };
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: answers[source] ?? GitHubApiAnswer.HELD,
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.ONE_REPOSITORY
+    });
+
+    Assert.areEqual(expected, GitHubPackagesTests.readFailure(await GitHubPackagesTests.createPackages(api).readLockFilesAsync()));
+    Assert.isFalse(api.requests.some(t => t.url.startsWith("/installation/")));
+  }
+
+  @TestData("not JSON")
+  @TestData("{ \"full_name\": \"noldova-com/source\" }")
+  @TestData("{ \"full_name\": \"noldova-com/source\", \"private\": null }")
+  @TestData("{ \"full_name\": \"noldova-com/source\", \"private\": \"true\" }")
+  @TestMethod
+  public async rejectsWithJsonExceptionForAReleasingRepositoryAnswerWithoutItsVisibilityAsync(body: string): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: new GitHubApiAnswer(200, body),
+      [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.ONE_REPOSITORY
+    });
+
+    await Assert.throwsAsync(() => GitHubPackagesTests.createPackages(api).readLockFilesAsync(), JsonException);
+    Assert.isFalse(api.requests.some(t => t.url.startsWith("/installation/")));
   }
 
   @TestMethod
@@ -412,6 +462,7 @@ export class GitHubPackagesTests {
     using clone = GitCloneFixture.create({ "src/noldova.tools.pipelines/package.json": "{ \"name\": \"@noldova-com/tools.pipelines\" }" });
     const lock = JSON.stringify({ packages: { "node_modules/@noldova-com/tools.pipelines": { version: "0.0.3" } } });
     await using api = await GitHubApiFixture.startAsync({
+      [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE,
       [GitHubPackagesTests.FIRST_PAGE]: GitHubApiAnswer.json(200, [{ id: 14, name: "0.0.4" }, { id: 13, name: "0.0.3" }, { id: 12, name: "0.0.2" }]),
       [GitHubPackagesTests.REPOSITORIES_PAGE]: GitHubPackagesTests.ONE_REPOSITORY,
       "GET /repos/noldova-com/one/git/trees/main?recursive=1": GitHubApiAnswer.json(200, { truncated: false, tree: [{ path: "package-lock.json", type: "blob", sha: "a1" }] }),
@@ -427,7 +478,7 @@ export class GitHubPackagesTests {
   }
 
   private static createPackages(api: GitHubApiFixture, waits: number[] = []): GitHubPackages {
-    return new GitHubPackages({ GITHUB_API_URL: api.url, GITHUB_TOKEN: GitHubPackagesTests.TOKEN, REPOSITORIES_TOKEN: GitHubPackagesTests.REPOSITORIES_TOKEN }, undefined, async milliseconds => {
+    return new GitHubPackages({ GITHUB_API_URL: api.url, GITHUB_REPOSITORY: "noldova-com/source", GITHUB_TOKEN: GitHubPackagesTests.TOKEN, REPOSITORIES_TOKEN: GitHubPackagesTests.REPOSITORIES_TOKEN }, undefined, async milliseconds => {
       waits.push(milliseconds);
     }, () => api.createAttemptSignal());
   }

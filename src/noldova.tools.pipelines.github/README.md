@@ -65,7 +65,7 @@ The step fails, naming the variable, when one is missing or empty, and with the 
 
 `pipelines prune <version> <commit> <scope> <registry> <keep-versions>` deletes each package's older release versions on GitHub Packages, `https://npm.pkg.github.com/`, keeping the newest `<keep-versions>` and every version a repository's lock file holds; for any other registry it fails and deletes nothing.
 A package `@<owner>/<name>` is the npm package `<name>` of the organization `<owner>`, so the scope is the organization's.
-It runs in a checkout of the commit, and reads `GITHUB_API_URL`, which GitHub Actions sets, and two tokens the workflow passes in, which are never written anywhere:
+It runs in a checkout of the commit, and reads `GITHUB_API_URL` and `GITHUB_REPOSITORY`, which GitHub Actions sets, and two tokens the workflow passes in, which are never written anywhere:
 
 - `GITHUB_TOKEN` deletes the packages' versions.
 - `REPOSITORIES_TOKEN` is a GitHub App installation's: the step reads every `package-lock.json` on the default branch of each repository the installation is given, archived ones included, except lock files under `node_modules`.
@@ -87,6 +87,8 @@ It runs in a checkout of the commit, and reads `GITHUB_API_URL`, which GitHub Ac
 ```
 
 The job needs `permissions: packages: write`, and runs in a release whose publish approval covers its deletes.
+The step reads lock files and deletes versions only from a private repository: before it reads any lock file, it reads the releasing repository with `REPOSITORIES_TOKEN`, and fails, reading no lock file and deleting nothing, when that repository is public or can't be read, since its lines name the repositories that lock a version and a public run's log anyone can read.
+So the App installation behind `REPOSITORIES_TOKEN` must reach the releasing repository too; one that doesn't makes the step fail the same way.
 The step lists the installation's repositories before it reads any lock file, and again after; when a list doesn't hold as many as GitHub counts, the two lists differ, GitHub lists only part of a repository's files, or a read fails, it deletes nothing.
 The step fails, naming the variable, when one is missing or empty, and with the request, the status and GitHub's message for an answer it doesn't expect, such as GitHub refusing to delete a package's last version.
 A 404 to a delete counts as a version already deleted only when GitHub's list no longer has it; otherwise the step fails.

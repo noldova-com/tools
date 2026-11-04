@@ -192,6 +192,14 @@ export class Resources {
     return new RegExp(`^#{1,6}\\s+Release notes for ${version.replaceAll(".", "\\.")}\\s*$`, "i");
   }
 
+  public static formatPruneSourcePublic(repository: string): string {
+    return `${repository} is public, so the prune step reads no lock file and deletes nothing: its log would name the private repositories that lock a version, and leaving them out could delete a version they lock.`;
+  }
+
+  public static formatPruneSourceUnread(repository: string, reason: string): string {
+    return `Could not read ${repository}, so the prune step can't tell that it is private, and reads no lock file and deletes nothing: ${reason}`;
+  }
+
   public static formatPruneVariableMissing(name: string): string {
     return `The environment variable ${name} is not set; the prune step needs it to reach GitHub.`;
   }
