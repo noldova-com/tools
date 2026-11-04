@@ -676,10 +676,13 @@ export declare interface IUpdateHost {
    * @param branch The pushed branch.
    * @param title The change's title.
    * @param body The change's description, in Markdown.
+   * @param summary One sentence that says why the change is proposed, for
+   * what links it, such as `A release moved packages this repository pins
+   * exactly`.
    * @returns A promise of the change's address, or a failed
    * {@link StepResult} that says why not.
    */
-  proposeAsync(repository: string, branch: string, title: string, body: string): Promise<string | StepResult>;
+  proposeAsync(repository: string, branch: string, title: string, body: string, summary: string): Promise<string | StepResult>;
 }
 
 /**
