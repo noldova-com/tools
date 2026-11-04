@@ -233,7 +233,7 @@ export class GitHubUpdates implements IUpdateHost {
           section.push(line);
         }
       }
-      else if (lineLevel > 0 && lineLevel <= level)
+      else if ((lineLevel > 0 && lineLevel <= level) || Resources.signaturePattern.test(line))
         break;
       else
         section.push(line);
