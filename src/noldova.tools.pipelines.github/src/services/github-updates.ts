@@ -146,7 +146,7 @@ export class GitHubUpdates implements IUpdateHost {
     if (existing !== undefined) {
       const issue = Resources.linkedIssuePattern.exec(existing.readNullableString(Resources.bodyField) ?? "")?.[1];
       if (issue !== undefined) {
-        const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { title });
+        const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { title, body: Resources.formatIssueBody(summary, branch) });
         if (renamed instanceof StepResult)
           return renamed;
         if (renamed.status !== Resources.foundStatus)

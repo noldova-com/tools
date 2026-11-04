@@ -351,7 +351,7 @@ export class GitHubUpdatesTests {
     Assert.areEqual(
       [GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.RENAME_ISSUE, GitHubUpdatesTests.UPDATE_PULL].join("\n"),
       api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
-    Assert.areEqual(JSON.stringify({ title: "Move the pins" }), api.requests[1]?.body);
+    Assert.areEqual(JSON.stringify({ title: "Move the pins", body: "source tagged v1.2.0, a new version of the shared workflows this repository pins; the pull request from `pipelines/update-tools` moves the pins." }), api.requests[1]?.body);
     Assert.areEqual(JSON.stringify({ title: "Move the pins", body: "Moves the pins.\n\n## Linked issue\n\nCloses #9" }), api.requests[2]?.body);
   }
 

@@ -412,10 +412,11 @@ export declare class GitHubUpdates implements IUpdateHost {
   public pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null>;
 
   /**
-   * Opens an issue with the title and a pull request from the branch into the
-   * default branch whose description ends with `Closes #<issue>`, or, when a
-   * pull request from the branch is open, gives it and the issue its
-   * description names the title, and the pull request the description.
+   * Opens an issue with the title and the summary, and a pull request from
+   * the branch into the default branch whose description ends with
+   * `Closes #<issue>`, or, when a pull request from the branch is open, gives
+   * it and the issue its description names the title, the issue the summary,
+   * and the pull request the description.
    *
    * @param repository The repository's full name.
    * @param branch The pushed branch.
