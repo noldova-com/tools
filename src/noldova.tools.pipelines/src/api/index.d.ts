@@ -492,7 +492,7 @@ export declare class BuildPackage {
 
   /**
    * The package's folder under `src/`, such as
-   * `parsers/noldova.context.parsers.regex`; its last segment is the name.
+   * `parsers/noldova.example.parsers`; its last segment is the name.
    */
   public readonly path: string;
 

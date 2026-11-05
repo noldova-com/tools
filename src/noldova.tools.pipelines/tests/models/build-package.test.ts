@@ -13,13 +13,13 @@ import { BuildPackage } from "@noldova/tools.pipelines";
 export class BuildPackageTests {
   @TestMethod
   public namesItsPackageAndFolders(): void {
-    const buildPackage = new BuildPackage("noldova.context.parsers.regex", "parsers/noldova.context.parsers.regex");
+    const buildPackage = new BuildPackage("noldova.example.parsers", "parsers/noldova.example.parsers");
 
-    Assert.areEqual("@noldova/context.parsers.regex", buildPackage.packageName);
-    Assert.areEqual("src/parsers/noldova.context.parsers.regex", buildPackage.sourceFolder);
-    Assert.areEqual("_build/packages/noldova.context.parsers.regex", buildPackage.buildFolder);
-    Assert.areEqual("_build/tests/noldova.context.parsers.regex", buildPackage.testsFolder);
-    Assert.areEqual("noldova-context.parsers.regex-0.0.5.tgz", buildPackage.archiveName("0.0.5"));
+    Assert.areEqual("@noldova/example.parsers", buildPackage.packageName);
+    Assert.areEqual("src/parsers/noldova.example.parsers", buildPackage.sourceFolder);
+    Assert.areEqual("_build/packages/noldova.example.parsers", buildPackage.buildFolder);
+    Assert.areEqual("_build/tests/noldova.example.parsers", buildPackage.testsFolder);
+    Assert.areEqual("noldova-example.parsers-0.0.5.tgz", buildPackage.archiveName("0.0.5"));
   }
 
   @TestMethod
