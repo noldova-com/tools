@@ -26,6 +26,8 @@ import type { ProcessRunner } from "./process-runner.js";
 import type { TypeScript } from "./type-script.js";
 
 export class BuildStep implements IStep {
+  private static readonly INSTALL_FILE_NAMES: readonly string[] = [Resources.packageManifestFileName, Resources.lockFileName];
+
   private readonly git: Git;
   private readonly npm: Npm;
   private readonly typeScript: TypeScript;
@@ -58,8 +60,16 @@ export class BuildStep implements IStep {
       const version = versionOption ?? this.readVersion();
       fs.mkdirSync(this.resolve(Resources.buildFolder), { recursive: true });
       fs.mkdirSync(this.resolve(Resources.packagesFolder), { recursive: true });
-      for (const buildPackage of packages)
-        await this.buildPackageAsync(config, buildPackage, version, commit);
+      this.restoreInstallFiles();
+      this.backUpInstallFiles();
+      try {
+        this.listUnbuiltArchives(config, packages, version, this.readFile(Resources.packageManifestFileName));
+        for (const buildPackage of packages)
+          await this.buildPackageAsync(buildPackage, version, commit);
+      }
+      finally {
+        this.restoreInstallFiles();
+      }
 
       return StepResult.succeeded(Resources.formatPackagesBuilt(packages.length, version));
     }
@@ -81,7 +91,18 @@ export class BuildStep implements IStep {
     return [...lines, Resources.copiesEndLine].join(Resources.lineSeparator);
   }
 
-  private async buildPackageAsync(config: BuildConfig, buildPackage: BuildPackage, version: string, commit: string): Promise<void> {
+  private listUnbuiltArchives(config: BuildConfig, packages: readonly BuildPackage[], version: string, manifest: Buffer | null): void {
+    const archives = config.packages.filter(t => !packages.includes(t)).map(t => [t.packageName, `${Resources.packagesFolder}/${t.archiveName(version)}`] as const).filter(([, archive]) => this.isFile(archive));
+    if (archives.length === 0)
+      return;
+
+    const reader = JsonReader.parse(manifest === null ? Resources.emptyJsonObject : manifest.toString(Resources.textEncoding), Resources.packageManifestFileName);
+    const listed = reader.hasField(Resources.dependenciesField) ? reader.readObject(Resources.dependenciesField).toJson() : {};
+    const dependencies = { ...listed, ...Object.fromEntries(archives.map(([name, archive]) => [name, `${Resources.archiveSpecifierPrefix}${archive}`])) };
+    fs.writeFileSync(this.resolve(Resources.packageManifestFileName), `${JSON.stringify({ ...reader.toJson(), [Resources.dependenciesField]: dependencies }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
+  }
+
+  private async buildPackageAsync(buildPackage: BuildPackage, version: string, commit: string): Promise<void> {
     this.output.writeProgress(Resources.formatBuildingPackage(buildPackage.packageName));
     const buildFolder = this.resolve(buildPackage.buildFolder);
     fs.rmSync(buildFolder, { recursive: true, force: true });
@@ -110,8 +131,7 @@ export class BuildStep implements IStep {
     if (!packed.isSuccessful)
       throw new BuildException(Resources.formatPackFailed(buildPackage.packageName, packed.exitCode, `${packed.output}${packed.errorOutput}`));
 
-    const archives = config.packages.map(t => `${Resources.packagesFolder}/${t.archiveName(version)}`).filter(t => this.isFile(t));
-    const installed = await this.npm.installArchivesAsync(archives.map(t => `${Resources.currentFolderPrefix}${t}`));
+    const installed = await this.npm.installArchivesAsync([`${Resources.currentFolderPrefix}${Resources.packagesFolder}/${buildPackage.archiveName(version)}`]);
     if (!installed.isSuccessful)
       throw new BuildException(Resources.formatArchivesNotInstalled(installed.exitCode, `${installed.output}${installed.errorOutput}`));
   }
@@ -147,6 +167,42 @@ export class BuildStep implements IStep {
       throw new BuildException(Resources.versionFileMissing);
 
     return JsonReader.parse(fs.readFileSync(this.resolve(Resources.versionFilePath), Resources.textEncoding), Resources.versionFilePath).readString(Resources.versionField);
+  }
+
+  private readFile(filePath: string): Buffer | null {
+    return this.isFile(filePath) ? fs.readFileSync(this.resolve(filePath)) : null;
+  }
+
+  private backUpInstallFiles(): void {
+    const staging = this.resolve(Resources.restoreStagingFolder);
+    fs.rmSync(staging, { recursive: true, force: true });
+    fs.mkdirSync(staging, { recursive: true });
+    for (const fileName of BuildStep.INSTALL_FILE_NAMES) {
+      const content = this.readFile(fileName);
+      if (content !== null)
+        fs.writeFileSync(path.join(staging, fileName), content);
+    }
+
+    fs.renameSync(staging, this.resolve(Resources.restoreFolder));
+  }
+
+  private restoreInstallFiles(): void {
+    const backup = this.resolve(Resources.restoreFolder);
+    if (!fs.existsSync(backup))
+      return;
+
+    for (const fileName of BuildStep.INSTALL_FILE_NAMES) {
+      const copy = path.join(backup, fileName);
+      if (fs.existsSync(copy))
+        fs.copyFileSync(copy, this.resolve(fileName));
+      else
+        fs.rmSync(this.resolve(fileName), { force: true });
+    }
+
+    const discard = this.resolve(Resources.restoreDiscardFolder);
+    fs.rmSync(discard, { recursive: true, force: true });
+    fs.renameSync(backup, discard);
+    fs.rmSync(discard, { recursive: true, force: true });
   }
 
   private isFile(filePath: string): boolean {

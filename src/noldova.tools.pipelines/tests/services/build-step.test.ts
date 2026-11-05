@@ -35,6 +35,8 @@ class FakeTypeScript extends TypeScript {
 
 class FakeNpm extends Npm {
   public readonly calls: string[] = [];
+  public readonly manifests: string[] = [];
+  public readonly backups: string[] = [];
   private readonly packResult: ProcessResult;
   private readonly installResult: ProcessResult;
 
@@ -57,6 +59,12 @@ class FakeNpm extends Npm {
 
   public override async installArchivesAsync(archivePaths: readonly string[]): Promise<ProcessResult> {
     this.calls.push(`install ${archivePaths.join(" ")}`);
+    this.backups.push(fs.readdirSync(path.join(this.workingDirectory, "_build/restore")).join(" "));
+    const manifestPath = path.join(this.workingDirectory, "package.json");
+    if (fs.existsSync(manifestPath))
+      this.manifests.push(fs.readFileSync(manifestPath, "utf8"));
+    fs.writeFileSync(manifestPath, "{\"saved\":true}");
+    fs.writeFileSync(path.join(this.workingDirectory, "package-lock.json"), "{\"locked\":true}");
 
     return this.installResult;
   }
@@ -99,8 +107,10 @@ export class BuildStepTests {
       BuildStepTests.read(repository, "order.txt"));
     Assert.areEqual("src/noldova.a/src/tsconfig.json", typeScript.calls.join(","));
     Assert.areEqual(
-      "pack noldova.a|install ./_packages/noldova-a-0.0.5.tgz|pack noldova.b|install ./_packages/noldova-a-0.0.5.tgz ./_packages/noldova-b-0.0.5.tgz",
+      "pack noldova.a|install ./_packages/noldova-a-0.0.5.tgz|pack noldova.b|install ./_packages/noldova-b-0.0.5.tgz",
       npm.calls.join("|"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package.json")));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package-lock.json")));
     Assert.areEqual("progress: Building @noldova/a...|progress: Building @noldova/b...", lines.join("|"));
   }
 
@@ -114,6 +124,96 @@ export class BuildStepTests {
     Assert.areEqual("Built 1 package at version 0.0.5-nightly.20261102.", result.message);
     Assert.isTrue(BuildStepTests.read(repository, "_build/packages/noldova.b/package.json").includes("\"version\": \"0.0.5-nightly.20261102\""));
     Assert.areEqual("pack noldova.b|install ./_packages/noldova-b-0.0.5-nightly.20261102.tgz", npm.calls.join("|"));
+  }
+
+  @TestMethod
+  public async listsTheArchivesItDoesNotBuildWhileItInstallsAndRestoresTheManifestAndLockAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    const manifest = "{\n\t\"name\": \"repository\",\n\t\"dependencies\": { \"x\": \"1.0.0\" }\n}";
+    fs.writeFileSync(path.join(repository.directory, "package.json"), manifest);
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "lock");
+    fs.mkdirSync(path.join(repository.directory, "_packages"));
+    fs.writeFileSync(path.join(repository.directory, "_packages/noldova-a-0.0.5.tgz"), "");
+    const npm = new FakeNpm(repository.directory);
+
+    const result = await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), npm, []).runAsync(["noldova.b"]);
+
+    Assert.isTrue(result.isSuccessful);
+    Assert.areEqual("{\n  \"name\": \"repository\",\n  \"dependencies\": {\n    \"x\": \"1.0.0\",\n    \"@noldova/a\": \"file:_packages/noldova-a-0.0.5.tgz\"\n  }\n}\n", npm.manifests.join("|"));
+    Assert.areEqual(manifest, BuildStepTests.read(repository, "package.json"));
+    Assert.areEqual("lock", BuildStepTests.read(repository, "package-lock.json"));
+  }
+
+  @TestMethod
+  public async restoresTheManifestAndLockThatAnInterruptedBuildLeftAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package.json"), "{\"dependencies\":{\"@noldova/a\":\"file:_packages/noldova-a-0.0.5.tgz\"}}");
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "changed");
+    fs.mkdirSync(path.join(repository.directory, "_build/restore"), { recursive: true });
+    fs.writeFileSync(path.join(repository.directory, "_build/restore/package.json"), "{\"name\":\"repository\"}");
+    const npm = new FakeNpm(repository.directory);
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), npm, []).runAsync(["noldova.b"]);
+
+    Assert.areEqual("{\"name\":\"repository\"}", npm.manifests.join("|"));
+    Assert.areEqual("{\"name\":\"repository\"}", BuildStepTests.read(repository, "package.json"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package-lock.json")));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "_build/restore")));
+  }
+
+  @TestMethod
+  public async ignoresABackupThatAStopLeftWhileItWasDiscardedAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "lock");
+    fs.mkdirSync(path.join(repository.directory, "_build/restore.discard"), { recursive: true });
+    fs.writeFileSync(path.join(repository.directory, "_build/restore.discard/package.json"), "{}");
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), new FakeNpm(repository.directory), []).runAsync(["noldova.b"]);
+
+    Assert.areEqual("lock", BuildStepTests.read(repository, "package-lock.json"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package.json")));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "_build/restore.discard")));
+  }
+
+  @TestMethod
+  public async keepsTheBackupOfTheManifestAndLockWhileItBuildsAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package.json"), "{}");
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "lock");
+    const npm = new FakeNpm(repository.directory);
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), npm, []).runAsync(["noldova.a", "noldova.b"]);
+
+    Assert.areEqual("package-lock.json package.json|package-lock.json package.json", npm.backups.join("|"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "_build/restore")));
+  }
+
+  @TestMethod
+  public async listsTheArchivesItDoesNotBuildInAManifestWithoutDependenciesAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package.json"), "{\"name\":\"repository\"}");
+    fs.mkdirSync(path.join(repository.directory, "_packages"));
+    fs.writeFileSync(path.join(repository.directory, "_packages/noldova-a-0.0.5.tgz"), "");
+    const npm = new FakeNpm(repository.directory);
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), npm, []).runAsync(["noldova.b"]);
+
+    Assert.areEqual("{\n  \"name\": \"repository\",\n  \"dependencies\": {\n    \"@noldova/a\": \"file:_packages/noldova-a-0.0.5.tgz\"\n  }\n}\n", npm.manifests.join("|"));
+    Assert.areEqual("{\"name\":\"repository\"}", BuildStepTests.read(repository, "package.json"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package-lock.json")));
+  }
+
+  @TestMethod
+  public async listsTheArchivesItDoesNotBuildWithoutAManifestAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.mkdirSync(path.join(repository.directory, "_packages"));
+    fs.writeFileSync(path.join(repository.directory, "_packages/noldova-a-0.0.5.tgz"), "");
+    const npm = new FakeNpm(repository.directory);
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), npm, []).runAsync(["noldova.b"]);
+
+    Assert.areEqual("{\n  \"dependencies\": {\n    \"@noldova/a\": \"file:_packages/noldova-a-0.0.5.tgz\"\n  }\n}\n", npm.manifests.join("|"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package.json")));
   }
 
   @TestMethod
@@ -233,10 +333,14 @@ export class BuildStepTests {
   @TestMethod
   public async failsWhenNpmCannotInstallAsync(): Promise<void> {
     using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package.json"), "{}");
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "lock");
 
     const result = await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), new FakeNpm(repository.directory, BuildStepTests.OK, new ProcessResult(1, "npm error install", "")), []).runAsync([]);
 
     Assert.areEqual("npm install exited with code 1 for the built packages:\nnpm error install", result.message);
+    Assert.areEqual("{}", BuildStepTests.read(repository, "package.json"));
+    Assert.areEqual("lock", BuildStepTests.read(repository, "package-lock.json"));
   }
 
   private static createStep(directory: string, typeScript: TypeScript, npm: Npm, lines: string[]): BuildStep {
