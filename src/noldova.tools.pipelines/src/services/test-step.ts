@@ -15,6 +15,7 @@ import { PipelineException } from "../exceptions/pipeline.exception.js";
 import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import { BuildConfig } from "../models/build-config.js";
+import type { BuildPackage } from "../models/build-package.js";
 import { StepResult } from "../models/step-result.js";
 import { Resources } from "../resources.js";
 import type { ProcessRunner } from "./process-runner.js";
@@ -67,15 +68,15 @@ export class TestStep implements IStep {
         continue;
 
       this.output.writeProgressStart(Resources.formatCompilingTests(buildPackage.name));
-      fs.rmSync(this.resolve(buildPackage.testsFolder), { recursive: true, force: true });
-      const compiled = await this.typeScript.compileAsync(projectPath);
-      if (!compiled.isSuccessful) {
+      try {
+        await this.compileTestsAsync(buildPackage, projectPath);
+      }
+      catch (error) {
         this.output.writeProgress(Resources.progressFailed);
-        throw new BuildException(Resources.formatCompileFailed(projectPath, compiled.exitCode, `${compiled.output}${compiled.errorOutput}`));
+        throw error;
       }
 
       this.output.writeProgress(Resources.progressDone);
-
       projectValues.push(buildPackage.name, buildPackage.testsFolder);
     }
 
@@ -106,6 +107,13 @@ export class TestStep implements IStep {
       problems.push(Resources.formatCoverageUnread(coverageExitCode));
 
     return problems.length === 0 ? StepResult.succeeded(Resources.testsPassed) : StepResult.failed(problems.join(Resources.lineSeparator));
+  }
+
+  private async compileTestsAsync(buildPackage: BuildPackage, projectPath: string): Promise<void> {
+    fs.rmSync(this.resolve(buildPackage.testsFolder), { recursive: true, force: true });
+    const compiled = await this.typeScript.compileAsync(projectPath);
+    if (!compiled.isSuccessful)
+      throw new BuildException(Resources.formatCompileFailed(projectPath, compiled.exitCode, `${compiled.output}${compiled.errorOutput}`));
   }
 
   private resolve(filePath: string): string {
