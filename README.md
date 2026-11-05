@@ -24,8 +24,9 @@ npm run build
 npm test
 ```
 
-`npm run build` installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing`, `@noldova/context.json`, which the build and the packages read JSON with, and the published `@noldova/tools.pipelines` 0.0.1 as `tools.pipelines.published`, whose `Version` checks the `--version` option, without running their install scripts; then it builds, packs and installs every package into `_build/` and `_packages/`.
-Under that name it stays apart from the `@noldova/tools.pipelines` that the build installs into `node_modules`.
+`npm run build` and `npm test` run the `build` and `test` steps of the published `pipelines` command, which `.pipelines/package.json` pins and `.pipelines/package-lock.json` locks, from `.pipelines/node_modules`.
+There it stays apart from the packages this repository builds, so the code under change never builds or tests itself; to move to a newer version, change the pin and refresh that lock.
+`npm run build` installs that tool when `.pipelines/node_modules` doesn't hold what its lock locks, and the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing` and the packages' dependencies, when `node_modules` doesn't hold them, both without running install scripts; then it builds, packs and installs every package, as `build.json` lists them, into `_build/` and `_packages/`.
 Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.2" }`, or from the `--version` option, such as for a nightly version:
 
 ```bash
@@ -34,7 +35,7 @@ npm run build -- --version 0.0.5-nightly.20261102
 
 The build writes the checkout's head commit into every package's `package.json` as `gitHead`, so each published version names the commit it was built from; it fails before building when it can't read the commit or doesn't run at the root of a git checkout.
 The build copies the repository's `LICENSE` into every package; `npm run build --silent -- --list-copies` builds nothing and prints those copies, one per line, and then `end of copies`, as `pipelines archive` reads them.
-`npm test` runs every package's tests and fails unless they cover all of the packages' source.
+`npm test` compiles and runs every package's tests and fails unless they cover all of the packages' source.
 Two options shorten its output, as the CI run uses them:
 
 ```bash
@@ -53,7 +54,7 @@ Every pull request into `main` must pass its checks before it merges.
 | Check / Linked issue | `.github/workflows/require-linked-issue.yml`, the "PR" workflow: the PR description has a standalone `Issue: #N`, `Issue #N` or closing reference, such as `Closes #N`, that names an issue in this repository. |
 | Check / Runner / Versions | The shared check's own call of the shared settings, which name the runner "Check / Linked issue" uses. |
 | Versions / Versions | The caller's own call of the organization's shared settings, `.github`'s `versions.yml`, which name the runner and the Node.js version of "Version check". |
-| Version check | `npm run build -- --version 01.0.0` fails with the published `Version`'s message, and leaves every tracked file unchanged and no untracked one. |
+| Version check | `npm run build -- --version 01.0.0`, run without `GITHUB_ACTIONS` so its expected failure is plain text and no annotation, fails with the published `Version`'s message, and leaves every tracked file unchanged and no untracked one. |
 | Build and test / Versions / Versions | The shared settings name the Node.js and npm versions and the runner for each target of "Build and test". |
 | Build and test / Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow, calls `.github`'s shared `build-and-test.yml` with the tool from this repository: one job, on the GitHub-hosted runner the shared settings name for Linux x64; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package; the tool is installed from the packed archives, and its steps check that the Node.js and npm versions are the ones the shared settings name, that `.gitattributes` holds `* text=auto eol=lf` and every tracked text file uses LF line endings and ends with exactly one newline; `npm test` runs every test with the coverage gate; the build and the tests leave every tracked file unchanged; a second build of the same commit, in another folder, packs byte-identical archives; and `pipelines archive` checks the archives as the release does. |
 | Build and test / All targets | Passes only when "Build and test / Versions / Versions" and "Build and test / Linux x64" pass. |
