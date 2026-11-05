@@ -111,7 +111,7 @@ export class BuildStepTests {
       npm.calls.join("|"));
     Assert.isFalse(fs.existsSync(path.join(repository.directory, "package.json")));
     Assert.isFalse(fs.existsSync(path.join(repository.directory, "package-lock.json")));
-    Assert.areEqual("progress: Building @noldova/a...|progress: Building @noldova/b...", lines.join("|"));
+    Assert.areEqual("progress start: Building @noldova/a...|progress:  Done.|progress start: Building @noldova/b...|progress:  Done.", lines.join("|"));
   }
 
   @TestMethod
@@ -301,11 +301,13 @@ export class BuildStepTests {
   public async failsWhenTheCompileFailsAsync(joined: string, message: string): Promise<void> {
     using repository = BuildStepTests.createRepository();
     const [exitCode = "", output = ""] = joined.split("|");
+    const lines: string[] = [];
 
-    const result = await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory, new ProcessResult(Number(exitCode), output, "")), new FakeNpm(repository.directory), []).runAsync([]);
+    const result = await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory, new ProcessResult(Number(exitCode), output, "")), new FakeNpm(repository.directory), lines).runAsync([]);
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(message, result.message);
+    Assert.areEqual("progress start: Building @noldova/a...|progress:  Failed.", lines.join("|"));
   }
 
   @TestMethod

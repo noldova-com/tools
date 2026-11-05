@@ -103,7 +103,19 @@ export class BuildStep implements IStep {
   }
 
   private async buildPackageAsync(buildPackage: BuildPackage, version: string, commit: string): Promise<void> {
-    this.output.writeProgress(Resources.formatBuildingPackage(buildPackage.packageName));
+    this.output.writeProgressStart(Resources.formatBuildingPackage(buildPackage.packageName));
+    try {
+      await this.buildPackageFilesAsync(buildPackage, version, commit);
+    }
+    catch (error) {
+      this.output.writeProgress(Resources.progressFailed);
+      throw error;
+    }
+
+    this.output.writeProgress(Resources.progressDone);
+  }
+
+  private async buildPackageFilesAsync(buildPackage: BuildPackage, version: string, commit: string): Promise<void> {
     const buildFolder = this.resolve(buildPackage.buildFolder);
     fs.rmSync(buildFolder, { recursive: true, force: true });
     fs.mkdirSync(buildFolder, { recursive: true });

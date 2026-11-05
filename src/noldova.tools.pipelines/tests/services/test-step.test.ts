@@ -119,7 +119,7 @@ export class TestStepTests {
       [process.execPath, TestStepTests.COVERAGE_ENTRY_POINT_PATH, coverageFolder, "", JSON.stringify(projects), checkout.directory]
     ]), JSON.stringify(runner.calls));
     Assert.areEqual(JSON.stringify([{ CONTEXT_TEST_FILTERS: "[]", NODE_V8_COVERAGE: coverageFolder }, {}]), JSON.stringify(runner.environments));
-    Assert.areEqual("progress: Compiling the tests of noldova.a...", lines.join("|"));
+    Assert.areEqual("progress start: Compiling the tests of noldova.a...|progress:  Done.", lines.join("|"));
   }
 
   @TestMethod
@@ -194,9 +194,12 @@ export class TestStepTests {
     using checkout = new Checkout();
     const runner = new FakeRunner();
 
-    const result = await new TestStep(new FakeTypeScript(checkout.directory, new ProcessResult(2, "error TS2322: wrong", "")), runner, new RecordingOutput([])).runAsync([]);
+    const lines: string[] = [];
+
+    const result = await new TestStep(new FakeTypeScript(checkout.directory, new ProcessResult(2, "error TS2322: wrong", "")), runner, new RecordingOutput(lines)).runAsync([]);
 
     Assert.areEqual("The TypeScript compiler exited with code 2 for src/noldova.a/tests/tsconfig.json:\nerror TS2322: wrong", result.message);
+    Assert.areEqual("progress start: Compiling the tests of noldova.a...|progress:  Failed.", lines.join("|"));
     Assert.areEqual(0, runner.calls.length);
   }
 

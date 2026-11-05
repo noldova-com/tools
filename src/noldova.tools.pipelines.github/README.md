@@ -48,7 +48,7 @@ The reproducible, dependents and pins steps make their temporary folders in `RUN
 - A step that succeeds writes its message to standard output and exits with code `0`; an empty message, such as the nightly step's when nothing changed, writes nothing.
 - A step that fails writes its message as one error annotation, which the run's summary shows, and exits with code `1`; so does a first value that names no step, with the usage line of every step.
   Outside GitHub Actions, where `GITHUB_ACTIONS` isn't `true`, such as when a person builds on their machine, it writes the message as it is.
-- The build and test steps write their progress, such as each package they build, to standard output as they go.
+- The build and test steps write their progress to standard output as they go, one line for each package they build or whose tests they compile, such as `Building @noldova/example... Done.`, which ends with ` Failed.` before the step's error.
 - The annotation goes to standard error, which GitHub Actions reads workflow commands from as it does standard output, so a step whose output the workflow keeps, such as the nightly version above, still shows it.
 - A fault, such as git failing to start, ends the run with its stack trace and exit code `1`.
 

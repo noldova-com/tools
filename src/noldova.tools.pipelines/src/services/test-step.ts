@@ -66,11 +66,15 @@ export class TestStep implements IStep {
       if (fs.statSync(this.resolve(projectPath), { throwIfNoEntry: false })?.isFile() !== true)
         continue;
 
-      this.output.writeProgress(Resources.formatCompilingTests(buildPackage.name));
+      this.output.writeProgressStart(Resources.formatCompilingTests(buildPackage.name));
       fs.rmSync(this.resolve(buildPackage.testsFolder), { recursive: true, force: true });
       const compiled = await this.typeScript.compileAsync(projectPath);
-      if (!compiled.isSuccessful)
+      if (!compiled.isSuccessful) {
+        this.output.writeProgress(Resources.progressFailed);
         throw new BuildException(Resources.formatCompileFailed(projectPath, compiled.exitCode, `${compiled.output}${compiled.errorOutput}`));
+      }
+
+      this.output.writeProgress(Resources.progressDone);
 
       projectValues.push(buildPackage.name, buildPackage.testsFolder);
     }
