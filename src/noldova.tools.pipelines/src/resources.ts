@@ -121,6 +121,8 @@ export class Resources {
   public static readonly privateField: string = "private";
   public static readonly processKillSignal: NodeJS.Signals = "SIGKILL";
   public static readonly processReleaseDelayMilliseconds: number = 0;
+  public static readonly progressDone: string = " Done.";
+  public static readonly progressFailed: string = " Failed.";
   public static readonly pruneStepName: string = "prune";
   public static readonly pruneStepUsage: string = "<version> <commit> <scope> <registry> <keep-versions>";
   public static readonly publishRetryMilliseconds: number = 10_000;

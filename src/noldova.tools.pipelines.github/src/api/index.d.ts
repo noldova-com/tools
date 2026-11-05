@@ -49,6 +49,22 @@ export declare class GitHubStepOutput implements IStepOutput {
   public writeProgress(message: string): void;
 
   /**
+   * Writes the start of a progress line to standard output, without a line
+   * feed; the next `writeProgress` ends the line.
+   *
+   * @param message The line's start.
+   * @example
+   * ```ts
+   * import { GitHubStepOutput } from "@noldova/tools.pipelines.github";
+   *
+   * const output = new GitHubStepOutput(process.stdout, process.stderr);
+   * output.writeProgressStart("Building @noldova/tools.pipelines...");
+   * output.writeProgress(" Done."); // the two write "Building @noldova/tools.pipelines... Done.\n"
+   * ```
+   */
+  public writeProgressStart(message: string): void;
+
+  /**
    * Writes the message of a step that succeeded, and a line feed, to standard
    * output; an empty message writes nothing.
    *

@@ -25,6 +25,10 @@ export class GitHubStepOutput implements IStepOutput {
     this.standardOutput.write(`${message}${Resources.lineSeparator}`);
   }
 
+  public writeProgressStart(message: string): void {
+    this.standardOutput.write(message);
+  }
+
   public writeSuccess(message: string): void {
     if (message.length > 0)
       this.standardOutput.write(`${message}${Resources.lineSeparator}`);

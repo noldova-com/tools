@@ -47,6 +47,7 @@ import { CommandLine, Git, ProcessRunner, SourceStep } from "@noldova/tools.pipe
 const git = new Git(new ProcessRunner(), process.cwd());
 const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
   writeProgress: message => console.log(message),
+  writeProgressStart: message => process.stdout.write(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -89,6 +90,7 @@ const processRunner = new ProcessRunner();
 const git = new Git(processRunner, process.cwd());
 const commandLine = new CommandLine("pipelines", [new SourceStep(git), new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd()))], {
   writeProgress: message => console.log(message),
+  writeProgressStart: message => process.stdout.write(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -116,6 +118,7 @@ const processRunner = new ProcessRunner();
 const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
 const commandLine = new CommandLine("pipelines", [archiveStep, new PublishStep(archiveStep, new Npm(processRunner, process.cwd()))], {
   writeProgress: message => console.log(message),
+  writeProgressStart: message => process.stdout.write(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -147,6 +150,7 @@ const npm = new Npm(processRunner, process.cwd());
 const nightlyStep = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner), npm), npm);
 const commandLine = new CommandLine("pipelines", [nightlyStep], {
   writeProgress: message => console.log(message),
+  writeProgressStart: message => process.stdout.write(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -371,6 +375,7 @@ The parentheses make the script run the same in a POSIX shell and in Windows' `c
 
 `build [--version <version>] [<package>...]` builds the packages, or the ones named, in `build.json`'s order.
 For each, it writes `_build/packages/<name>` afresh: `package.json`, with the version for `__VERSION__` and the head commit as `gitHead`, the repository's `LICENSE`, and the package's `README.md`, `src/api/index.d.ts` as `api/index.d.ts` and `THIRD-PARTY-NOTICES.txt` it has; then it runs `pre`, compiles `src/tsconfig.json` or runs `compile`, runs `post`, packs the package into `_packages/`, and installs that archive, so the next package builds against it.
+It writes `Building <package>...` as it starts a package, and ends the line with ` Done.` when it is built, or ` Failed.` before the error.
 While it builds, the repository's `package.json` lists the archives already in `_packages/` of the packages it doesn't build, so an install keeps them.
 It backs up `package.json` and `package-lock.json` in `_build/restore/` before it changes them and restores them when it ends; a build that was stopped before then leaves the backup, which the next build restores first.
 
@@ -383,6 +388,7 @@ It backs up `package.json` and `package-lock.json` in `_build/restore/` before i
 #### The test step
 
 `test [--skip-test-details] [--skip-coverage-details] [<filter>...]` compiles each package's `tests/tsconfig.json`, runs the tests through the repository's `@noldova/context.testing` with V8 coverage in `_build/coverage`, and requires complete coverage of the packages' `src/` folders.
+It writes `Compiling the tests of <package>...` for each, and ends the line with ` Done.`, or ` Failed.` before the compiler's errors.
 
 - Run the build first: the tests use the installed packages.
 - A filter runs the tests that match a package, file, class, `ClassName.methodName` substring or exact `category:name` identity, and skips the coverage gate.

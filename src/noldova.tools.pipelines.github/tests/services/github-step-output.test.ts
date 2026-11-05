@@ -51,6 +51,19 @@ export class GitHubStepOutputTests {
   }
 
   @TestMethod
+  public writesAProgressLinesStartWithoutALineFeedThatTheNextProgressEnds(): void {
+    const standardOutput = GitHubStepOutputTests.createStream();
+    const standardError = GitHubStepOutputTests.createStream();
+    const output = new GitHubStepOutput(standardOutput, standardError);
+
+    output.writeProgressStart("Building @noldova/tools.pipelines...");
+    output.writeProgress(" Done.");
+
+    Assert.areEqual("Building @noldova/tools.pipelines... Done.\n", GitHubStepOutputTests.read(standardOutput));
+    Assert.areEqual("", GitHubStepOutputTests.read(standardError));
+  }
+
+  @TestMethod
   public writesProgressToStandardOutputWithALineFeed(): void {
     const standardOutput = GitHubStepOutputTests.createStream();
     const standardError = GitHubStepOutputTests.createStream();

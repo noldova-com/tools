@@ -706,6 +706,7 @@ export declare interface IStepOutput {
    *
    * const output: IStepOutput = {
    *   writeProgress: message => console.log(message),
+   *   writeProgressStart: message => process.stdout.write(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * };
@@ -713,6 +714,28 @@ export declare interface IStepOutput {
    * ```
    */
   writeProgress(message: string): void;
+
+  /**
+   * Writes the start of a progress line without ending it, such as the
+   * package a step builds; the next `writeProgress` ends the line, such as
+   * with ` Done.`.
+   *
+   * @param message The line's start.
+   * @example
+   * ```ts
+   * import type { IStepOutput } from "@noldova/tools.pipelines";
+   *
+   * const output: IStepOutput = {
+   *   writeProgress: message => console.log(message),
+   *   writeProgressStart: message => process.stdout.write(message),
+   *   writeSuccess: message => console.log(message),
+   *   writeFailure: message => console.error(message)
+   * };
+   * output.writeProgressStart("Building @noldova/tools.pipelines...");
+   * output.writeProgress(" Done.");
+   * ```
+   */
+  writeProgressStart(message: string): void;
 
   /**
    * Writes the message of a step that succeeded.
@@ -724,6 +747,7 @@ export declare interface IStepOutput {
    *
    * const output: IStepOutput = {
    *   writeProgress: message => console.log(message),
+   *   writeProgressStart: message => process.stdout.write(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * };
@@ -744,6 +768,7 @@ export declare interface IStepOutput {
    *
    * const output: IStepOutput = {
    *   writeProgress: message => console.log(message),
+   *   writeProgressStart: message => process.stdout.write(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * };
@@ -1011,6 +1036,7 @@ export declare class CommandLine {
    * const git = new Git(new ProcessRunner(), process.cwd());
    * const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
    *   writeProgress: message => console.log(message),
+   *   writeProgressStart: message => process.stdout.write(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * });
@@ -1037,6 +1063,7 @@ export declare class CommandLine {
    * const git = new Git(new ProcessRunner(), process.cwd());
    * const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
    *   writeProgress: message => console.log(message),
+   *   writeProgressStart: message => process.stdout.write(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * });

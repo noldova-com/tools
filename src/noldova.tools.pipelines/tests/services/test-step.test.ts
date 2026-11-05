@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ProcessResult, ProcessRunner, TestStep, TypeScript } from "@noldova/tools.pipelines";
+import { ProcessException, ProcessResult, ProcessRunner, TestStep, TypeScript } from "@noldova/tools.pipelines";
 
 import { RecordingOutput } from "./fake-update-host.js";
 
@@ -31,6 +31,12 @@ class FakeTypeScript extends TypeScript {
     this.calls.push(projectPath);
 
     return this.result;
+  }
+}
+
+class RejectingTypeScript extends TypeScript {
+  public override async compileAsync(): Promise<ProcessResult> {
+    throw new ProcessException("tsc", "tsc could not start.");
   }
 }
 
@@ -119,7 +125,7 @@ export class TestStepTests {
       [process.execPath, TestStepTests.COVERAGE_ENTRY_POINT_PATH, coverageFolder, "", JSON.stringify(projects), checkout.directory]
     ]), JSON.stringify(runner.calls));
     Assert.areEqual(JSON.stringify([{ CONTEXT_TEST_FILTERS: "[]", NODE_V8_COVERAGE: coverageFolder }, {}]), JSON.stringify(runner.environments));
-    Assert.areEqual("progress: Compiling the tests of noldova.a...", lines.join("|"));
+    Assert.areEqual("progress start: Compiling the tests of noldova.a...|progress:  Done.", lines.join("|"));
   }
 
   @TestMethod
@@ -194,10 +200,24 @@ export class TestStepTests {
     using checkout = new Checkout();
     const runner = new FakeRunner();
 
-    const result = await new TestStep(new FakeTypeScript(checkout.directory, new ProcessResult(2, "error TS2322: wrong", "")), runner, new RecordingOutput([])).runAsync([]);
+    const lines: string[] = [];
+
+    const result = await new TestStep(new FakeTypeScript(checkout.directory, new ProcessResult(2, "error TS2322: wrong", "")), runner, new RecordingOutput(lines)).runAsync([]);
 
     Assert.areEqual("The TypeScript compiler exited with code 2 for src/noldova.a/tests/tsconfig.json:\nerror TS2322: wrong", result.message);
+    Assert.areEqual("progress start: Compiling the tests of noldova.a...|progress:  Failed.", lines.join("|"));
     Assert.areEqual(0, runner.calls.length);
+  }
+
+  @TestMethod
+  public async endsTheProgressLineWhenTheCompilerCannotStartAsync(): Promise<void> {
+    using checkout = new Checkout();
+    const lines: string[] = [];
+
+    const result = await new TestStep(new RejectingTypeScript(new ProcessRunner(), checkout.directory), new FakeRunner(), new RecordingOutput(lines)).runAsync([]);
+
+    Assert.areEqual("tsc could not start.", result.message);
+    Assert.areEqual("progress start: Compiling the tests of noldova.a...|progress:  Failed.", lines.join("|"));
   }
 
   @TestMethod
