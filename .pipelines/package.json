@@ -1,0 +1,8 @@
+{
+  "name": "pipelines-tool",
+  "private": true,
+  "license": "MIT",
+  "devDependencies": {
+    "@noldova/tools.pipelines.github": "0.0.11"
+  }
+}

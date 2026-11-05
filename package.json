@@ -9,15 +9,15 @@
     "npm": "11.19.0"
   },
   "scripts": {
-    "build": "node scripts/build.ts",
-    "test": "node scripts/test.ts"
+    "build": "npm ci --prefix .pipelines --ignore-scripts --no-audit --no-fund --silent && (npm run --silent pipelines -- installed || npm ci --ignore-scripts) && npm run --silent pipelines -- build",
+    "test": "npm run --silent pipelines -- test",
+    "pipelines": "node .pipelines/node_modules/@noldova/tools.pipelines.github/bin/pipelines.js"
   },
   "devDependencies": {
     "@noldova/context.exceptions": "0.0.3",
     "@noldova/context.json": "0.0.3",
     "@noldova/context.testing": "0.0.3",
     "@types/node": "24.19.2",
-    "tools.pipelines.published": "npm:@noldova/tools.pipelines@0.0.1",
     "typescript": "7.0.2"
   }
 }
