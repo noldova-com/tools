@@ -171,6 +171,7 @@ export class Resources {
   public static readonly coverageIncomplete: string = "Coverage is incomplete.";
   public static readonly coverageUnreadExitCode: number = 2;
   public static readonly coverageVariable: string = "NODE_V8_COVERAGE";
+  public static readonly currentFolder: string = ".";
   public static readonly currentFolderPrefix: string = "./";
   public static readonly declarationFilePath: string = "src/api/index.d.ts";
   public static readonly enabledValue: string = "1";
@@ -180,10 +181,9 @@ export class Resources {
   public static readonly installedDifferencesShown: number = 5;
   public static readonly installedLockFilePath: string = "node_modules/.package-lock.json";
   public static readonly installedStepName: string = "installed";
-  public static readonly installedStepUsage: string = "";
+  public static readonly installedStepUsage: string = "[<folder>]";
   public static readonly licenseFileName: string = "LICENSE";
   public static readonly listCopiesOption: string = "--list-copies";
-  public static readonly lockFileMissing: string = "The checkout has no package-lock.json.";
   public static readonly lockFilePath: string = "package-lock.json";
   public static readonly manifestIndentation: number = 2;
   public static readonly nodeModulesFolder: string = "node_modules";
@@ -191,6 +191,8 @@ export class Resources {
   public static readonly noticesFileName: string = "THIRD-PARTY-NOTICES.txt";
   public static readonly npmCommandLineMissing: string = "npm_execpath is not set; run the step through an npm script, such as npm run build.";
   public static readonly npmCommandLineVariable: string = "npm_execpath";
+  public static readonly npmCleanInstallCommand: string = "npm ci --ignore-scripts";
+  public static readonly npmPrefixOption: string = "--prefix";
   public static readonly npmInstallArchivesValues: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmPackValues: readonly string[] = ["pack", "--silent", "--pack-destination"];
   public static readonly optionPrefix: string = "--";
@@ -203,7 +205,6 @@ export class Resources {
   public static readonly scopeField: string = "scope";
   public static readonly packagesField: string = "packages";
   public static readonly packagesFolder: string = "_packages";
-  public static readonly packagesNotInstalled: string = "node_modules holds no packages that npm installed.";
   public static readonly pathField: string = "path";
   public static readonly readmeFileName: string = "README.md";
   public static readonly skipCoverageDetailsOption: string = "--skip-coverage-details";
@@ -900,11 +901,23 @@ export class Resources {
     return Resources.formatOutputFailure(`npm install exited with code ${exitCode} for the built packages`, output);
   }
 
-  public static formatInstalledDiffers(entryPaths: readonly string[]): string {
+  public static formatLockFileMissing(lockFilePath: string): string {
+    return `There is no ${lockFilePath}.`;
+  }
+
+  public static formatPackagesNotInstalled(nodeModulesPath: string): string {
+    return `${nodeModulesPath} holds no packages that npm installed.`;
+  }
+
+  public static formatCleanInstallCommand(folder: string): string {
+    return folder === Resources.currentFolder ? Resources.npmCleanInstallCommand : `${Resources.npmCleanInstallCommand} ${Resources.npmPrefixOption} ${folder}`;
+  }
+
+  public static formatInstalledDiffers(lockFilePath: string, entryPaths: readonly string[], command: string): string {
     const shown = entryPaths.slice(0, Resources.installedDifferencesShown).join(Resources.messagePartSeparator);
     const more = entryPaths.length > Resources.installedDifferencesShown ? ` and ${entryPaths.length - Resources.installedDifferencesShown} more` : "";
 
-    return `The installed packages differ from package-lock.json at ${shown}${more}; run npm ci --ignore-scripts.`;
+    return `The installed packages differ from ${lockFilePath} at ${shown}${more}; run ${command}.`;
   }
 
   public static formatCompilingTests(name: string): string {
