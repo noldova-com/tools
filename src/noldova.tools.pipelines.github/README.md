@@ -38,7 +38,7 @@ A job installs the package at an exact version, without install scripts, and cal
 | `reproducible` | `<folder>` |
 | `dependents` | `<version> <commit>` |
 | `pins` | `<version> <commit>` |
-| `installed` | none |
+| `installed` | `[<folder>]` |
 | `build` | `[--version <version>] [<package>...]`, or `--list-copies` |
 | `test` | `[--skip-test-details] [--skip-coverage-details] [<filter>...]` |
 

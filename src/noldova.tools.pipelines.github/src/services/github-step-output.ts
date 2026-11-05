@@ -31,6 +31,7 @@ export class GitHubStepOutput implements IStepOutput {
   }
 
   public writeFailure(message: string): void {
-    this.standardError.write(this.annotates ? Resources.formatErrorAnnotation(message) : `${message}${Resources.lineSeparator}`);
+    if (message.length > 0)
+      this.standardError.write(this.annotates ? Resources.formatErrorAnnotation(message) : `${message}${Resources.lineSeparator}`);
   }
 }

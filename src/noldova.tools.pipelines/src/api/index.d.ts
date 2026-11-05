@@ -734,7 +734,8 @@ export declare interface IStepOutput {
 
   /**
    * Writes the message of a step that failed, or the usage line when the
-   * command line names no step it has.
+   * command line names no step it has. An empty message, from a step that
+   * wrote why it failed as progress, writes nothing.
    *
    * @param message What is wrong.
    * @example
@@ -2729,14 +2730,16 @@ export declare class PinsStep implements IStep {
 }
 
 /**
- * The step that checks a checkout's installed packages: `installed`. It
- * succeeds, writing nothing, only when `node_modules` holds what
- * `package-lock.json` locks: every locked package but an optional one for
+ * The step that checks a folder's installed packages: `installed`. It
+ * succeeds, writing nothing, only when the folder's `node_modules` holds what
+ * its `package-lock.json` locks: every locked package but an optional one for
  * another platform, at its version, address and integrity, and no other.
- * The packages the checkout builds are left out, since the build installs
- * them itself. A repository's npm script runs
- * `pipelines installed || npm ci --ignore-scripts && pipelines build`, so it
- * installs only when something changed.
+ * The packages a `build.json` in the folder names are left out, since the
+ * build installs them itself. A difference is no error but the answer the
+ * check exists for, so the step writes it as progress and fails with an empty
+ * message, and a host writes no error for it. A repository's npm script runs
+ * `(pipelines installed || npm ci --ignore-scripts) && pipelines build`, so
+ * it installs only when something changed.
  */
 export declare class InstalledStep implements IStep {
   /**
@@ -2745,40 +2748,48 @@ export declare class InstalledStep implements IStep {
   public readonly name: string;
 
   /**
-   * The values the step takes, none: `""`.
+   * The values the step takes: `"[<folder>]"`.
    */
   public readonly usage: string;
 
   /**
    * Creates the step.
    *
-   * @param workingDirectory The checkout's root.
+   * @param workingDirectory The folder that a folder value is relative to,
+   * and the one the step checks without one: the checkout's root.
+   * @param output Where the step writes why the packages differ.
    * @example
    * ```ts
    * import { InstalledStep } from "@noldova/tools.pipelines";
+   * import { GitHubStepOutput } from "@noldova/tools.pipelines.github";
    *
-   * const step = new InstalledStep(process.cwd());
+   * const step = new InstalledStep(process.cwd(), new GitHubStepOutput(process.stdout, process.stderr));
    * step.name; // "installed"
    * ```
    */
-  public constructor(workingDirectory: string);
+  public constructor(workingDirectory: string, output: IStepOutput);
 
   /**
    * Checks the installed packages.
    *
-   * @param values None.
-   * @returns A promise of the result: succeeded with an empty message, or
-   * failed for any value, a `build.json` that is not valid, a missing
-   * `package-lock.json`, `node_modules` without npm's record of what it
-   * installed, or the first packages that differ, with the command that
-   * installs them. It rejects with `JsonException` from
-   * `@noldova/context.json` for a lock file that is not valid JSON.
+   * @param values Nothing, to check the working directory, or the path of
+   * another folder with its own lock, from the working directory.
+   * @returns A promise of the result: succeeded with an empty message;
+   * failed with an empty message after writing, as progress, that the
+   * folder's `node_modules` has no record of what npm installed, or the first
+   * packages that differ, with the command that installs them; or failed with
+   * a message for more than one value, an empty folder, an option, a folder
+   * without `package-lock.json`, or a `build.json` that is not valid. It rejects with
+   * `JsonException` from `@noldova/context.json` for a lock file that is not
+   * valid JSON.
    * @example
    * ```ts
    * import { InstalledStep } from "@noldova/tools.pipelines";
+   * import { GitHubStepOutput } from "@noldova/tools.pipelines.github";
    *
-   * (await new InstalledStep(process.cwd()).runAsync([])).message;
-   * // "The installed packages differ from package-lock.json at node_modules/typescript; run npm ci --ignore-scripts."
+   * await new InstalledStep(process.cwd(), new GitHubStepOutput(process.stdout, process.stderr)).runAsync([".pipelines"]);
+   * // writes "The installed packages differ from .pipelines/package-lock.json at node_modules/typescript; run npm ci --ignore-scripts --prefix .pipelines.
+"
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

@@ -11,23 +11,30 @@ import os from "node:os";
 import path from "node:path";
 
 import { JsonException } from "@noldova/context.json";
-import { Assert, TestClass, TestMethod } from "@noldova/context.testing";
-import { InstalledStep } from "@noldova/tools.pipelines";
+import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
+import { InstalledStep, type StepResult } from "@noldova/tools.pipelines";
+
+import { RecordingOutput } from "./fake-update-host.js";
 
 class Checkout implements Disposable {
   public readonly directory: string = fs.mkdtempSync(path.join(os.tmpdir(), "tools-pipelines-"));
+  public readonly lines: string[] = [];
 
-  public constructor(locked: object | null, installed: object | null) {
+  public constructor(locked: object | null, installed: object | null, folder: string = ".") {
     this.write("build.json", "{\"packages\":[{\"name\":\"noldova.example\"}]}");
     if (locked !== null)
-      this.write("package-lock.json", JSON.stringify({ name: "example", lockfileVersion: 3, packages: { "": { name: "example" }, ...locked } }));
+      this.write(path.join(folder, "package-lock.json"), JSON.stringify({ name: "example", lockfileVersion: 3, packages: { "": { name: "example" }, ...locked } }));
     if (installed !== null)
-      this.write("node_modules/.package-lock.json", JSON.stringify({ name: "example", lockfileVersion: 3, packages: installed }));
+      this.write(path.join(folder, "node_modules/.package-lock.json"), JSON.stringify({ name: "example", lockfileVersion: 3, packages: installed }));
   }
 
   public write(filePath: string, content: string): void {
     fs.mkdirSync(path.dirname(path.join(this.directory, filePath)), { recursive: true });
     fs.writeFileSync(path.join(this.directory, filePath), content);
+  }
+
+  public runAsync(values: readonly string[] = []): Promise<StepResult> {
+    return new InstalledStep(this.directory, new RecordingOutput(this.lines)).runAsync(values);
   }
 
   public [Symbol.dispose](): void {
@@ -40,11 +47,11 @@ export class InstalledStepTests {
   private static readonly TYPESCRIPT: object = { version: "7.0.2", resolved: "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz", integrity: "sha512-a", dev: true };
 
   @TestMethod
-  public namesItselfAndTakesNoValues(): void {
-    const step = new InstalledStep(".");
+  public namesItselfAndItsValues(): void {
+    const step = new InstalledStep(".", new RecordingOutput([]));
 
     Assert.areEqual("installed", step.name);
-    Assert.areEqual("", step.usage);
+    Assert.areEqual("[<folder>]", step.usage);
   }
 
   @TestMethod
@@ -69,52 +76,81 @@ export class InstalledStepTests {
         "src/linked": { version: "1.0.0", link: true }
       });
 
-    const result = await new InstalledStep(checkout.directory).runAsync([]);
+    const result = await checkout.runAsync();
 
     Assert.isTrue(result.isSuccessful);
     Assert.areEqual("", result.message);
+    Assert.areEqual(0, checkout.lines.length);
   }
 
   @TestMethod
-  public async failsForAnyValueAsync(): Promise<void> {
-    const result = await new InstalledStep(".").runAsync(["more"]);
+  public async checksAnotherFolderWithoutABuildFileAsync(): Promise<void> {
+    using checkout = new Checkout({ "node_modules/@noldova/example": { version: "0.0.4" } }, {}, ".tool");
+
+    const result = await checkout.runAsync([".tool"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual("The installed step takes no values.", result.message);
+    Assert.areEqual("", result.message);
+    Assert.areEqual(
+      "progress: The installed packages differ from .tool/package-lock.json at node_modules/@noldova/example; run npm ci --ignore-scripts --prefix .tool.",
+      checkout.lines.join("|"));
   }
 
   @TestMethod
-  public async failsWithoutABuildFileAsync(): Promise<void> {
-    using checkout = new Checkout(null, null);
-    fs.rmSync(path.join(checkout.directory, "build.json"));
+  public async succeedsForAnotherFolderThatMatchesItsLockAsync(): Promise<void> {
+    using checkout = new Checkout({ "node_modules/typescript": InstalledStepTests.TYPESCRIPT }, { "node_modules/typescript": InstalledStepTests.TYPESCRIPT }, ".tool");
 
-    const result = await new InstalledStep(checkout.directory).runAsync([]);
+    const result = await checkout.runAsync([".tool"]);
 
-    Assert.areEqual("The checkout has no build.json, which names the packages to build.", result.message);
+    Assert.isTrue(result.isSuccessful);
+  }
+
+  @TestData("more other")
+  @TestData("--folder")
+  @TestData("")
+  @TestMethod
+  public async failsForAnOptionOrMoreThanOneValueAsync(values: string): Promise<void> {
+    const result = await new InstalledStep(".", new RecordingOutput([])).runAsync(values.length === 0 ? [""] : values.split(" "));
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("The installed step takes [<folder>].", result.message);
+  }
+
+  @TestMethod
+  public async failsForABuildFileThatIsNotValidAsync(): Promise<void> {
+    using checkout = new Checkout({}, {});
+    checkout.write("build.json", "{\"packages\":[]}");
+
+    const result = await checkout.runAsync();
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.isTrue(result.message.length > 0);
+    Assert.areEqual(0, checkout.lines.length);
   }
 
   @TestMethod
   public async failsWithoutALockFileAsync(): Promise<void> {
     using checkout = new Checkout(null, {});
 
-    const result = await new InstalledStep(checkout.directory).runAsync([]);
+    const result = await checkout.runAsync(["missing"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual("The checkout has no package-lock.json.", result.message);
+    Assert.areEqual("There is no missing/package-lock.json.", result.message);
+    Assert.areEqual(0, checkout.lines.length);
   }
 
   @TestMethod
-  public async failsWhenNpmInstalledNothingAsync(): Promise<void> {
-    using checkout = new Checkout({}, null);
+  public async writesThatNpmInstalledNothingAsync(): Promise<void> {
+    using checkout = new Checkout({}, null, ".tool");
 
-    const result = await new InstalledStep(checkout.directory).runAsync([]);
+    const result = await checkout.runAsync([".tool"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual("node_modules holds no packages that npm installed.", result.message);
+    Assert.areEqual("progress: .tool/node_modules holds no packages that npm installed.", checkout.lines.join("|"));
   }
 
   @TestMethod
-  public async namesThePackagesThatDifferAsync(): Promise<void> {
+  public async writesThePackagesThatDifferAsync(): Promise<void> {
     using checkout = new Checkout(
       {
         "node_modules/typescript": InstalledStepTests.TYPESCRIPT,
@@ -131,21 +167,22 @@ export class InstalledStepTests {
         "node_modules/f": { version: "1.0.0" }
       });
 
-    const result = await new InstalledStep(checkout.directory).runAsync([]);
+    const result = await checkout.runAsync();
 
     Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("", result.message);
     Assert.areEqual(
-      "The installed packages differ from package-lock.json at node_modules/typescript; node_modules/a; node_modules/b; node_modules/c; node_modules/d and 2 more; run npm ci --ignore-scripts.",
-      result.message);
+      "progress: The installed packages differ from package-lock.json at node_modules/typescript; node_modules/a; node_modules/b; node_modules/c; node_modules/d and 2 more; run npm ci --ignore-scripts.",
+      checkout.lines.join("|"));
   }
 
   @TestMethod
-  public async namesASinglePackageThatDiffersAsync(): Promise<void> {
+  public async writesASinglePackageThatDiffersAsync(): Promise<void> {
     using checkout = new Checkout({ "node_modules/typescript": InstalledStepTests.TYPESCRIPT }, {});
 
-    const result = await new InstalledStep(checkout.directory).runAsync([]);
+    await checkout.runAsync();
 
-    Assert.areEqual("The installed packages differ from package-lock.json at node_modules/typescript; run npm ci --ignore-scripts.", result.message);
+    Assert.areEqual("progress: The installed packages differ from package-lock.json at node_modules/typescript; run npm ci --ignore-scripts.", checkout.lines.join("|"));
   }
 
   @TestMethod
@@ -153,6 +190,6 @@ export class InstalledStepTests {
     using checkout = new Checkout(null, {});
     checkout.write("package-lock.json", "{");
 
-    await Assert.throwsAsync(() => new InstalledStep(checkout.directory).runAsync([]), JsonException);
+    await Assert.throwsAsync(() => checkout.runAsync(), JsonException);
   }
 }

@@ -39,7 +39,7 @@ export class PipelinesProgramTests {
 
     Assert.areEqual(1, exitCode);
     Assert.areEqual(
-      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit> | installed | build [--version <version>] [<package>...], or --list-copies | test [--skip-test-details] [--skip-coverage-details] [<filter>...]\"]",
+      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit> | installed [<folder>] | build [--version <version>] [<package>...], or --list-copies | test [--skip-test-details] [--skip-coverage-details] [<filter>...]\"]",
       JSON.stringify(output.lines));
   }
 
@@ -75,7 +75,6 @@ export class PipelinesProgramTests {
 
   @TestData("line-endings")
   @TestData("unchanged")
-  @TestData("installed")
   @TestMethod
   public async runsTheStepThatTakesNoValuesAsync(stepName: string): Promise<void> {
     const output = new RecordingOutput();
@@ -84,5 +83,15 @@ export class PipelinesProgramTests {
 
     Assert.areEqual(1, exitCode);
     Assert.areEqual(JSON.stringify([`failure: The ${stepName} step takes no values.`]), JSON.stringify(output.lines));
+  }
+
+  @TestMethod
+  public async runsTheInstalledStepAsync(): Promise<void> {
+    const output = new RecordingOutput();
+
+    const exitCode = await new PipelinesProgram(output).runAsync(["installed", "a", "b"]);
+
+    Assert.areEqual(1, exitCode);
+    Assert.areEqual(JSON.stringify(["failure: The installed step takes [<folder>]."]), JSON.stringify(output.lines));
   }
 }

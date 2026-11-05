@@ -69,7 +69,7 @@ export declare class GitHubStepOutput implements IStepOutput {
    * `::error::` workflow command, with `%`, carriage returns and line feeds
    * escaped as `%25`, `%0D` and `%0A`, so a message of several lines is one
    * annotation; when the output doesn't annotate, it writes the message as
-   * it is and a line feed.
+   * it is and a line feed. An empty message writes nothing.
    *
    * @param message What is wrong.
    * @example

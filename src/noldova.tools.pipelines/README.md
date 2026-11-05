@@ -352,16 +352,20 @@ A repository's `package.json` runs the steps through the package's `pipelines` c
 
 ```json
 "scripts": {
-  "build": "pipelines installed || npm ci --ignore-scripts && pipelines build",
+  "build": "(pipelines installed || npm ci --ignore-scripts) && pipelines build",
   "test": "pipelines test"
 }
 ```
 
 #### The installed step
 
-`installed` takes no values and succeeds, writing nothing, when `node_modules` holds what `package-lock.json` locks: every locked package at its version, address and integrity, but an optional one for another platform, and no other.
-The repository's own packages are left out, since the build installs them.
+`installed [<folder>]` succeeds, writing nothing, when `node_modules` holds what `package-lock.json` locks: every locked package at its version, address and integrity, but an optional one for another platform, and no other.
+It checks the working directory, or the folder given, a path from it with its own `package-lock.json`, such as one that pins a build tool apart from the repository's packages.
+The packages a `build.json` in that folder names are left out, since the build installs them.
 It fails when `node_modules` is missing or differs, so the script above runs `npm ci --ignore-scripts` only after a clone or a change to the lock file.
+That failure is the answer the check exists for, not an error: it writes the difference and the command that installs as a plain line, and the host writes no error for it.
+A folder without `package-lock.json` is an error, since no install can fix it.
+The parentheses make the script run the same in a POSIX shell and in Windows' `cmd`, which reads `a || b && c` as `a || (b && c)`.
 
 #### The build step
 

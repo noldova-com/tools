@@ -39,7 +39,6 @@ export class GitHubStepOutputTests {
   @TestData("archives has no a.tgz.\narchives has no b.tgz.", "::error::archives has no a.tgz.%0Aarchives has no b.tgz.\n")
   @TestData("line\r\nend\r", "::error::line%0D%0Aend%0D\n")
   @TestData("100% of %0A", "::error::100%25 of %250A\n")
-  @TestData("", "::error::\n")
   @TestMethod
   public writesAFailureAsOneEscapedErrorAnnotationOnStandardError(message: string, expected: string): void {
     const standardOutput = GitHubStepOutputTests.createStream();
@@ -70,6 +69,19 @@ export class GitHubStepOutputTests {
     new GitHubStepOutput(standardOutput, standardError, false).writeFailure("100% of a\nb");
 
     Assert.areEqual("100% of a\nb\n", GitHubStepOutputTests.read(standardError));
+    Assert.areEqual("", GitHubStepOutputTests.read(standardOutput));
+  }
+
+  @TestData(true)
+  @TestData(false)
+  @TestMethod
+  public writesNothingForAnEmptyFailure(annotates: boolean): void {
+    const standardOutput = GitHubStepOutputTests.createStream();
+    const standardError = GitHubStepOutputTests.createStream();
+
+    new GitHubStepOutput(standardOutput, standardError, annotates).writeFailure("");
+
+    Assert.areEqual("", GitHubStepOutputTests.read(standardError));
     Assert.areEqual("", GitHubStepOutputTests.read(standardOutput));
   }
 
