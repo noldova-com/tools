@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import type { StdioOptions } from "node:child_process";
 import type { BinaryToTextEncoding } from "node:crypto";
 
 export class Resources {
@@ -157,6 +158,77 @@ export class Resources {
   public static readonly valueSeparator: string = " ";
   public static readonly versionField: string = "version";
   public static readonly versionFilePath: string = "version.json";
+  public static readonly buildConfigEmpty: string = "it names no package";
+  public static readonly buildConfigFilePath: string = "build.json";
+  public static readonly buildConfigMissing: string = "The checkout has no build.json, which names the packages to build.";
+  public static readonly buildFolder: string = "_build/packages";
+  public static readonly buildPackageNamePattern: RegExp = /^noldova(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/;
+  public static readonly buildScriptFields: readonly string[] = ["pre", "compile", "post"];
+  public static readonly buildStepName: string = "build";
+  public static readonly buildStepUsage: string = "[--version <version>] [<package>...], or --list-copies";
+  public static readonly coverageFolder: string = "_build/coverage";
+  public static readonly coverageEntryPointPath: string = "./coverage-entry-point.js";
+  public static readonly coverageIncomplete: string = "Coverage is incomplete.";
+  public static readonly coverageUnreadExitCode: number = 2;
+  public static readonly coverageVariable: string = "NODE_V8_COVERAGE";
+  public static readonly currentFolderPrefix: string = "./";
+  public static readonly declarationFilePath: string = "src/api/index.d.ts";
+  public static readonly enabledValue: string = "1";
+  public static readonly filteredCoverageSkipped: string = "The coverage gate is skipped for a filtered run.";
+  public static readonly gitReadPrefixValues: readonly string[] = ["rev-parse", "--show-prefix"];
+  public static readonly installedComparedFields: readonly string[] = ["version", "resolved", "integrity"];
+  public static readonly installedDifferencesShown: number = 5;
+  public static readonly installedLockFilePath: string = "node_modules/.package-lock.json";
+  public static readonly installedStepName: string = "installed";
+  public static readonly installedStepUsage: string = "";
+  public static readonly licenseFileName: string = "LICENSE";
+  public static readonly listCopiesOption: string = "--list-copies";
+  public static readonly lockFileMissing: string = "The checkout has no package-lock.json.";
+  public static readonly lockFilePath: string = "package-lock.json";
+  public static readonly manifestIndentation: number = 2;
+  public static readonly nodeModulesFolder: string = "node_modules";
+  public static readonly nodeModulesPathPrefix: string = "node_modules/";
+  public static readonly noticesFileName: string = "THIRD-PARTY-NOTICES.txt";
+  public static readonly npmCommandLineMissing: string = "npm_execpath is not set; run the step through an npm script, such as npm run build.";
+  public static readonly npmCommandLineVariable: string = "npm_execpath";
+  public static readonly npmInstallArchivesValues: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
+  public static readonly npmPackValues: readonly string[] = ["pack", "--silent", "--pack-destination"];
+  public static readonly optionPrefix: string = "--";
+  public static readonly optionalField: string = "optional";
+  public static readonly packageDeclarationFilePath: string = "api/index.d.ts";
+  public static readonly packageManifestFileName: string = "package.json";
+  public static readonly packageNamePrefix: string = "noldova.";
+  public static readonly packageScope: string = "@noldova/";
+  public static readonly packagesField: string = "packages";
+  public static readonly packagesFolder: string = "_packages";
+  public static readonly packagesNotInstalled: string = "node_modules holds no packages that npm installed.";
+  public static readonly pathField: string = "path";
+  public static readonly readmeFileName: string = "README.md";
+  public static readonly skipCoverageDetailsOption: string = "--skip-coverage-details";
+  public static readonly skipTestDetailsOption: string = "--skip-test-details";
+  public static readonly skipTestDetailsVariable: string = "CONTEXT_SKIP_TEST_DETAILS";
+  public static readonly sourceFolder: string = "src";
+  public static readonly sourceMapsOption: string = "--enable-source-maps";
+  public static readonly sourceProjectPath: string = "src/tsconfig.json";
+  public static readonly testEntryPath: string = "node_modules/@noldova/context.testing/services/execution/test-run-entry-point.js";
+  public static readonly testFiltersVariable: string = "CONTEXT_TEST_FILTERS";
+  public static readonly testOptions: readonly string[] = ["--skip-test-details", "--skip-coverage-details"];
+  public static readonly testStepName: string = "test";
+  public static readonly testStepUsage: string = "[--skip-test-details] [--skip-coverage-details] [<filter>...]";
+  public static readonly testingMissing: string = "@noldova/context.testing is not installed; the repository's devDependencies name it.";
+  public static readonly testingPackageName: string = "@noldova/context.testing";
+  public static readonly testsFolder: string = "_build/tests";
+  public static readonly testsMissing: string = "No package has tests.";
+  public static readonly testsPassed: string = "The tests passed, and coverage is complete.";
+  public static readonly testsProjectPath: string = "tests/tsconfig.json";
+  public static readonly typeScriptCompileValues: readonly string[] = ["--pretty", "--project"];
+  public static readonly typeScriptCompilerPath: string = "bin/tsc";
+  public static readonly typeScriptManifestPath: string = "typescript/package.json";
+  public static readonly typeScriptMissing: string = "typescript is not installed; the repository's devDependencies name it.";
+  public static readonly versionFileMissing: string = "The checkout has no version.json, which holds the version to build.";
+  public static readonly versionOption: string = "--version";
+  public static readonly versionPlaceholder: string = "__VERSION__";
+  public static readonly visibleProcessStreams: StdioOptions = "inherit";
   public static readonly versionInvalid: string = "The text is not a version.";
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
@@ -742,10 +814,115 @@ export class Resources {
     return `"${program}" could not start: ${reason}`;
   }
 
+  public static formatPackageName(name: string): string {
+    return `${Resources.packageScope}${name.slice(Resources.packageNamePrefix.length)}`;
+  }
+
+  public static formatBuildConfigInvalid(problem: string): string {
+    return `build.json is invalid: ${problem}.`;
+  }
+
+  public static formatBuildPackageDuplicated(name: string): string {
+    return `it names ${name} more than once`;
+  }
+
+  public static formatBuildPackageNameInvalid(name: string): string {
+    return `"${name}" is not a package folder name, such as noldova.tools.pipelines`;
+  }
+
+  public static formatBuildPackagePathInvalid(name: string, folder: string): string {
+    return `the path of ${name}, "${folder}", is not a folder under src/ whose last segment is ${name}`;
+  }
+
+  public static formatBuildScriptInvalid(name: string, field: string, script: string): string {
+    return `the ${field} script of ${name}, "${script}", is not a path inside the checkout`;
+  }
+
+  public static formatOptionAlone(option: string): string {
+    return `The option ${option} takes no other value.`;
+  }
+
+  public static formatOptionUnknown(option: string, usage: string): string {
+    return `Unknown option ${option}; the step takes ${usage}.`;
+  }
+
+  public static formatOptionDuplicated(option: string): string {
+    return `The option ${option} is given more than once.`;
+  }
+
+  public static formatVersionOptionMissing(option: string): string {
+    return `The option ${option} takes a version as its next value, such as ${option} 0.0.5 or ${option} 0.0.5-nightly.20261102.`;
+  }
+
+  public static formatBuildPackageNamedTwice(name: string): string {
+    return `The package ${name} is named more than once.`;
+  }
+
+  public static formatBuildPackageUnknown(name: string): string {
+    return `build.json names no package ${name}.`;
+  }
+
+  public static formatCheckoutRootMissing(directory: string): string {
+    return `${directory} is not the root of a git checkout.`;
+  }
+
+  public static formatPackagesBuilt(count: number, version: string): string {
+    return `Built ${count} ${count === 1 ? "package" : "packages"} at version ${version}.`;
+  }
+
+  public static formatBuildingPackage(packageName: string): string {
+    return `Building ${packageName}...`;
+  }
+
+  public static formatBuildFileMissing(packageName: string, filePath: string): string {
+    return `${packageName} needs ${filePath}, which is missing.`;
+  }
+
+  public static formatCompileFailed(projectPath: string, exitCode: number | null, output: string): string {
+    return Resources.formatOutputFailure(`The TypeScript compiler exited with code ${exitCode} for ${projectPath}`, output);
+  }
+
+  public static formatBuildScriptFailed(packageName: string, script: string, exitCode: number | null, output: string): string {
+    return Resources.formatOutputFailure(`The script ${script} of ${packageName} exited with code ${exitCode}`, output);
+  }
+
+  public static formatPackFailed(packageName: string, exitCode: number | null, output: string): string {
+    return Resources.formatOutputFailure(`npm pack exited with code ${exitCode} for ${packageName}`, output);
+  }
+
+  public static formatArchivesNotInstalled(exitCode: number | null, output: string): string {
+    return Resources.formatOutputFailure(`npm install exited with code ${exitCode} for the built packages`, output);
+  }
+
+  public static formatInstalledDiffers(entryPaths: readonly string[]): string {
+    const shown = entryPaths.slice(0, Resources.installedDifferencesShown).join(Resources.messagePartSeparator);
+    const more = entryPaths.length > Resources.installedDifferencesShown ? ` and ${entryPaths.length - Resources.installedDifferencesShown} more` : "";
+
+    return `The installed packages differ from package-lock.json at ${shown}${more}; run npm ci --ignore-scripts.`;
+  }
+
+  public static formatCompilingTests(name: string): string {
+    return `Compiling the tests of ${name}...`;
+  }
+
+  public static formatCoverageUnread(exitCode: number | null): string {
+    return `The coverage report exited with code ${exitCode}.`;
+  }
+
+  public static formatTestsFailed(exitCode: number | null): string {
+    return `The tests failed with exit code ${exitCode}.`;
+  }
+
   public static formatProcessFailed(command: string, exitCode: number | null, errorOutput: string): string {
     const detail = errorOutput.trim();
 
     return detail.length === 0 ? `"${command}" failed with exit code ${exitCode}.` : `"${command}" failed with exit code ${exitCode}: ${detail}`;
+  }
+
+  private static formatOutputFailure(failure: string, output: string): string {
+    const detail = output.trimEnd();
+
+    return detail.trim().length === 0 ? `${failure}.` : `${failure}:${Resources.lineSeparator}${detail}`;
   }
 
   private static formatFailureLine(failure: string, errorOutput: string): string {

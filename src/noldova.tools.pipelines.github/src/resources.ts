@@ -84,6 +84,8 @@ export class Resources {
   public static readonly retryAfterHeader: string = "Retry-After";
   public static readonly retryAfterMaxSeconds: number = 60;
   public static readonly retryAfterPattern: RegExp = /^[0-9]+$/;
+  public static readonly actionsValue: string = "true";
+  public static readonly actionsVariable: string = "GITHUB_ACTIONS";
   public static readonly runnerTemporaryVariable: string = "RUNNER_TEMP";
   public static readonly pathField: string = "path";
   public static readonly pathSeparator: string = "/";

@@ -8,6 +8,7 @@
 
 import path from "node:path";
 
+import { BuildException } from "../exceptions/build.exception.js";
 import { ProcessException } from "../exceptions/process.exception.js";
 import type { ProcessResult } from "../models/process-result.js";
 import { StepResult } from "../models/step-result.js";
@@ -18,11 +19,13 @@ export class Npm {
   private readonly processRunner: ProcessRunner;
   public readonly workingDirectory: string;
   private readonly platform: string;
+  private readonly environment: Readonly<Record<string, string | undefined>>;
 
-  public constructor(processRunner: ProcessRunner, workingDirectory: string, platform: string = process.platform) {
+  public constructor(processRunner: ProcessRunner, workingDirectory: string, platform: string = process.platform, environment: Readonly<Record<string, string | undefined>> = process.env) {
     this.processRunner = processRunner;
     this.workingDirectory = workingDirectory;
     this.platform = platform;
+    this.environment = environment;
   }
 
   public async viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult> {
@@ -75,6 +78,14 @@ export class Npm {
     return result.output.trim();
   }
 
+  public async packAsync(directory: string, destination: string): Promise<ProcessResult> {
+    return await this.runCommandLineAsync([...Resources.npmPackValues, destination], directory);
+  }
+
+  public async installArchivesAsync(archivePaths: readonly string[]): Promise<ProcessResult> {
+    return await this.runCommandLineAsync([...Resources.npmInstallArchivesValues, ...archivePaths], this.workingDirectory);
+  }
+
   public static isRegistry(text: string): boolean {
     if (!URL.canParse(text))
       return false;
@@ -82,6 +93,14 @@ export class Npm {
     const url = new URL(text);
 
     return url.protocol === Resources.registryProtocol && url.username.length === 0 && url.password.length === 0 && url.search.length === 0 && url.hash.length === 0;
+  }
+
+  private async runCommandLineAsync(values: readonly string[], directory: string): Promise<ProcessResult> {
+    const commandLinePath = this.environment[Resources.npmCommandLineVariable];
+    if (commandLinePath === undefined || commandLinePath.length === 0)
+      throw new BuildException(Resources.npmCommandLineMissing);
+
+    return await this.processRunner.runAsync(process.execPath, [commandLinePath, ...values], directory);
   }
 
   private async runAsync(values: readonly string[]): Promise<ProcessResult> {

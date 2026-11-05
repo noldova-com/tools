@@ -42,4 +42,12 @@ export class ProcessRunner {
       });
     });
   }
+
+  public async runVisibleAsync(program: string, values: readonly string[], workingDirectory: string, environment: Readonly<Record<string, string>>): Promise<number | null> {
+    return await new Promise((resolve, reject) => {
+      const child = spawn(program, values, { cwd: workingDirectory, shell: false, stdio: Resources.visibleProcessStreams, env: { ...process.env, ...environment } });
+      child.on("error", t => { reject(new ProcessException(program, Resources.formatProcessNotStarted(program, t.message), new ExceptionOptions(t))); });
+      child.on("close", exitCode => { resolve(exitCode); });
+    });
+  }
 }

@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines.github
 
 Runs the steps of `@noldova/tools.pipelines` on GitHub Actions.
-This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings, unchanged, reproducible, dependents and pins steps, and the prune, tag, dependents and pins steps' access to GitHub.
+This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings, unchanged, reproducible, dependents, pins, installed, build and test steps, and the prune, tag, dependents and pins steps' access to GitHub.
 
 ## Install
 
@@ -38,12 +38,17 @@ A job installs the package at an exact version, without install scripts, and cal
 | `reproducible` | `<folder>` |
 | `dependents` | `<version> <commit>` |
 | `pins` | `<version> <commit>` |
+| `installed` | none |
+| `build` | `[--version <version>] [<package>...]`, or `--list-copies` |
+| `test` | `[--skip-test-details] [--skip-coverage-details] [<filter>...]` |
 
 `@noldova/tools.pipelines`'s README says what each step checks and does.
 The reproducible, dependents and pins steps make their temporary folders in `RUNNER_TEMP`, which the runner empties after each job, cancelled ones included.
 
 - A step that succeeds writes its message to standard output and exits with code `0`; an empty message, such as the nightly step's when nothing changed, writes nothing.
 - A step that fails writes its message as one error annotation, which the run's summary shows, and exits with code `1`; so does a first value that names no step, with the usage line of every step.
+  Outside GitHub Actions, where `GITHUB_ACTIONS` isn't `true`, such as when a person builds on their machine, it writes the message as it is.
+- The build and test steps write their progress, such as each package they build, to standard output as they go.
 - The annotation goes to standard error, which GitHub Actions reads workflow commands from as it does standard output, so a step whose output the workflow keeps, such as the nightly version above, still shows it.
 - A fault, such as git failing to start, ends the run with its stack trace and exit code `1`.
 

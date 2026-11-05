@@ -107,4 +107,19 @@ export class ProcessRunnerTests {
 
     Assert.areEqual(process.execPath, exception.program);
   }
+
+  @TestMethod
+  public async runsAProgramWithThisProcesssStreamsToItsExitCodeAsync(): Promise<void> {
+    const exitCode = await new ProcessRunner().runVisibleAsync(process.execPath, ["-e", "process.exitCode = process.env.TOOLS_PIPELINES_GIVEN === 'given' ? 3 : 4;"], ".", { TOOLS_PIPELINES_GIVEN: "given" });
+
+    Assert.areEqual(3, exitCode);
+  }
+
+  @TestMethod
+  public async rejectsAVisibleProgramThatCannotStartAsync(): Promise<void> {
+    const exception = await Assert.throwsAsync(() => new ProcessRunner().runVisibleAsync("tools-pipelines-missing-program", [], ".", {}), ProcessException);
+
+    Assert.areEqual("tools-pipelines-missing-program", exception.program);
+    Assert.isInstanceOf(exception.cause, Error);
+  }
 }

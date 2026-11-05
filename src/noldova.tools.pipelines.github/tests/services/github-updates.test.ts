@@ -33,6 +33,10 @@ class RecordingProcessRunner extends ProcessRunner {
 class RecordingOutput implements IStepOutput {
   public readonly lines: string[] = [];
 
+  public writeProgress(message: string): void {
+    this.lines.push(`progress: ${message}`);
+  }
+
   public writeSuccess(message: string): void {
     this.lines.push(`success: ${message}`);
   }

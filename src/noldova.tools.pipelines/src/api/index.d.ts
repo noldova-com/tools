@@ -75,6 +75,32 @@ export declare class ProcessException extends PipelineException {
 }
 
 /**
+ * The exception that is thrown when a repository's build cannot go on, such
+ * as for a `build.json` that is not valid, a file a package needs that is
+ * missing, or a compile, script, pack or install that fails; the build,
+ * test and installed steps report its message as their failure.
+ */
+export declare class BuildException extends PipelineException {
+  /**
+   * Creates the exception with the explanation it reports.
+   *
+   * @param message The complete explanation, kept as given, such as which
+   * file is missing or what the compiler wrote.
+   * @param options The failure that caused this one, as its `cause`.
+   * Omitted, the exception has no cause.
+   * @example
+   * ```ts
+   * import { BuildException, PipelineException } from "@noldova/tools.pipelines";
+   *
+   * const exception = new BuildException("The checkout has no build.json, which names the packages to build.");
+   * exception.name; // "BuildException"
+   * exception instanceof PipelineException; // true
+   * ```
+   */
+  public constructor(message: string, options?: ExceptionOptions);
+}
+
+/**
  * The exception that is thrown when a text is not a version, when a
  * version's part is not a whole number from 0 to `Number.MAX_SAFE_INTEGER`,
  * or when a nightly version's date is not a calendar date.
@@ -454,6 +480,168 @@ export declare class ArchiveCheck {
 }
 
 /**
+ * One package a repository builds, as its `build.json` names it: its folder
+ * under `src/`, and the scripts that run before, instead of and after the
+ * TypeScript compile.
+ */
+export declare class BuildPackage {
+  /**
+   * The package's folder name, such as `noldova.tools.pipelines`.
+   */
+  public readonly name: string;
+
+  /**
+   * The package's folder under `src/`, such as
+   * `parsers/noldova.context.parsers.regex`; its last segment is the name.
+   */
+  public readonly path: string;
+
+  /**
+   * The package's npm name, `@noldova/` and the folder name after
+   * `noldova.`, such as `@noldova/tools.pipelines`.
+   */
+  public readonly packageName: string;
+
+  /**
+   * The script that runs before the compile, a path in the checkout, or
+   * `null`.
+   */
+  public readonly pre: string | null;
+
+  /**
+   * The script that runs instead of the TypeScript compile, a path in the
+   * checkout, or `null` for the compile of `src/<path>/src/tsconfig.json`.
+   */
+  public readonly compile: string | null;
+
+  /**
+   * The script that runs after the compile, a path in the checkout, or
+   * `null`.
+   */
+  public readonly post: string | null;
+
+  /**
+   * Creates the package.
+   *
+   * @param name The folder name, such as `noldova.tools.pipelines`.
+   * @param path The folder under `src/`. Omitted, it is the name.
+   * @param pre The script before the compile. Omitted, there is none.
+   * @param compile The script instead of the compile. Omitted, the package
+   * compiles with TypeScript.
+   * @param post The script after the compile. Omitted, there is none.
+   * @example
+   * ```ts
+   * import { BuildPackage } from "@noldova/tools.pipelines";
+   *
+   * const buildPackage = new BuildPackage("noldova.tools.pipelines");
+   * buildPackage.packageName; // "@noldova/tools.pipelines"
+   * buildPackage.buildFolder; // "_build/packages/noldova.tools.pipelines"
+   * ```
+   */
+  public constructor(name: string, path?: string, pre?: string | null, compile?: string | null, post?: string | null);
+
+  /**
+   * The package's source folder in the checkout, `src/<path>`.
+   */
+  public get sourceFolder(): string;
+
+  /**
+   * The folder the package is built into, `_build/packages/<name>`.
+   */
+  public get buildFolder(): string;
+
+  /**
+   * The folder the package's tests compile into, `_build/tests/<name>`.
+   */
+  public get testsFolder(): string;
+
+  /**
+   * Names the archive `npm pack` makes of a version of the package.
+   *
+   * @param version The version, such as `0.0.5`.
+   * @returns The file name, such as `noldova-tools.pipelines-0.0.5.tgz`.
+   * @example
+   * ```ts
+   * import { BuildPackage } from "@noldova/tools.pipelines";
+   *
+   * new BuildPackage("noldova.tools.pipelines").archiveName("0.0.5"); // "noldova-tools.pipelines-0.0.5.tgz"
+   * ```
+   */
+  public archiveName(version: string): string;
+}
+
+/**
+ * The packages a repository builds, in the order it builds them, as its
+ * `build.json` names them:
+ * `{ "packages": [{ "name": "<folder>", "path": "<folder under src/>", "pre": "<script>", "compile": "<script>", "post": "<script>" }] }`,
+ * where only `name` is required. A package's folder name is `noldova.` and
+ * lowercase segments joined by dots, its path is a relative folder whose
+ * last segment is the name, and each script is a relative path inside the
+ * checkout that Node.js runs with the package's source folder and build
+ * folder as its values.
+ */
+export declare class BuildConfig {
+  /**
+   * The packages, in the order `build.json` names them.
+   */
+  public readonly packages: readonly BuildPackage[];
+
+  /**
+   * Creates the configuration.
+   *
+   * @param packages The packages, in build order.
+   * @example
+   * ```ts
+   * import { BuildConfig, BuildPackage } from "@noldova/tools.pipelines";
+   *
+   * const config = new BuildConfig([new BuildPackage("noldova.tools.pipelines")]);
+   * ```
+   */
+  public constructor(packages: readonly BuildPackage[]);
+
+  /**
+   * The packages' npm names, such as `@noldova/tools.pipelines`.
+   */
+  public get packageNames(): readonly string[];
+
+  /**
+   * Reads a checkout's `build.json`.
+   *
+   * @param directory The checkout's root.
+   * @returns The configuration.
+   * @throws {@link BuildException} when the file is missing or names no
+   * package, a package twice, a name that is not a package folder name, or a
+   * path or a script outside the checkout; `JsonException` from
+   * `@noldova/context.json` when it is not JSON or lacks a field.
+   * @example
+   * ```ts
+   * import { BuildConfig } from "@noldova/tools.pipelines";
+   *
+   * BuildConfig.read(process.cwd()).packageNames; // ["@noldova/tools.pipelines", "@noldova/tools.pipelines.github"]
+   * ```
+   */
+  public static read(directory: string): BuildConfig;
+
+  /**
+   * Reads the text of a `build.json`.
+   *
+   * @param text The file's text.
+   * @returns The configuration.
+   * @throws {@link BuildException} when the text names no package, a
+   * package twice, a name that is not a package folder name, or a path or a
+   * script outside the checkout; `JsonException` from
+   * `@noldova/context.json` when it is not JSON or lacks a field.
+   * @example
+   * ```ts
+   * import { BuildConfig } from "@noldova/tools.pipelines";
+   *
+   * BuildConfig.parse("{\"packages\":[{\"name\":\"noldova.example\"}]}").packages[0]?.packageName; // "@noldova/example"
+   * ```
+   */
+  public static parse(text: string): BuildConfig;
+}
+
+/**
  * A step of a pipeline that a {@link CommandLine} runs by its name, such as
  * {@link SourceStep}.
  */
@@ -499,6 +687,25 @@ export declare interface IStep {
  */
 export declare interface IStepOutput {
   /**
+   * Writes a line of a step's progress while it runs, such as the package it
+   * builds or a line of a coverage report.
+   *
+   * @param message The line.
+   * @example
+   * ```ts
+   * import type { IStepOutput } from "@noldova/tools.pipelines";
+   *
+   * const output: IStepOutput = {
+   *   writeProgress: message => console.log(message),
+   *   writeSuccess: message => console.log(message),
+   *   writeFailure: message => console.error(message)
+   * };
+   * output.writeProgress("Building @noldova/tools.pipelines...");
+   * ```
+   */
+  writeProgress(message: string): void;
+
+  /**
    * Writes the message of a step that succeeded.
    *
    * @param message The step's message.
@@ -507,6 +714,7 @@ export declare interface IStepOutput {
    * import type { IStepOutput } from "@noldova/tools.pipelines";
    *
    * const output: IStepOutput = {
+   *   writeProgress: message => console.log(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * };
@@ -525,6 +733,7 @@ export declare interface IStepOutput {
    * import type { IStepOutput } from "@noldova/tools.pipelines";
    *
    * const output: IStepOutput = {
+   *   writeProgress: message => console.log(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * };
@@ -791,6 +1000,7 @@ export declare class CommandLine {
    *
    * const git = new Git(new ProcessRunner(), process.cwd());
    * const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
+   *   writeProgress: message => console.log(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * });
@@ -816,6 +1026,7 @@ export declare class CommandLine {
    *
    * const git = new Git(new ProcessRunner(), process.cwd());
    * const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
+   *   writeProgress: message => console.log(message),
    *   writeSuccess: message => console.log(message),
    *   writeFailure: message => console.error(message)
    * });
@@ -860,6 +1071,28 @@ export declare class ProcessRunner {
    * ```
    */
   public runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number): Promise<ProcessResult>;
+
+  /**
+   * Runs a program to its end with this process's input and output, so what
+   * it writes shows as it runs, such as a test run's progress.
+   *
+   * @param program The program, found on the `PATH` or a path to it.
+   * @param values The values passed to the program, each as one argument,
+   * never read by a shell.
+   * @param workingDirectory The directory the program runs in.
+   * @param environment Variables the program gets on top of this process's
+   * own.
+   * @returns A promise of the program's exit code, or `null` when a signal
+   * ended it. It rejects with {@link ProcessException} only when the program
+   * cannot start.
+   * @example
+   * ```ts
+   * import { ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new ProcessRunner().runVisibleAsync("git", ["--version"], process.cwd(), {}); // 0, after git printed its version
+   * ```
+   */
+  public runVisibleAsync(program: string, values: readonly string[], workingDirectory: string, environment: Readonly<Record<string, string>>): Promise<number | null>;
 }
 
 /**
@@ -1111,6 +1344,22 @@ export declare class Git {
   public readHeadAsync(): Promise<string>;
 
   /**
+   * Reads where the working directory is inside the clone.
+   *
+   * @returns A promise of the path from the clone's root, ending with `/`,
+   * such as `src/`, or empty at the root. It rejects with
+   * {@link ProcessException} if git cannot start or fails, such as outside a
+   * clone.
+   * @example
+   * ```ts
+   * import { Git, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * await new Git(new ProcessRunner(), process.cwd()).readPrefixAsync(); // "" at the clone's root
+   * ```
+   */
+  public readPrefixAsync(): Promise<string>;
+
+  /**
    * Reads the email address of a commit's committer.
    *
    * @param revision The commit, such as its id or `HEAD`.
@@ -1240,6 +1489,9 @@ export declare class Npm {
    * @param platform The platform npm runs on, as `process.platform` names it;
    * on `win32`, where npm is a command script, it reads npm's version
    * through `cmd.exe`. Omitted, it is `process.platform`.
+   * @param environment The variables that name npm's command line, as an npm
+   * script sets `npm_execpath`, which packing and installing the built
+   * packages run with Node.js. Omitted, it is `process.env`.
    * @example
    * ```ts
    * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
@@ -1247,7 +1499,7 @@ export declare class Npm {
    * const npm = new Npm(new ProcessRunner(), process.cwd());
    * ```
    */
-  public constructor(processRunner: ProcessRunner, workingDirectory: string, platform?: string);
+  public constructor(processRunner: ProcessRunner, workingDirectory: string, platform?: string, environment?: Readonly<Record<string, string | undefined>>);
 
   /**
    * The directory `npm` runs in, as the constructor got it.
@@ -1401,6 +1653,44 @@ export declare class Npm {
   public readVersionAsync(): Promise<string>;
 
   /**
+   * Packs a built package with `npm pack --silent --pack-destination`, run
+   * by Node.js from `npm_execpath`.
+   *
+   * @param directory The built package's folder.
+   * @param destination The folder the archive is written to.
+   * @returns A promise of how `npm pack` ended. It throws
+   * {@link BuildException} when `npm_execpath` is not set, as outside an npm
+   * script, and rejects with {@link ProcessException} if Node.js cannot
+   * start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * (await new Npm(new ProcessRunner(), process.cwd()).packAsync("_build/packages/noldova.example", "_packages")).isSuccessful; // true
+   * ```
+   */
+  public packAsync(directory: string, destination: string): Promise<ProcessResult>;
+
+  /**
+   * Installs built archives in the working directory without saving them,
+   * with `npm install --no-save --ignore-scripts`, run by Node.js from
+   * `npm_execpath`.
+   *
+   * @param archivePaths The archives, such as
+   * `./_packages/noldova-example-0.0.5.tgz`.
+   * @returns A promise of how `npm install` ended. It throws
+   * {@link BuildException} when `npm_execpath` is not set, and rejects with
+   * {@link ProcessException} if Node.js cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * (await new Npm(new ProcessRunner(), process.cwd()).installArchivesAsync(["./_packages/noldova-example-0.0.5.tgz"])).isSuccessful; // true
+   * ```
+   */
+  public installArchivesAsync(archivePaths: readonly string[]): Promise<ProcessResult>;
+
+  /**
    * Tells whether a text is a registry the steps take: an `https` URL
    * without credentials, a query or a fragment.
    *
@@ -1415,6 +1705,49 @@ export declare class Npm {
    * ```
    */
   public static isRegistry(text: string): boolean;
+}
+
+/**
+ * Runs the TypeScript compiler a repository installs, so a build compiles
+ * with the version the repository pins.
+ */
+export declare class TypeScript {
+  /**
+   * The repository's root, as the constructor got it.
+   */
+  public readonly workingDirectory: string;
+
+  /**
+   * Creates the runner.
+   *
+   * @param processRunner What runs the compiler.
+   * @param workingDirectory The repository's root, where `typescript` is
+   * installed.
+   * @example
+   * ```ts
+   * import { ProcessRunner, TypeScript } from "@noldova/tools.pipelines";
+   *
+   * const typeScript = new TypeScript(new ProcessRunner(), process.cwd());
+   * ```
+   */
+  public constructor(processRunner: ProcessRunner, workingDirectory: string);
+
+  /**
+   * Compiles a TypeScript project with `tsc --pretty --project`.
+   *
+   * @param projectPath The project's `tsconfig.json`, from the repository's
+   * root.
+   * @returns A promise of how the compiler ended, with what it wrote. It
+   * throws {@link BuildException} when `typescript` is not installed, and
+   * rejects with {@link ProcessException} if Node.js cannot start.
+   * @example
+   * ```ts
+   * import { ProcessRunner, TypeScript } from "@noldova/tools.pipelines";
+   *
+   * (await new TypeScript(new ProcessRunner(), process.cwd()).compileAsync("src/noldova.example/src/tsconfig.json")).isSuccessful; // true
+   * ```
+   */
+  public compileAsync(projectPath: string): Promise<ProcessResult>;
 }
 
 /**
@@ -2381,6 +2714,194 @@ export declare class PinsStep implements IStep {
    * // Looked for pins on .github's workflows older than v1.2.0 in 2 repositories:
    * // noldova-com/example: moved 3 pins in https://github.com/noldova-com/example/pull/7
    * // noldova-com/sample: pins nothing older than v1.2.0.
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that checks a checkout's installed packages: `installed`. It
+ * succeeds, writing nothing, only when `node_modules` holds what
+ * `package-lock.json` locks: every locked package but an optional one for
+ * another platform, at its version, address and integrity, and no other.
+ * The packages the checkout builds are left out, since the build installs
+ * them itself. A repository's npm script runs
+ * `pipelines installed || npm ci --ignore-scripts && pipelines build`, so it
+ * installs only when something changed.
+ */
+export declare class InstalledStep implements IStep {
+  /**
+   * The step's name, `"installed"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes, none: `""`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param workingDirectory The checkout's root.
+   * @example
+   * ```ts
+   * import { InstalledStep } from "@noldova/tools.pipelines";
+   *
+   * const step = new InstalledStep(process.cwd());
+   * step.name; // "installed"
+   * ```
+   */
+  public constructor(workingDirectory: string);
+
+  /**
+   * Checks the installed packages.
+   *
+   * @param values None.
+   * @returns A promise of the result: succeeded with an empty message, or
+   * failed for any value, a `build.json` that is not valid, a missing
+   * `package-lock.json`, `node_modules` without npm's record of what it
+   * installed, or the first packages that differ, with the command that
+   * installs them. It rejects with `JsonException` from
+   * `@noldova/context.json` for a lock file that is not valid JSON.
+   * @example
+   * ```ts
+   * import { InstalledStep } from "@noldova/tools.pipelines";
+   *
+   * (await new InstalledStep(process.cwd()).runAsync([])).message;
+   * // "The installed packages differ from package-lock.json at node_modules/typescript; run npm ci --ignore-scripts."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that builds a checkout's packages:
+ * `build [--version <version>] [<package>...]`, or `build --list-copies`. For each
+ * package `build.json` names, in order, it writes the package's
+ * `package.json` with the version for `__VERSION__` and the head commit as
+ * `gitHead`, copies the `LICENSE`, the `README.md`, the
+ * `src/api/index.d.ts` and the `THIRD-PARTY-NOTICES.txt` it has, runs its
+ * `pre` script, compiles it or runs its `compile` script, runs its `post`
+ * script, packs it into `_packages/` and installs every built archive, so
+ * the next package builds against it. With `--list-copies`, it lists the
+ * files it copies as the archive step reads them.
+ */
+export declare class BuildStep implements IStep {
+  /**
+   * The step's name, `"build"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes,
+   * `"[--version <version>] [<package>...], or --list-copies"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param git What reads the head commit, in the checkout's root.
+   * @param npm What packs and installs the built packages.
+   * @param typeScript What compiles a package.
+   * @param processRunner What runs a package's scripts.
+   * @param output Where the step writes the package it builds.
+   * @example
+   * ```ts
+   * import { BuildStep, Git, Npm, ProcessRunner, TypeScript, type IStepOutput } from "@noldova/tools.pipelines";
+   *
+   * declare const output: IStepOutput;
+   * const processRunner = new ProcessRunner();
+   * const step = new BuildStep(new Git(processRunner, process.cwd()), new Npm(processRunner, process.cwd()), new TypeScript(processRunner, process.cwd()), processRunner, output);
+   * step.name; // "build"
+   * ```
+   */
+  public constructor(git: Git, npm: Npm, typeScript: TypeScript, processRunner: ProcessRunner, output: IStepOutput);
+
+  /**
+   * Builds the packages, or lists the files the build copies.
+   *
+   * @param values `--version` and a version to build instead of
+   * `version.json`'s, such as a nightly `0.0.5-nightly.20261102`, and the
+   * folder names of the packages to build, all of them when none is named;
+   * or `--list-copies` alone.
+   * @returns A promise of the result: succeeded, such as
+   * `Built 2 packages at version 0.0.5.`, or, with `--list-copies`, a line
+   * `<source>\t<package>\t<file>` for each copy and `end of copies`; or
+   * failed for an unknown option, a version that is not one, a package
+   * named twice or that `build.json` doesn't name, a directory that is not
+   * the checkout's root, or the first package that fails, with what the
+   * compiler, script or npm wrote. It rejects with
+   * {@link ProcessException} if a program cannot start, and with
+   * `JsonException` from `@noldova/context.json` for a `build.json`,
+   * `version.json` or package's `package.json` that is not valid JSON.
+   * @example
+   * ```ts
+   * (await step.runAsync(["--version", "0.0.5-nightly.20261102"])).message; // "Built 2 packages at version 0.0.5-nightly.20261102."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that tests a checkout's packages:
+ * `test [--skip-test-details] [--skip-coverage-details] [<filter>...]`. It
+ * compiles each package's `tests/tsconfig.json` into `_build/tests/<name>`,
+ * runs them through the checkout's `@noldova/context.testing` with V8
+ * coverage, and requires complete coverage of the packages' source; a run
+ * with filters skips the coverage gate. The tests and the coverage report
+ * each run in a Node.js process of their own, so the checkout's packages
+ * never load beside the step's. Run the build first: the tests use the
+ * installed packages.
+ */
+export declare class TestStep implements IStep {
+  /**
+   * The step's name, `"test"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes,
+   * `"[--skip-test-details] [--skip-coverage-details] [<filter>...]"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param typeScript What compiles the tests, in the checkout's root.
+   * @param processRunner What runs the tests.
+   * @param output Where the step writes its progress.
+   * @example
+   * ```ts
+   * import { ProcessRunner, TestStep, TypeScript, type IStepOutput } from "@noldova/tools.pipelines";
+   *
+   * declare const output: IStepOutput;
+   * const processRunner = new ProcessRunner();
+   * const step = new TestStep(new TypeScript(processRunner, process.cwd()), processRunner, output);
+   * step.name; // "test"
+   * ```
+   */
+  public constructor(typeScript: TypeScript, processRunner: ProcessRunner, output: IStepOutput);
+
+  /**
+   * Tests the packages.
+   *
+   * @param values The options, `--skip-test-details` to hide the passing
+   * tests' lines and `--skip-coverage-details` to hide the fully covered
+   * files' rows, and the filters: a package, file, class,
+   * `ClassName.methodName` substring or exact `category:name` identity.
+   * @returns A promise of the result: succeeded, such as
+   * `The tests passed, and coverage is complete.`, or failed for an unknown
+   * option, a `build.json` that is not valid, no package with tests, a
+   * compile that fails, failed tests, incomplete coverage, or a coverage
+   * report that cannot run, such as without `@noldova/context.testing`
+   * installed. It rejects with {@link ProcessException} if a program cannot
+   * start.
+   * @example
+   * ```ts
+   * (await step.runAsync(["--skip-test-details"])).message; // "The tests passed, and coverage is complete."
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

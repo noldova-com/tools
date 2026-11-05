@@ -13,6 +13,10 @@ import { PipelinesProgram } from "@noldova/tools.pipelines.github";
 class RecordingOutput implements IStepOutput {
   public readonly lines: string[] = [];
 
+  public writeProgress(message: string): void {
+    this.lines.push(`progress: ${message}`);
+  }
+
   public writeSuccess(message: string): void {
     this.lines.push(`success: ${message}`);
   }
@@ -35,7 +39,7 @@ export class PipelinesProgramTests {
 
     Assert.areEqual(1, exitCode);
     Assert.areEqual(
-      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit>\"]",
+      "[\"failure: Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit> | installed | build [--version <version>] [<package>...], or --list-copies | test [--skip-test-details] [--skip-coverage-details] [<filter>...]\"]",
       JSON.stringify(output.lines));
   }
 
@@ -57,8 +61,21 @@ export class PipelinesProgramTests {
     Assert.areEqual(JSON.stringify([`failure: The ${stepName} step takes ${usage}.`]), JSON.stringify(output.lines));
   }
 
+  @TestMethod
+  public async runsTheBuildAndTestStepsAsync(): Promise<void> {
+    const output = new RecordingOutput();
+
+    Assert.areEqual(1, await new PipelinesProgram(output).runAsync(["build", "--list-copies", "more"]));
+    Assert.areEqual(1, await new PipelinesProgram(output).runAsync(["test", "--unknown"]));
+    Assert.areEqual(JSON.stringify([
+      "failure: The option --list-copies takes no other value.",
+      "failure: Unknown option --unknown; the step takes [--skip-test-details] [--skip-coverage-details] [<filter>...]."
+    ]), JSON.stringify(output.lines));
+  }
+
   @TestData("line-endings")
   @TestData("unchanged")
+  @TestData("installed")
   @TestMethod
   public async runsTheStepThatTakesNoValuesAsync(stepName: string): Promise<void> {
     const output = new RecordingOutput();

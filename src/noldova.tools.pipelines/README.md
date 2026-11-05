@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines
 
 The steps of a build and release pipeline that work the same on any host.
-This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings`, `unchanged`, `reproducible`, `dependents` and `pins`.
+This version holds the version model the steps share, the command-line base a host builds its command line on, and the steps: `source`, `archive`, `publish`, `nightly`, `prune`, `tag`, `toolchain`, `line-endings`, `unchanged`, `reproducible`, `dependents`, `pins`, and `installed`, `build` and `test`, which build and test a repository's packages.
 
 ## Install
 
@@ -46,6 +46,7 @@ import { CommandLine, Git, ProcessRunner, SourceStep } from "@noldova/tools.pipe
 
 const git = new Git(new ProcessRunner(), process.cwd());
 const commandLine = new CommandLine("pipelines", [new SourceStep(git)], {
+  writeProgress: message => console.log(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -87,6 +88,7 @@ import { ArchiveStep, CommandLine, Git, Npm, ProcessRunner, SourceStep, Tar } fr
 const processRunner = new ProcessRunner();
 const git = new Git(processRunner, process.cwd());
 const commandLine = new CommandLine("pipelines", [new SourceStep(git), new ArchiveStep(git, new Tar(processRunner), new Npm(processRunner, process.cwd()))], {
+  writeProgress: message => console.log(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -113,6 +115,7 @@ import { ArchiveStep, CommandLine, Git, Npm, ProcessRunner, PublishStep, Tar } f
 const processRunner = new ProcessRunner();
 const archiveStep = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
 const commandLine = new CommandLine("pipelines", [archiveStep, new PublishStep(archiveStep, new Npm(processRunner, process.cwd()))], {
+  writeProgress: message => console.log(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -143,6 +146,7 @@ const git = new Git(processRunner, process.cwd());
 const npm = new Npm(processRunner, process.cwd());
 const nightlyStep = new NightlyStep(git, new ArchiveStep(git, new Tar(processRunner), npm), npm);
 const commandLine = new CommandLine("pipelines", [nightlyStep], {
+  writeProgress: message => console.log(message),
   writeSuccess: message => console.log(message),
   writeFailure: message => console.error(message)
 });
@@ -321,6 +325,61 @@ result.message; // "Looked for pins on .github's workflows older than v1.2.0 in 
 - When it moved any, it commits, pushes the branch `pipelines/pins-<source>` and proposes it with the moved and the left pins and the release's notes; the branch, the lines, the output and the temporary folder work as in the dependents step.
 
 The declaration file `api/index.d.ts` documents every member with its contract and examples.
+
+### Building and testing a repository
+
+The `installed`, `build` and `test` steps build, pack and test the packages of a repository, so every repository runs the same build.
+A repository lists its packages, in the order they build, in `build.json` at its root:
+
+```json
+{
+  "packages": [
+    { "name": "noldova.example" },
+    { "name": "noldova.example.parsers", "path": "parsers/noldova.example.parsers", "pre": "src/parsers/noldova.example.parsers/scripts/verify.ts" }
+  ]
+}
+```
+
+- `name` is the package's folder name: `noldova.` and lowercase segments joined by dots; the package's npm name is `@noldova/` and the name after `noldova.`, such as `@noldova/example`.
+- `path` is the package's folder under `src/`, whose last segment is the name; it is the name when omitted.
+- `pre`, `compile` and `post` are optional scripts, paths inside the checkout that Node.js runs with the package's source folder and build folder as its values: `pre` before the compile, `compile` instead of the TypeScript compile, and `post` after it.
+
+Each package's folder holds `package.json`, with `__VERSION__` wherever the version goes, `README.md`, and, for the TypeScript compile, `src/tsconfig.json`, whose output is `_build/packages/<name>`; it may hold `src/api/index.d.ts`, the package's declarations, `THIRD-PARTY-NOTICES.txt`, and `tests/tsconfig.json`, whose output is `_build/tests/<name>`.
+
+A repository's `package.json` runs the steps through the package's `pipelines` command:
+
+```json
+"scripts": {
+  "build": "pipelines installed || npm ci --ignore-scripts && pipelines build",
+  "test": "pipelines test"
+}
+```
+
+#### The installed step
+
+`installed` takes no values and succeeds, writing nothing, when `node_modules` holds what `package-lock.json` locks: every locked package at its version, address and integrity, but an optional one for another platform, and no other.
+The repository's own packages are left out, since the build installs them.
+It fails when `node_modules` is missing or differs, so the script above runs `npm ci --ignore-scripts` only after a clone or a change to the lock file.
+
+#### The build step
+
+`build [--version <version>] [<package>...]` builds the packages, or the ones named, in `build.json`'s order.
+For each, it writes `_build/packages/<name>` afresh: `package.json`, with the version for `__VERSION__` and the head commit as `gitHead`, the repository's `LICENSE`, and the package's `README.md`, `src/api/index.d.ts` as `api/index.d.ts` and `THIRD-PARTY-NOTICES.txt` it has; then it runs `pre`, compiles `src/tsconfig.json` or runs `compile`, runs `post`, packs the package into `_packages/`, and installs every package built so far, so the next one builds against it.
+
+- The version is `version.json`'s, or the one `--version` gives, such as a nightly `0.0.5-nightly.20261102`.
+- It runs at the checkout's root, through an npm script, which sets the `npm_execpath` it packs and installs with.
+- It fails with the first thing that is wrong, such as a missing `README.md` or what the compiler, a script or npm wrote.
+
+`build --list-copies` lists each file the build copies into a package as `<source>\t<package>\t<file>` and ends with `end of copies`, which the archive step reads to check that each copy is the same as its source.
+
+#### The test step
+
+`test [--skip-test-details] [--skip-coverage-details] [<filter>...]` compiles each package's `tests/tsconfig.json`, runs the tests through the repository's `@noldova/context.testing` with V8 coverage in `_build/coverage`, and requires complete coverage of the packages' `src/` folders.
+
+- Run the build first: the tests use the installed packages.
+- A filter runs the tests that match a package, file, class, `ClassName.methodName` substring or exact `category:name` identity, and skips the coverage gate.
+- `--skip-test-details` hides the passing tests' lines and `--skip-coverage-details` the fully covered files' rows; failures and totals always show.
+- The tests and the coverage report each run in a Node.js process of their own, so the repository's packages never load beside the step's.
 
 ## License
 

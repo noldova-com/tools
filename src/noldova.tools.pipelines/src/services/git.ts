@@ -95,6 +95,10 @@ export class Git {
     return (await this.readAsync([...Resources.gitReadHeadValues, Resources.gitHeadRevision])).trim();
   }
 
+  public async readPrefixAsync(): Promise<string> {
+    return (await this.readAsync(Resources.gitReadPrefixValues)).trim();
+  }
+
   public async readCommitterAsync(revision: string): Promise<string> {
     return (await this.readAsync([...Resources.gitReadCommitterValues, revision])).trim();
   }

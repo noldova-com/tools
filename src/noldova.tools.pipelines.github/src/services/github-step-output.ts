@@ -13,10 +13,16 @@ import { Resources } from "../resources.js";
 export class GitHubStepOutput implements IStepOutput {
   private readonly standardOutput: NodeJS.WritableStream;
   private readonly standardError: NodeJS.WritableStream;
+  private readonly annotates: boolean;
 
-  public constructor(standardOutput: NodeJS.WritableStream, standardError: NodeJS.WritableStream) {
+  public constructor(standardOutput: NodeJS.WritableStream, standardError: NodeJS.WritableStream, annotates: boolean = true) {
     this.standardOutput = standardOutput;
     this.standardError = standardError;
+    this.annotates = annotates;
+  }
+
+  public writeProgress(message: string): void {
+    this.standardOutput.write(`${message}${Resources.lineSeparator}`);
   }
 
   public writeSuccess(message: string): void {
@@ -25,6 +31,6 @@ export class GitHubStepOutput implements IStepOutput {
   }
 
   public writeFailure(message: string): void {
-    this.standardError.write(Resources.formatErrorAnnotation(message));
+    this.standardError.write(this.annotates ? Resources.formatErrorAnnotation(message) : `${message}${Resources.lineSeparator}`);
   }
 }
