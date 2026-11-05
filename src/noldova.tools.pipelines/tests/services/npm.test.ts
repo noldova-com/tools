@@ -150,7 +150,7 @@ export class NpmTests {
 
     Assert.areEqual([
       `_build/packages/noldova.a: ${process.execPath} npm-cli.js pack --silent --pack-destination _packages`,
-      `checkout: ${process.execPath} npm-cli.js install --no-save --ignore-scripts --no-audit --no-fund ./_packages/noldova-a-0.0.4.tgz ./_packages/noldova-b-0.0.4.tgz`
+      `checkout: ${process.execPath} npm-cli.js install --ignore-scripts --no-audit --no-fund ./_packages/noldova-a-0.0.4.tgz ./_packages/noldova-b-0.0.4.tgz`
     ].join("|"), processRunner.calls.join("|"));
   }
 

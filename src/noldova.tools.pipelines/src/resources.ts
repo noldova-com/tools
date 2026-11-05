@@ -13,6 +13,7 @@ export class Resources {
   public static readonly accessLevels: readonly string[] = ["public", "restricted"];
   public static readonly archiveLicensePath: string = "package/LICENSE";
   public static readonly archivePackageFolder: string = "package";
+  public static readonly archiveSpecifierPrefix: string = "file:";
   public static readonly copiesEndLine: string = "end of copies";
   public static readonly copiesNone: string = "The build copies no file into a package.";
   public static readonly copiesTemporaryPrefix: string = "pipelines-copies-";
@@ -174,6 +175,7 @@ export class Resources {
   public static readonly currentFolder: string = ".";
   public static readonly currentFolderPrefix: string = "./";
   public static readonly declarationFilePath: string = "src/api/index.d.ts";
+  public static readonly emptyJsonObject: string = "{}";
   public static readonly enabledValue: string = "1";
   public static readonly filteredCoverageSkipped: string = "The coverage gate is skipped for a filtered run.";
   public static readonly gitReadPrefixValues: readonly string[] = ["rev-parse", "--show-prefix"];
@@ -193,7 +195,7 @@ export class Resources {
   public static readonly npmCommandLineVariable: string = "npm_execpath";
   public static readonly npmCleanInstallCommand: string = "npm ci --ignore-scripts";
   public static readonly npmPrefixOption: string = "--prefix";
-  public static readonly npmInstallArchivesValues: readonly string[] = ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"];
+  public static readonly npmInstallArchivesValues: readonly string[] = ["install", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmPackValues: readonly string[] = ["pack", "--silent", "--pack-destination"];
   public static readonly optionPrefix: string = "--";
   public static readonly optionalField: string = "optional";
@@ -207,6 +209,9 @@ export class Resources {
   public static readonly packagesFolder: string = "_packages";
   public static readonly pathField: string = "path";
   public static readonly readmeFileName: string = "README.md";
+  public static readonly restoreDiscardFolder: string = "_build/restore.discard";
+  public static readonly restoreFolder: string = "_build/restore";
+  public static readonly restoreStagingFolder: string = "_build/restore.partial";
   public static readonly skipCoverageDetailsOption: string = "--skip-coverage-details";
   public static readonly skipTestDetailsOption: string = "--skip-test-details";
   public static readonly skipTestDetailsVariable: string = "CONTEXT_SKIP_TEST_DETAILS";
