@@ -370,7 +370,8 @@ The parentheses make the script run the same in a POSIX shell and in Windows' `c
 #### The build step
 
 `build [--version <version>] [<package>...]` builds the packages, or the ones named, in `build.json`'s order.
-For each, it writes `_build/packages/<name>` afresh: `package.json`, with the version for `__VERSION__` and the head commit as `gitHead`, the repository's `LICENSE`, and the package's `README.md`, `src/api/index.d.ts` as `api/index.d.ts` and `THIRD-PARTY-NOTICES.txt` it has; then it runs `pre`, compiles `src/tsconfig.json` or runs `compile`, runs `post`, packs the package into `_packages/`, and installs every package built so far, so the next one builds against it.
+For each, it writes `_build/packages/<name>` afresh: `package.json`, with the version for `__VERSION__` and the head commit as `gitHead`, the repository's `LICENSE`, and the package's `README.md`, `src/api/index.d.ts` as `api/index.d.ts` and `THIRD-PARTY-NOTICES.txt` it has; then it runs `pre`, compiles `src/tsconfig.json` or runs `compile`, runs `post`, packs the package into `_packages/`, and installs that archive, so the next package builds against it.
+While it builds, the repository's `package.json` lists the archives already in `_packages/` of the packages it doesn't build, so an install keeps them; it restores `package.json` and `package-lock.json` when it ends.
 
 - The version is `version.json`'s, or the one `--version` gives, such as a nightly `0.0.5-nightly.20261102`.
 - It runs at the checkout's root, through an npm script, which sets the `npm_execpath` it packs and installs with.

@@ -1682,8 +1682,8 @@ export declare class Npm {
   public packAsync(directory: string, destination: string): Promise<ProcessResult>;
 
   /**
-   * Installs built archives in the working directory without saving them,
-   * with `npm install --no-save --ignore-scripts`, run by Node.js from
+   * Installs built archives in the working directory and saves them in its
+   * `package.json`, with `npm install --ignore-scripts`, run by Node.js from
    * `npm_execpath`.
    *
    * @param archivePaths The archives, such as

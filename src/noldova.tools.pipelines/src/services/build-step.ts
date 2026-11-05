@@ -58,8 +58,17 @@ export class BuildStep implements IStep {
       const version = versionOption ?? this.readVersion();
       fs.mkdirSync(this.resolve(Resources.buildFolder), { recursive: true });
       fs.mkdirSync(this.resolve(Resources.packagesFolder), { recursive: true });
-      for (const buildPackage of packages)
-        await this.buildPackageAsync(config, buildPackage, version, commit);
+      const manifest = this.readFile(Resources.packageManifestFileName);
+      const lockFile = this.readFile(Resources.lockFileName);
+      try {
+        this.listUnbuiltArchives(config, packages, version, manifest);
+        for (const buildPackage of packages)
+          await this.buildPackageAsync(buildPackage, version, commit);
+      }
+      finally {
+        this.restoreFile(Resources.packageManifestFileName, manifest);
+        this.restoreFile(Resources.lockFileName, lockFile);
+      }
 
       return StepResult.succeeded(Resources.formatPackagesBuilt(packages.length, version));
     }
@@ -81,7 +90,18 @@ export class BuildStep implements IStep {
     return [...lines, Resources.copiesEndLine].join(Resources.lineSeparator);
   }
 
-  private async buildPackageAsync(config: BuildConfig, buildPackage: BuildPackage, version: string, commit: string): Promise<void> {
+  private listUnbuiltArchives(config: BuildConfig, packages: readonly BuildPackage[], version: string, manifest: Buffer | null): void {
+    const archives = config.packages.filter(t => !packages.includes(t)).map(t => [t.packageName, `${Resources.packagesFolder}/${t.archiveName(version)}`] as const).filter(([, archive]) => this.isFile(archive));
+    if (archives.length === 0)
+      return;
+
+    const reader = JsonReader.parse(manifest === null ? Resources.emptyJsonObject : manifest.toString(Resources.textEncoding), Resources.packageManifestFileName);
+    const listed = reader.hasField(Resources.dependenciesField) ? reader.readObject(Resources.dependenciesField).toJson() : {};
+    const dependencies = { ...listed, ...Object.fromEntries(archives.map(([name, archive]) => [name, `${Resources.archiveSpecifierPrefix}${archive}`])) };
+    fs.writeFileSync(this.resolve(Resources.packageManifestFileName), `${JSON.stringify({ ...reader.toJson(), [Resources.dependenciesField]: dependencies }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
+  }
+
+  private async buildPackageAsync(buildPackage: BuildPackage, version: string, commit: string): Promise<void> {
     this.output.writeProgress(Resources.formatBuildingPackage(buildPackage.packageName));
     const buildFolder = this.resolve(buildPackage.buildFolder);
     fs.rmSync(buildFolder, { recursive: true, force: true });
@@ -110,8 +130,7 @@ export class BuildStep implements IStep {
     if (!packed.isSuccessful)
       throw new BuildException(Resources.formatPackFailed(buildPackage.packageName, packed.exitCode, `${packed.output}${packed.errorOutput}`));
 
-    const archives = config.packages.map(t => `${Resources.packagesFolder}/${t.archiveName(version)}`).filter(t => this.isFile(t));
-    const installed = await this.npm.installArchivesAsync(archives.map(t => `${Resources.currentFolderPrefix}${t}`));
+    const installed = await this.npm.installArchivesAsync([`${Resources.currentFolderPrefix}${Resources.packagesFolder}/${buildPackage.archiveName(version)}`]);
     if (!installed.isSuccessful)
       throw new BuildException(Resources.formatArchivesNotInstalled(installed.exitCode, `${installed.output}${installed.errorOutput}`));
   }
@@ -147,6 +166,17 @@ export class BuildStep implements IStep {
       throw new BuildException(Resources.versionFileMissing);
 
     return JsonReader.parse(fs.readFileSync(this.resolve(Resources.versionFilePath), Resources.textEncoding), Resources.versionFilePath).readString(Resources.versionField);
+  }
+
+  private readFile(filePath: string): Buffer | null {
+    return this.isFile(filePath) ? fs.readFileSync(this.resolve(filePath)) : null;
+  }
+
+  private restoreFile(filePath: string, content: Buffer | null): void {
+    if (content !== null)
+      fs.writeFileSync(this.resolve(filePath), content);
+    else
+      fs.rmSync(this.resolve(filePath), { force: true });
   }
 
   private isFile(filePath: string): boolean {
