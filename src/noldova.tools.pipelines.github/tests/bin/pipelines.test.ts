@@ -41,7 +41,7 @@ export class PipelinesBinTests {
     Assert.areEqual(1, run.exitCode);
     Assert.areEqual("", run.standardOutput);
     Assert.areEqual(
-      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit> | installed | build [--version <version>] [<package>...], or --list-copies | test [--skip-test-details] [--skip-coverage-details] [<filter>...]\n",
+      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit> | installed [<folder>] | build [--version <version>] [<package>...], or --list-copies | test [--skip-test-details] [--skip-coverage-details] [<filter>...]\n",
       run.standardError);
   }
 
@@ -49,11 +49,11 @@ export class PipelinesBinTests {
   public writesAFailureAsItIsOutsideGitHubActions(): void {
     using directory = PipelinesBinTests.createDirectory();
 
-    const run = PipelinesBinTests.run(directory.path, ["installed", "more"], { GITHUB_ACTIONS: "" });
+    const run = PipelinesBinTests.run(directory.path, ["installed", "a", "b"], { GITHUB_ACTIONS: "" });
 
     Assert.areEqual(1, run.exitCode);
     Assert.areEqual("", run.standardOutput);
-    Assert.areEqual("The installed step takes no values.\n", run.standardError);
+    Assert.areEqual("The installed step takes [<folder>].\n", run.standardError);
   }
 
   @TestMethod
