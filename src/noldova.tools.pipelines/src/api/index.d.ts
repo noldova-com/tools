@@ -2775,11 +2775,11 @@ export declare class InstalledStep implements IStep {
    * @param values Nothing, to check the working directory, or the path of
    * another folder with its own lock, from the working directory.
    * @returns A promise of the result: succeeded with an empty message;
-   * failed with an empty message after writing, as progress, that the folder
-   * has no `package-lock.json`, that its `node_modules` has no record of what
-   * npm installed, or the first packages that differ, with the command that
-   * installs them; or failed with a message for more than one value, an
-   * option, or a `build.json` that is not valid. It rejects with
+   * failed with an empty message after writing, as progress, that the
+   * folder's `node_modules` has no record of what npm installed, or the first
+   * packages that differ, with the command that installs them; or failed with
+   * a message for more than one value, an empty folder, an option, a folder
+   * without `package-lock.json`, or a `build.json` that is not valid. It rejects with
    * `JsonException` from `@noldova/context.json` for a lock file that is not
    * valid JSON.
    * @example

@@ -107,9 +107,10 @@ export class InstalledStepTests {
 
   @TestData("more other")
   @TestData("--folder")
+  @TestData("")
   @TestMethod
   public async failsForAnOptionOrMoreThanOneValueAsync(values: string): Promise<void> {
-    const result = await new InstalledStep(".", new RecordingOutput([])).runAsync(values.split(" "));
+    const result = await new InstalledStep(".", new RecordingOutput([])).runAsync(values.length === 0 ? [""] : values.split(" "));
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual("The installed step takes [<folder>].", result.message);
@@ -128,14 +129,14 @@ export class InstalledStepTests {
   }
 
   @TestMethod
-  public async writesThatTheLockFileIsMissingAsync(): Promise<void> {
+  public async failsWithoutALockFileAsync(): Promise<void> {
     using checkout = new Checkout(null, {});
 
-    const result = await checkout.runAsync();
+    const result = await checkout.runAsync(["missing"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual("", result.message);
-    Assert.areEqual("progress: There is no package-lock.json.", checkout.lines.join("|"));
+    Assert.areEqual("There is no missing/package-lock.json.", result.message);
+    Assert.areEqual(0, checkout.lines.length);
   }
 
   @TestMethod

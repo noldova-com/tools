@@ -32,7 +32,7 @@ export class InstalledStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [folder = Resources.currentFolder, ...rest] = values;
-    if (rest.length !== 0 || folder.startsWith(Resources.optionPrefix))
+    if (rest.length !== 0 || folder.length === 0 || folder.startsWith(Resources.optionPrefix))
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     try {
@@ -41,7 +41,7 @@ export class InstalledStep implements IStep {
       const lockFilePath = path.posix.join(folder, Resources.lockFilePath);
       const locked = InstalledStep.readPackages(directory, Resources.lockFilePath);
       if (locked === null)
-        return this.differ(Resources.formatLockFileMissing(lockFilePath));
+        return StepResult.failed(Resources.formatLockFileMissing(lockFilePath));
 
       const installed = InstalledStep.readPackages(directory, Resources.installedLockFilePath);
       if (installed === null)
