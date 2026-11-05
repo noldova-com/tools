@@ -7,7 +7,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { Resources } from "../resources.js";
 import { GitHubStepOutput } from "../services/github-step-output.js";
 import { PipelinesProgram } from "../services/pipelines-program.js";
 
-process.exitCode = await new PipelinesProgram(new GitHubStepOutput(process.stdout, process.stderr)).runAsync(process.argv.slice(2));
+process.exitCode = await new PipelinesProgram(new GitHubStepOutput(process.stdout, process.stderr, process.env[Resources.actionsVariable] === Resources.actionsValue)).runAsync(process.argv.slice(2));

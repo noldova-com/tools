@@ -8,6 +8,7 @@
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { Git, ProcessException, ProcessResult, ProcessRunner } from "@noldova/tools.pipelines";
@@ -272,5 +273,14 @@ export class GitTests {
 
   private static createGit(repository: GitRepositoryFixture): Git {
     return new Git(new ProcessRunner(), repository.directory);
+  }
+
+  @TestMethod
+  public async readsWhereItRunsInsideTheCloneAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    repository.commit({ "src/a.txt": "a" });
+
+    Assert.areEqual("", await new Git(new ProcessRunner(), repository.directory).readPrefixAsync());
+    Assert.areEqual("src/", await new Git(new ProcessRunner(), path.join(repository.directory, "src")).readPrefixAsync());
   }
 }

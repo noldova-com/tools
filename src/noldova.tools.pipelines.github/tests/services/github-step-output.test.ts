@@ -51,6 +51,28 @@ export class GitHubStepOutputTests {
     Assert.areEqual("", GitHubStepOutputTests.read(standardOutput));
   }
 
+  @TestMethod
+  public writesProgressToStandardOutputWithALineFeed(): void {
+    const standardOutput = GitHubStepOutputTests.createStream();
+    const standardError = GitHubStepOutputTests.createStream();
+
+    new GitHubStepOutput(standardOutput, standardError).writeProgress("Building @noldova/tools.pipelines...");
+
+    Assert.areEqual("Building @noldova/tools.pipelines...\n", GitHubStepOutputTests.read(standardOutput));
+    Assert.areEqual("", GitHubStepOutputTests.read(standardError));
+  }
+
+  @TestMethod
+  public writesAFailureAsItIsWhenItDoesNotAnnotate(): void {
+    const standardOutput = GitHubStepOutputTests.createStream();
+    const standardError = GitHubStepOutputTests.createStream();
+
+    new GitHubStepOutput(standardOutput, standardError, false).writeFailure("100% of a\nb");
+
+    Assert.areEqual("100% of a\nb\n", GitHubStepOutputTests.read(standardError));
+    Assert.areEqual("", GitHubStepOutputTests.read(standardOutput));
+  }
+
   private static createStream(): PassThrough {
     const stream = new PassThrough();
     stream.setEncoding("utf8");

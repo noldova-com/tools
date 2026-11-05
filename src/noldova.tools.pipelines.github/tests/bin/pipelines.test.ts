@@ -36,13 +36,24 @@ export class PipelinesBinTests {
   public writesTheUsageAsAnErrorAnnotationWithoutAStep(): void {
     using directory = PipelinesBinTests.createDirectory();
 
-    const run = PipelinesBinTests.run(directory.path, []);
+    const run = PipelinesBinTests.run(directory.path, [], { GITHUB_ACTIONS: "true" });
 
     Assert.areEqual(1, run.exitCode);
     Assert.areEqual("", run.standardOutput);
     Assert.areEqual(
-      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit>\n",
+      "::error::Usage: pipelines source <version> <commit> | archive <folder> <version> <commit> <scope> | publish <folder> <version> <commit> <scope> <registry> <access> | nightly <commit> <registry> | prune <version> <commit> <scope> <registry> <keep-versions> | tag <version> <commit> | toolchain <node-version> [<npm-version>] | line-endings | unchanged | reproducible <folder> | dependents <version> <commit> | pins <version> <commit> | installed | build [--version <version>] [<package>...], or --list-copies | test [--skip-test-details] [--skip-coverage-details] [<filter>...]\n",
       run.standardError);
+  }
+
+  @TestMethod
+  public writesAFailureAsItIsOutsideGitHubActions(): void {
+    using directory = PipelinesBinTests.createDirectory();
+
+    const run = PipelinesBinTests.run(directory.path, ["installed", "more"], { GITHUB_ACTIONS: "" });
+
+    Assert.areEqual(1, run.exitCode);
+    Assert.areEqual("", run.standardOutput);
+    Assert.areEqual("The installed step takes no values.\n", run.standardError);
   }
 
   @TestMethod
@@ -66,7 +77,7 @@ export class PipelinesBinTests {
   public failsTheTagStepWithoutGitHubsEnvironment(): void {
     using directory = PipelinesBinTests.createDirectory();
 
-    const run = PipelinesBinTests.run(directory.path, ["tag", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"], { GITHUB_API_URL: "" });
+    const run = PipelinesBinTests.run(directory.path, ["tag", "0.0.4", "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8"], { GITHUB_API_URL: "", GITHUB_ACTIONS: "true" });
 
     Assert.areEqual(1, run.exitCode);
     Assert.areEqual("", run.standardOutput);

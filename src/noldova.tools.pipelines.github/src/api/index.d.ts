@@ -9,9 +9,10 @@
 import type { IRegistryHost, IStepOutput, ITagHost, IUpdateHost, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
 
 /**
- * Writes a step's messages as a GitHub Actions job reads them: a success to
- * standard output as it is, and a failure as an error annotation, which the
- * run's summary shows.
+ * Writes a step's messages as a GitHub Actions job reads them: progress and
+ * a success to standard output as they are, and a failure as an error
+ * annotation, which the run's summary shows; outside GitHub Actions, a
+ * failure goes to standard error as it is.
  */
 export declare class GitHubStepOutput implements IStepOutput {
   /**
@@ -22,14 +23,30 @@ export declare class GitHubStepOutput implements IStepOutput {
    * GitHub Actions reads workflow commands from it as it does from standard
    * output, so a workflow that keeps a step's standard output, such as the
    * nightly version, still shows the failure.
+   * @param annotates Whether a failure is written as an error annotation,
+   * as when `GITHUB_ACTIONS` is `true`; `false` writes it as it is, for a
+   * person who runs a step on their machine. Omitted, it is `true`.
    * @example
    * ```ts
    * import { GitHubStepOutput } from "@noldova/tools.pipelines.github";
    *
-   * const output = new GitHubStepOutput(process.stdout, process.stderr);
+   * const output = new GitHubStepOutput(process.stdout, process.stderr, process.env["GITHUB_ACTIONS"] === "true");
    * ```
    */
-  public constructor(standardOutput: NodeJS.WritableStream, standardError: NodeJS.WritableStream);
+  public constructor(standardOutput: NodeJS.WritableStream, standardError: NodeJS.WritableStream, annotates?: boolean);
+
+  /**
+   * Writes a line of a step's progress, and a line feed, to standard output.
+   *
+   * @param message The line.
+   * @example
+   * ```ts
+   * import { GitHubStepOutput } from "@noldova/tools.pipelines.github";
+   *
+   * new GitHubStepOutput(process.stdout, process.stderr).writeProgress("Building @noldova/tools.pipelines..."); // writes "Building @noldova/tools.pipelines...\n"
+   * ```
+   */
+  public writeProgress(message: string): void;
 
   /**
    * Writes the message of a step that succeeded, and a line feed, to standard
@@ -51,7 +68,8 @@ export declare class GitHubStepOutput implements IStepOutput {
    * Writes the message of a step that failed to standard error as one
    * `::error::` workflow command, with `%`, carriage returns and line feeds
    * escaped as `%25`, `%0D` and `%0A`, so a message of several lines is one
-   * annotation.
+   * annotation; when the output doesn't annotate, it writes the message as
+   * it is and a line feed.
    *
    * @param message What is wrong.
    * @example

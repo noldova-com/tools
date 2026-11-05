@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+export { BuildException } from "../exceptions/build.exception.js";
 export { PipelineException } from "../exceptions/pipeline.exception.js";
 export { ProcessException } from "../exceptions/process.exception.js";
 export { VersionException } from "../exceptions/version.exception.js";
@@ -15,15 +16,19 @@ export type { IStep } from "../interfaces/i-step.js";
 export type { ITagHost } from "../interfaces/i-tag-host.js";
 export type { IUpdateHost } from "../interfaces/i-update-host.js";
 export { ArchiveCheck } from "../models/archive-check.js";
+export { BuildConfig } from "../models/build-config.js";
+export { BuildPackage } from "../models/build-package.js";
 export { PackageArchive } from "../models/package-archive.js";
 export { ProcessResult } from "../models/process-result.js";
 export { StepResult } from "../models/step-result.js";
 export { TrackedFile } from "../models/tracked-file.js";
 export { Version } from "../models/version.js";
 export { ArchiveStep } from "../services/archive-step.js";
+export { BuildStep } from "../services/build-step.js";
 export { CommandLine } from "../services/command-line.js";
 export { DependentsStep } from "../services/dependents-step.js";
 export { Git } from "../services/git.js";
+export { InstalledStep } from "../services/installed-step.js";
 export { LineEndingsStep } from "../services/line-endings-step.js";
 export { NightlyStep } from "../services/nightly-step.js";
 export { Npm } from "../services/npm.js";
@@ -35,5 +40,7 @@ export { ReproducibleStep } from "../services/reproducible-step.js";
 export { SourceStep } from "../services/source-step.js";
 export { TagStep } from "../services/tag-step.js";
 export { Tar } from "../services/tar.js";
+export { TestStep } from "../services/test-step.js";
 export { ToolchainStep } from "../services/toolchain-step.js";
+export { TypeScript } from "../services/type-script.js";
 export { UnchangedStep } from "../services/unchanged-step.js";
