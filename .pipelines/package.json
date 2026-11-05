@@ -3,6 +3,6 @@
   "private": true,
   "license": "MIT",
   "devDependencies": {
-    "@noldova/tools.pipelines.github": "0.0.11"
+    "@noldova/tools.pipelines.github": "0.0.12"
   }
 }

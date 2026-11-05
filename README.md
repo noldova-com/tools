@@ -26,7 +26,7 @@ npm test
 
 `npm run build` and `npm test` run the `build` and `test` steps of the published `pipelines` command, which `.pipelines/package.json` pins and `.pipelines/package-lock.json` locks, from `.pipelines/node_modules`.
 There it stays apart from the packages this repository builds, so the code under change never builds or tests itself; to move to a newer version, change the pin and refresh that lock.
-`npm run build` installs that tool, then installs the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing` and the packages' dependencies, when `node_modules` doesn't hold them, without running their install scripts; then it builds, packs and installs every package, as `build.json` lists them, into `_build/` and `_packages/`.
+`npm run build` installs that tool when `.pipelines/node_modules` doesn't hold what its lock locks, and the locked development packages, TypeScript, Node.js's type declarations, the test runner `@noldova/context.testing` and the packages' dependencies, when `node_modules` doesn't hold them, both without running install scripts; then it builds, packs and installs every package, as `build.json` lists them, into `_build/` and `_packages/`.
 Every package takes its version from `version.json` at the repository's root, such as `{ "version": "0.0.2" }`, or from the `--version` option, such as for a nightly version:
 
 ```bash
