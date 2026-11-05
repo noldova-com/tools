@@ -59,7 +59,7 @@ jobs:
       - name: Check that the build refuses a version that isn't one
         shell: bash
         run: |
-          if output="$(npm run build -- --version 01.0.0 2>&1)"; then
+          if output="$(GITHUB_ACTIONS= npm run build -- --version 01.0.0 2>&1)"; then
             printf '%s\n' "$output"
             echo '::error::npm run build -- --version 01.0.0 must fail.'
             exit 1
