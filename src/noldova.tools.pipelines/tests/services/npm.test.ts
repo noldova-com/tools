@@ -9,7 +9,7 @@
 import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { Npm, ProcessException, ProcessResult, ProcessRunner } from "@noldova/tools.pipelines";
+import { BuildException, Npm, ProcessException, ProcessResult, ProcessRunner } from "@noldova/tools.pipelines";
 
 class RecordingProcessRunner extends ProcessRunner {
   public readonly calls: string[] = [];
@@ -138,5 +138,32 @@ export class NpmTests {
     const exception = await Assert.throwsAsync(() => npm.viewAsync("@noldova/a", "dist-tags.latest", "https://registry.example/"), ProcessException);
 
     Assert.areEqual("npm", exception.program);
+  }
+
+  @TestMethod
+  public async packsAndInstallsThroughNpmsCommandLineAsync(): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "", ""));
+    const npm = new Npm(processRunner, "checkout", "linux", { npm_execpath: "npm-cli.js" });
+
+    await npm.packAsync("_build/packages/noldova.a", "_packages");
+    await npm.installArchivesAsync(["./_packages/noldova-a-0.0.4.tgz", "./_packages/noldova-b-0.0.4.tgz"]);
+
+    Assert.areEqual([
+      `_build/packages/noldova.a: ${process.execPath} npm-cli.js pack --silent --pack-destination _packages`,
+      `checkout: ${process.execPath} npm-cli.js install --no-save --ignore-scripts --no-audit --no-fund ./_packages/noldova-a-0.0.4.tgz ./_packages/noldova-b-0.0.4.tgz`
+    ].join("|"), processRunner.calls.join("|"));
+  }
+
+  @TestData("")
+  @TestData("unset")
+  @TestMethod
+  public async failsToPackOutsideAnNpmScriptAsync(commandLinePath: string): Promise<void> {
+    const environment = commandLinePath === "unset" ? {} : { npm_execpath: commandLinePath };
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "", ""));
+
+    const exception = await Assert.throwsAsync(() => new Npm(processRunner, "checkout", "linux", environment).packAsync("a", "b"), BuildException);
+
+    Assert.areEqual("npm_execpath is not set; run the step through an npm script, such as npm run build.", exception.message);
+    Assert.areEqual(0, processRunner.calls.length);
   }
 }

@@ -13,6 +13,6 @@ import * as api from "@noldova/tools.pipelines";
 export class PipelinesApiTests {
   @TestMethod
   public exportsTheCompleteCatalog(): void {
-    Assert.areEqual("ArchiveCheck,ArchiveStep,CommandLine,DependentsStep,Git,LineEndingsStep,NightlyStep,Npm,PackageArchive,PinsStep,PipelineException,ProcessException,ProcessResult,ProcessRunner,PruneStep,PublishStep,ReproducibleStep,SourceStep,StepResult,TagStep,Tar,ToolchainStep,TrackedFile,UnchangedStep,Version,VersionException", Object.keys(api).sort().join(","));
+    Assert.areEqual("ArchiveCheck,ArchiveStep,BuildConfig,BuildException,BuildPackage,BuildStep,CommandLine,DependentsStep,Git,InstalledStep,LineEndingsStep,NightlyStep,Npm,PackageArchive,PinsStep,PipelineException,ProcessException,ProcessResult,ProcessRunner,PruneStep,PublishStep,ReproducibleStep,SourceStep,StepResult,TagStep,Tar,TestStep,ToolchainStep,TrackedFile,TypeScript,UnchangedStep,Version,VersionException", Object.keys(api).sort().join(","));
   }
 }

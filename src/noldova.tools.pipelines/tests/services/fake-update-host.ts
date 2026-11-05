@@ -101,6 +101,10 @@ export class RecordingOutput implements IStepOutput {
     this.lines = lines;
   }
 
+  public writeProgress(message: string): void {
+    this.lines.push(`progress: ${message}`);
+  }
+
   public writeSuccess(message: string): void {
     this.lines.push(`success: ${message}`);
   }

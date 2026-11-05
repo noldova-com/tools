@@ -9,7 +9,7 @@ This document holds only what is this repository's own; a rule here that is stri
 
 | Package | Owns |
 |---|---|
-| `@noldova/tools.pipelines` | The steps that work the same on any pipeline host: git checks of the commit and its version, checks of the packed archives, npm publishing and the wait until the registry serves a version, keeping a registry's newest versions, versions, and the command-line base the steps share |
+| `@noldova/tools.pipelines` | The steps that work the same on any pipeline host: building, packing and testing a repository's packages as its `build.json` lists them, git checks of the commit and its version, checks of the packed archives, npm publishing and the wait until the registry serves a version, keeping a registry's newest versions, versions, and the command-line base the steps share |
 | `@noldova/tools.pipelines.github` | Running those steps on GitHub Actions: the command line a workflow calls, reading GitHub's environment, tags and GitHub Packages' versions through GitHub's REST API, and GitHub's annotations |
 
 - `tools.pipelines.github` depends on `tools.pipelines`, never the reverse.

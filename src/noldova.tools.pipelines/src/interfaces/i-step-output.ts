@@ -7,6 +7,7 @@
  */
 
 export interface IStepOutput {
+  writeProgress(message: string): void;
   writeSuccess(message: string): void;
   writeFailure(message: string): void;
 }
