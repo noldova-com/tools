@@ -199,7 +199,10 @@ export class BuildStep implements IStep {
         fs.rmSync(this.resolve(fileName), { force: true });
     }
 
-    fs.rmSync(backup, { recursive: true, force: true });
+    const discard = this.resolve(Resources.restoreDiscardFolder);
+    fs.rmSync(discard, { recursive: true, force: true });
+    fs.renameSync(backup, discard);
+    fs.rmSync(discard, { recursive: true, force: true });
   }
 
   private isFile(filePath: string): boolean {

@@ -162,6 +162,20 @@ export class BuildStepTests {
   }
 
   @TestMethod
+  public async ignoresABackupThatAStopLeftWhileItWasDiscardedAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "lock");
+    fs.mkdirSync(path.join(repository.directory, "_build/restore.discard"), { recursive: true });
+    fs.writeFileSync(path.join(repository.directory, "_build/restore.discard/package.json"), "{}");
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), new FakeNpm(repository.directory), []).runAsync(["noldova.b"]);
+
+    Assert.areEqual("lock", BuildStepTests.read(repository, "package-lock.json"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package.json")));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "_build/restore.discard")));
+  }
+
+  @TestMethod
   public async keepsTheBackupOfTheManifestAndLockWhileItBuildsAsync(): Promise<void> {
     using repository = BuildStepTests.createRepository();
     fs.writeFileSync(path.join(repository.directory, "package.json"), "{}");

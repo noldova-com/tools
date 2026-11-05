@@ -209,6 +209,7 @@ export class Resources {
   public static readonly packagesFolder: string = "_packages";
   public static readonly pathField: string = "path";
   public static readonly readmeFileName: string = "README.md";
+  public static readonly restoreDiscardFolder: string = "_build/restore.discard";
   public static readonly restoreFolder: string = "_build/restore";
   public static readonly restoreStagingFolder: string = "_build/restore.partial";
   public static readonly skipCoverageDetailsOption: string = "--skip-coverage-details";
