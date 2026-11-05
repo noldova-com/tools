@@ -13,37 +13,43 @@ import { JsonReader, type JsonObject, type JsonValue } from "@noldova/context.js
 
 import { PipelineException } from "../exceptions/pipeline.exception.js";
 import type { IStep } from "../interfaces/i-step.js";
+import type { IStepOutput } from "../interfaces/i-step-output.js";
 import { BuildConfig } from "../models/build-config.js";
 import { StepResult } from "../models/step-result.js";
 import { Resources } from "../resources.js";
 
 export class InstalledStep implements IStep {
   private readonly workingDirectory: string;
+  private readonly output: IStepOutput;
 
   public readonly name: string = Resources.installedStepName;
   public readonly usage: string = Resources.installedStepUsage;
 
-  public constructor(workingDirectory: string) {
+  public constructor(workingDirectory: string, output: IStepOutput) {
     this.workingDirectory = workingDirectory;
+    this.output = output;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
-    if (values.length !== 0)
+    const [folder = Resources.currentFolder, ...rest] = values;
+    if (rest.length !== 0 || folder.startsWith(Resources.optionPrefix))
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     try {
-      const ownNames = new Set(BuildConfig.read(this.workingDirectory).packageNames);
-      const locked = this.readPackages(Resources.lockFilePath);
+      const directory = path.resolve(this.workingDirectory, folder);
+      const ownNames = new Set(InstalledStep.hasFile(path.join(directory, Resources.buildConfigFilePath)) ? BuildConfig.read(directory).packageNames : []);
+      const lockFilePath = path.posix.join(folder, Resources.lockFilePath);
+      const locked = InstalledStep.readPackages(directory, Resources.lockFilePath);
       if (locked === null)
-        return StepResult.failed(Resources.lockFileMissing);
+        return this.differ(Resources.formatLockFileMissing(lockFilePath));
 
-      const installed = this.readPackages(Resources.installedLockFilePath);
+      const installed = InstalledStep.readPackages(directory, Resources.installedLockFilePath);
       if (installed === null)
-        return StepResult.failed(Resources.packagesNotInstalled);
+        return this.differ(Resources.formatPackagesNotInstalled(path.posix.join(folder, Resources.nodeModulesFolder)));
 
       const differences = InstalledStep.compare(locked, installed, ownNames);
 
-      return differences.length === 0 ? StepResult.succeeded("") : StepResult.failed(Resources.formatInstalledDiffers(differences));
+      return differences.length === 0 ? StepResult.succeeded("") : this.differ(Resources.formatInstalledDiffers(lockFilePath, differences, Resources.formatCleanInstallCommand(folder)));
     }
     catch (error) {
       if (error instanceof PipelineException)
@@ -53,9 +59,19 @@ export class InstalledStep implements IStep {
     }
   }
 
-  private readPackages(filePath: string): JsonObject | null {
-    const fullPath = path.join(this.workingDirectory, filePath);
-    if (fs.statSync(fullPath, { throwIfNoEntry: false })?.isFile() !== true)
+  private differ(message: string): StepResult {
+    this.output.writeProgress(message);
+
+    return StepResult.failed("");
+  }
+
+  private static hasFile(fullPath: string): boolean {
+    return fs.statSync(fullPath, { throwIfNoEntry: false })?.isFile() === true;
+  }
+
+  private static readPackages(directory: string, filePath: string): JsonObject | null {
+    const fullPath = path.join(directory, filePath);
+    if (!InstalledStep.hasFile(fullPath))
       return null;
 
     return JsonReader.parse(fs.readFileSync(fullPath, Resources.textEncoding), filePath).readObject(Resources.packagesField).toJson();
