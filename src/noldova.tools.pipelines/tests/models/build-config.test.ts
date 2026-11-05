@@ -21,16 +21,16 @@ export class BuildConfigTests {
     const config = BuildConfig.parse(JSON.stringify({
       packages: [
         { name: "noldova.example" },
-        { name: "noldova.example.parsers-regex", path: "parsers/noldova.example.parsers-regex", pre: "scripts/verify.ts", compile: "scripts/compile.ts", post: "scripts/check.ts" }
+        { name: "noldova.example.regex", path: "parsers/noldova.example.regex", pre: "scripts/verify.ts", compile: "scripts/compile.ts", post: "scripts/check.ts" }
       ]
     }));
 
     Assert.areEqual("@noldova", config.scope);
     Assert.areEqual(2, config.packages.length);
-    Assert.areEqual("@noldova/example,@noldova/example.parsers-regex", config.packageNames.join(","));
+    Assert.areEqual("@noldova/example,@noldova/example.regex", config.packageNames.join(","));
     Assert.areEqual(JSON.stringify(["noldova.example", "noldova.example", null, null, null]), BuildConfigTests.describe(config.packages[0]));
     Assert.areEqual(
-      JSON.stringify(["noldova.example.parsers-regex", "parsers/noldova.example.parsers-regex", "scripts/verify.ts", "scripts/compile.ts", "scripts/check.ts"]),
+      JSON.stringify(["noldova.example.regex", "parsers/noldova.example.regex", "scripts/verify.ts", "scripts/compile.ts", "scripts/check.ts"]),
       BuildConfigTests.describe(config.packages[1]));
   }
 
@@ -90,6 +90,7 @@ export class BuildConfigTests {
   @TestData("{\"packages\":[{\"name\":\"noldova.example\"},{\"name\":\"noldova.example\"}]}", "it names noldova.example more than once")
   @TestData("{\"packages\":[{\"name\":\"example\"}]}", "\"example\" is not a package folder name, such as noldova.tools.pipelines")
   @TestData("{\"packages\":[{\"name\":\"noldova.Example\"}]}", "\"noldova.Example\" is not a package folder name, such as noldova.tools.pipelines")
+  @TestData("{\"packages\":[{\"name\":\"noldova.example.file-watcher\"}]}", "\"noldova.example.file-watcher\" is not a package folder name, such as noldova.tools.pipelines")
   @TestData("{\"packages\":[{\"name\":\"noldova.example\",\"path\":\"other\"}]}", "the path of noldova.example, \"other\", is not a folder under src/ whose last segment is noldova.example")
   @TestData("{\"packages\":[{\"name\":\"noldova.example\",\"path\":\"../noldova.example\"}]}", "the path of noldova.example, \"../noldova.example\", is not a folder under src/ whose last segment is noldova.example")
   @TestData("{\"packages\":[{\"name\":\"noldova.example\",\"path\":\"/noldova.example\"}]}", "the path of noldova.example, \"/noldova.example\", is not a folder under src/ whose last segment is noldova.example")
