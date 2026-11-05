@@ -16,10 +16,10 @@ export class BuildPackage {
   public readonly compile: string | null;
   public readonly post: string | null;
 
-  public constructor(name: string, path: string = name, pre: string | null = null, compile: string | null = null, post: string | null = null) {
+  public constructor(name: string, path: string = name, pre: string | null = null, compile: string | null = null, post: string | null = null, scope: string = Resources.defaultPackageScope) {
     this.name = name;
     this.path = path;
-    this.packageName = Resources.formatPackageName(name);
+    this.packageName = Resources.formatPackageName(scope, name);
     this.pre = pre;
     this.compile = compile;
     this.post = post;

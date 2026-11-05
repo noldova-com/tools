@@ -497,7 +497,7 @@ export declare class BuildPackage {
   public readonly path: string;
 
   /**
-   * The package's npm name, `@noldova/` and the folder name after
+   * The package's npm name, the scope, `/` and the folder name after
    * `noldova.`, such as `@noldova/tools.pipelines`.
    */
   public readonly packageName: string;
@@ -529,6 +529,8 @@ export declare class BuildPackage {
    * @param compile The script instead of the compile. Omitted, the package
    * compiles with TypeScript.
    * @param post The script after the compile. Omitted, there is none.
+   * @param scope The npm scope the package publishes under. Omitted, it is
+   * `@noldova`.
    * @example
    * ```ts
    * import { BuildPackage } from "@noldova/tools.pipelines";
@@ -538,7 +540,7 @@ export declare class BuildPackage {
    * buildPackage.buildFolder; // "_build/packages/noldova.tools.pipelines"
    * ```
    */
-  public constructor(name: string, path?: string, pre?: string | null, compile?: string | null, post?: string | null);
+  public constructor(name: string, path?: string, pre?: string | null, compile?: string | null, post?: string | null, scope?: string);
 
   /**
    * The package's source folder in the checkout, `src/<path>`.
@@ -573,14 +575,20 @@ export declare class BuildPackage {
 /**
  * The packages a repository builds, in the order it builds them, as its
  * `build.json` names them:
- * `{ "packages": [{ "name": "<folder>", "path": "<folder under src/>", "pre": "<script>", "compile": "<script>", "post": "<script>" }] }`,
- * where only `name` is required. A package's folder name is `noldova.` and
+ * `{ "scope": "<npm scope>", "packages": [{ "name": "<folder>", "path": "<folder under src/>", "pre": "<script>", "compile": "<script>", "post": "<script>" }] }`,
+ * where only the packages and their names are required, and the scope,
+ * such as `@noldova`, the default, names every package. A package's folder name is `noldova.` and
  * lowercase segments joined by dots, its path is a relative folder whose
  * last segment is the name, and each script is a relative path inside the
  * checkout that Node.js runs with the package's source folder and build
  * folder as its values.
  */
 export declare class BuildConfig {
+  /**
+   * The npm scope the packages publish under, such as `@noldova`.
+   */
+  public readonly scope: string;
+
   /**
    * The packages, in the order `build.json` names them.
    */
@@ -589,15 +597,16 @@ export declare class BuildConfig {
   /**
    * Creates the configuration.
    *
+   * @param scope The npm scope the packages publish under.
    * @param packages The packages, in build order.
    * @example
    * ```ts
    * import { BuildConfig, BuildPackage } from "@noldova/tools.pipelines";
    *
-   * const config = new BuildConfig([new BuildPackage("noldova.tools.pipelines")]);
+   * const config = new BuildConfig("@noldova", [new BuildPackage("noldova.tools.pipelines")]);
    * ```
    */
-  public constructor(packages: readonly BuildPackage[]);
+  public constructor(scope: string, packages: readonly BuildPackage[]);
 
   /**
    * The packages' npm names, such as `@noldova/tools.pipelines`.
@@ -609,8 +618,8 @@ export declare class BuildConfig {
    *
    * @param directory The checkout's root.
    * @returns The configuration.
-   * @throws {@link BuildException} when the file is missing or names no
-   * package, a package twice, a name that is not a package folder name, or a
+   * @throws {@link BuildException} when the file is missing or names a scope
+   * that is not an npm scope, no package, a package twice, a name that is not a package folder name, or a
    * path or a script outside the checkout; `JsonException` from
    * `@noldova/context.json` when it is not JSON or lacks a field.
    * @example
@@ -627,8 +636,8 @@ export declare class BuildConfig {
    *
    * @param text The file's text.
    * @returns The configuration.
-   * @throws {@link BuildException} when the text names no package, a
-   * package twice, a name that is not a package folder name, or a path or a
+   * @throws {@link BuildException} when the text names a scope that is not
+   * an npm scope, no package, a package twice, a name that is not a package folder name, or a path or a
    * script outside the checkout; `JsonException` from
    * `@noldova/context.json` when it is not JSON or lacks a field.
    * @example

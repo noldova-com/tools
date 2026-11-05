@@ -25,6 +25,7 @@ export class BuildConfigTests {
       ]
     }));
 
+    Assert.areEqual("@noldova", config.scope);
     Assert.areEqual(2, config.packages.length);
     Assert.areEqual("@noldova/example,@noldova/example.parsers-regex", config.packageNames.join(","));
     Assert.areEqual(JSON.stringify(["noldova.example", "noldova.example", null, null, null]), BuildConfigTests.describe(config.packages[0]));
@@ -34,10 +35,20 @@ export class BuildConfigTests {
   }
 
   @TestMethod
-  public keepsThePackagesItIsGiven(): void {
-    const buildPackage = new BuildPackage("noldova.example");
+  public namesThePackagesInTheScopeItGives(): void {
+    const config = BuildConfig.parse("{\"scope\":\"@example-org\",\"packages\":[{\"name\":\"noldova.example\"}]}");
 
-    Assert.areEqual(buildPackage, new BuildConfig([buildPackage]).packages[0]);
+    Assert.areEqual("@example-org", config.scope);
+    Assert.areEqual("@example-org/example", config.packageNames.join(","));
+  }
+
+  @TestMethod
+  public keepsTheScopeAndPackagesItIsGiven(): void {
+    const buildPackage = new BuildPackage("noldova.example");
+    const config = new BuildConfig("@noldova", [buildPackage]);
+
+    Assert.areEqual("@noldova", config.scope);
+    Assert.areEqual(buildPackage, config.packages[0]);
   }
 
   @TestMethod
@@ -72,6 +83,9 @@ export class BuildConfigTests {
     Assert.throws(() => BuildConfig.parse("{}"), JsonException);
   }
 
+  @TestData("{\"scope\":\"noldova\",\"packages\":[{\"name\":\"noldova.example\"}]}", "\"noldova\" is not an npm scope, such as @noldova")
+  @TestData("{\"scope\":\"@Noldova\",\"packages\":[{\"name\":\"noldova.example\"}]}", "\"@Noldova\" is not an npm scope, such as @noldova")
+  @TestData("{\"scope\":\"@noldova/\",\"packages\":[{\"name\":\"noldova.example\"}]}", "\"@noldova/\" is not an npm scope, such as @noldova")
   @TestData("{\"packages\":[]}", "it names no package")
   @TestData("{\"packages\":[{\"name\":\"noldova.example\"},{\"name\":\"noldova.example\"}]}", "it names noldova.example more than once")
   @TestData("{\"packages\":[{\"name\":\"example\"}]}", "\"example\" is not a package folder name, such as noldova.tools.pipelines")

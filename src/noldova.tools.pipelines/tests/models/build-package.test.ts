@@ -13,19 +13,20 @@ import { BuildPackage } from "@noldova/tools.pipelines";
 export class BuildPackageTests {
   @TestMethod
   public namesItsPackageAndFolders(): void {
-    const buildPackage = new BuildPackage("noldova.example.parsers", "parsers/noldova.example.parsers");
+    const buildPackage = new BuildPackage("noldova.example.parsers", "parsers/noldova.example.parsers", null, null, null, "@example-org");
 
-    Assert.areEqual("@noldova/example.parsers", buildPackage.packageName);
+    Assert.areEqual("@example-org/example.parsers", buildPackage.packageName);
     Assert.areEqual("src/parsers/noldova.example.parsers", buildPackage.sourceFolder);
     Assert.areEqual("_build/packages/noldova.example.parsers", buildPackage.buildFolder);
     Assert.areEqual("_build/tests/noldova.example.parsers", buildPackage.testsFolder);
-    Assert.areEqual("noldova-example.parsers-0.0.5.tgz", buildPackage.archiveName("0.0.5"));
+    Assert.areEqual("example-org-example.parsers-0.0.5.tgz", buildPackage.archiveName("0.0.5"));
   }
 
   @TestMethod
   public defaultsToItsNameAsItsPathAndToNoScripts(): void {
     const buildPackage = new BuildPackage("noldova.tools.pipelines");
 
+    Assert.areEqual("@noldova/tools.pipelines", buildPackage.packageName);
     Assert.areEqual("noldova.tools.pipelines", buildPackage.path);
     Assert.isNull(buildPackage.pre);
     Assert.isNull(buildPackage.compile);

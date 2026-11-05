@@ -333,6 +333,7 @@ A repository lists its packages, in the order they build, in `build.json` at its
 
 ```json
 {
+  "scope": "@noldova",
   "packages": [
     { "name": "noldova.example" },
     { "name": "noldova.example.parsers", "path": "parsers/noldova.example.parsers", "pre": "src/parsers/noldova.example.parsers/scripts/verify.ts" }
@@ -340,7 +341,8 @@ A repository lists its packages, in the order they build, in `build.json` at its
 }
 ```
 
-- `name` is the package's folder name: `noldova.` and lowercase segments joined by dots; the package's npm name is `@noldova/` and the name after `noldova.`, such as `@noldova/example`.
+- `scope` is the npm scope the packages publish under, `@noldova` when omitted.
+- `name` is the package's folder name: `noldova.` and lowercase segments joined by dots; the package's npm name is the scope, `/` and the name after `noldova.`, such as `@noldova/example`.
 - `path` is the package's folder under `src/`, whose last segment is the name; it is the name when omitted.
 - `pre`, `compile` and `post` are optional scripts, paths inside the checkout that Node.js runs with the package's source folder and build folder as its values: `pre` before the compile, `compile` instead of the TypeScript compile, and `post` after it.
 

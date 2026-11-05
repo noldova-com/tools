@@ -198,7 +198,9 @@ export class Resources {
   public static readonly packageDeclarationFilePath: string = "api/index.d.ts";
   public static readonly packageManifestFileName: string = "package.json";
   public static readonly packageNamePrefix: string = "noldova.";
-  public static readonly packageScope: string = "@noldova/";
+  public static readonly defaultPackageScope: string = "@noldova";
+  public static readonly packageScopePattern: RegExp = /^@[a-z0-9][a-z0-9._-]*$/;
+  public static readonly scopeField: string = "scope";
   public static readonly packagesField: string = "packages";
   public static readonly packagesFolder: string = "_packages";
   public static readonly packagesNotInstalled: string = "node_modules holds no packages that npm installed.";
@@ -814,8 +816,12 @@ export class Resources {
     return `"${program}" could not start: ${reason}`;
   }
 
-  public static formatPackageName(name: string): string {
-    return `${Resources.packageScope}${name.slice(Resources.packageNamePrefix.length)}`;
+  public static formatPackageName(scope: string, name: string): string {
+    return `${scope}/${name.slice(Resources.packageNamePrefix.length)}`;
+  }
+
+  public static formatBuildScopeInvalid(scope: string): string {
+    return `"${scope}" is not an npm scope, such as @noldova`;
   }
 
   public static formatBuildConfigInvalid(problem: string): string {

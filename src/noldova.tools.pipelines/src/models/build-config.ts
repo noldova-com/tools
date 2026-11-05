@@ -16,9 +16,11 @@ import { Resources } from "../resources.js";
 import { BuildPackage } from "./build-package.js";
 
 export class BuildConfig {
+  public readonly scope: string;
   public readonly packages: readonly BuildPackage[];
 
-  public constructor(packages: readonly BuildPackage[]) {
+  public constructor(scope: string, packages: readonly BuildPackage[]) {
+    this.scope = scope;
     this.packages = packages;
   }
 
@@ -35,23 +37,28 @@ export class BuildConfig {
   }
 
   public static parse(text: string): BuildConfig {
-    const entries = JsonReader.parse(text, Resources.buildConfigFilePath).readObjectArray(Resources.packagesField);
+    const reader = JsonReader.parse(text, Resources.buildConfigFilePath);
+    const scope = reader.readOptionalString(Resources.scopeField) ?? Resources.defaultPackageScope;
+    if (!Resources.packageScopePattern.test(scope))
+      throw new BuildException(Resources.formatBuildConfigInvalid(Resources.formatBuildScopeInvalid(scope)));
+
+    const entries = reader.readObjectArray(Resources.packagesField);
     if (entries.length === 0)
       throw new BuildException(Resources.formatBuildConfigInvalid(Resources.buildConfigEmpty));
 
     const packages: BuildPackage[] = [];
     for (const entry of entries) {
-      const buildPackage = BuildConfig.readPackage(entry);
+      const buildPackage = BuildConfig.readPackage(entry, scope);
       if (packages.some(t => t.name === buildPackage.name))
         throw new BuildException(Resources.formatBuildConfigInvalid(Resources.formatBuildPackageDuplicated(buildPackage.name)));
 
       packages.push(buildPackage);
     }
 
-    return new BuildConfig(packages);
+    return new BuildConfig(scope, packages);
   }
 
-  private static readPackage(entry: JsonReader): BuildPackage {
+  private static readPackage(entry: JsonReader, scope: string): BuildPackage {
     const name = entry.readString(Resources.nameField);
     if (!Resources.buildPackageNamePattern.test(name))
       throw new BuildException(Resources.formatBuildConfigInvalid(Resources.formatBuildPackageNameInvalid(name)));
@@ -68,7 +75,7 @@ export class BuildConfig {
       return script;
     });
 
-    return new BuildPackage(name, folder, pre, compile, post);
+    return new BuildPackage(name, folder, pre, compile, post, scope);
   }
 
   private static isInsideFolder(filePath: string): boolean {
