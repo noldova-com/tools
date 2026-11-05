@@ -26,6 +26,8 @@ import type { ProcessRunner } from "./process-runner.js";
 import type { TypeScript } from "./type-script.js";
 
 export class BuildStep implements IStep {
+  private static readonly INSTALL_FILE_NAMES: readonly string[] = [Resources.packageManifestFileName, Resources.lockFileName];
+
   private readonly git: Git;
   private readonly npm: Npm;
   private readonly typeScript: TypeScript;
@@ -58,16 +60,15 @@ export class BuildStep implements IStep {
       const version = versionOption ?? this.readVersion();
       fs.mkdirSync(this.resolve(Resources.buildFolder), { recursive: true });
       fs.mkdirSync(this.resolve(Resources.packagesFolder), { recursive: true });
-      const manifest = this.readFile(Resources.packageManifestFileName);
-      const lockFile = this.readFile(Resources.lockFileName);
+      this.restoreInstallFiles();
+      this.backUpInstallFiles();
       try {
-        this.listUnbuiltArchives(config, packages, version, manifest);
+        this.listUnbuiltArchives(config, packages, version, this.readFile(Resources.packageManifestFileName));
         for (const buildPackage of packages)
           await this.buildPackageAsync(buildPackage, version, commit);
       }
       finally {
-        this.restoreFile(Resources.packageManifestFileName, manifest);
-        this.restoreFile(Resources.lockFileName, lockFile);
+        this.restoreInstallFiles();
       }
 
       return StepResult.succeeded(Resources.formatPackagesBuilt(packages.length, version));
@@ -172,11 +173,33 @@ export class BuildStep implements IStep {
     return this.isFile(filePath) ? fs.readFileSync(this.resolve(filePath)) : null;
   }
 
-  private restoreFile(filePath: string, content: Buffer | null): void {
-    if (content !== null)
-      fs.writeFileSync(this.resolve(filePath), content);
-    else
-      fs.rmSync(this.resolve(filePath), { force: true });
+  private backUpInstallFiles(): void {
+    const staging = this.resolve(Resources.restoreStagingFolder);
+    fs.rmSync(staging, { recursive: true, force: true });
+    fs.mkdirSync(staging, { recursive: true });
+    for (const fileName of BuildStep.INSTALL_FILE_NAMES) {
+      const content = this.readFile(fileName);
+      if (content !== null)
+        fs.writeFileSync(path.join(staging, fileName), content);
+    }
+
+    fs.renameSync(staging, this.resolve(Resources.restoreFolder));
+  }
+
+  private restoreInstallFiles(): void {
+    const backup = this.resolve(Resources.restoreFolder);
+    if (!fs.existsSync(backup))
+      return;
+
+    for (const fileName of BuildStep.INSTALL_FILE_NAMES) {
+      const copy = path.join(backup, fileName);
+      if (fs.existsSync(copy))
+        fs.copyFileSync(copy, this.resolve(fileName));
+      else
+        fs.rmSync(this.resolve(fileName), { force: true });
+    }
+
+    fs.rmSync(backup, { recursive: true, force: true });
   }
 
   private isFile(filePath: string): boolean {

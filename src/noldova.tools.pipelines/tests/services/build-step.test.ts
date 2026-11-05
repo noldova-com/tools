@@ -36,6 +36,7 @@ class FakeTypeScript extends TypeScript {
 class FakeNpm extends Npm {
   public readonly calls: string[] = [];
   public readonly manifests: string[] = [];
+  public readonly backups: string[] = [];
   private readonly packResult: ProcessResult;
   private readonly installResult: ProcessResult;
 
@@ -58,6 +59,7 @@ class FakeNpm extends Npm {
 
   public override async installArchivesAsync(archivePaths: readonly string[]): Promise<ProcessResult> {
     this.calls.push(`install ${archivePaths.join(" ")}`);
+    this.backups.push(fs.readdirSync(path.join(this.workingDirectory, "_build/restore")).join(" "));
     const manifestPath = path.join(this.workingDirectory, "package.json");
     if (fs.existsSync(manifestPath))
       this.manifests.push(fs.readFileSync(manifestPath, "utf8"));
@@ -140,6 +142,36 @@ export class BuildStepTests {
     Assert.areEqual("{\n  \"name\": \"repository\",\n  \"dependencies\": {\n    \"x\": \"1.0.0\",\n    \"@noldova/a\": \"file:_packages/noldova-a-0.0.5.tgz\"\n  }\n}\n", npm.manifests.join("|"));
     Assert.areEqual(manifest, BuildStepTests.read(repository, "package.json"));
     Assert.areEqual("lock", BuildStepTests.read(repository, "package-lock.json"));
+  }
+
+  @TestMethod
+  public async restoresTheManifestAndLockThatAnInterruptedBuildLeftAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package.json"), "{\"dependencies\":{\"@noldova/a\":\"file:_packages/noldova-a-0.0.5.tgz\"}}");
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "changed");
+    fs.mkdirSync(path.join(repository.directory, "_build/restore"), { recursive: true });
+    fs.writeFileSync(path.join(repository.directory, "_build/restore/package.json"), "{\"name\":\"repository\"}");
+    const npm = new FakeNpm(repository.directory);
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), npm, []).runAsync(["noldova.b"]);
+
+    Assert.areEqual("{\"name\":\"repository\"}", npm.manifests.join("|"));
+    Assert.areEqual("{\"name\":\"repository\"}", BuildStepTests.read(repository, "package.json"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "package-lock.json")));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "_build/restore")));
+  }
+
+  @TestMethod
+  public async keepsTheBackupOfTheManifestAndLockWhileItBuildsAsync(): Promise<void> {
+    using repository = BuildStepTests.createRepository();
+    fs.writeFileSync(path.join(repository.directory, "package.json"), "{}");
+    fs.writeFileSync(path.join(repository.directory, "package-lock.json"), "lock");
+    const npm = new FakeNpm(repository.directory);
+
+    await BuildStepTests.createStep(repository.directory, new FakeTypeScript(repository.directory), npm, []).runAsync(["noldova.a", "noldova.b"]);
+
+    Assert.areEqual("package-lock.json package.json|package-lock.json package.json", npm.backups.join("|"));
+    Assert.isFalse(fs.existsSync(path.join(repository.directory, "_build/restore")));
   }
 
   @TestMethod
