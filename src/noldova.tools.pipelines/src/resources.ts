@@ -165,7 +165,7 @@ export class Resources {
   public static readonly buildConfigFilePath: string = "build.json";
   public static readonly buildConfigMissing: string = "The checkout has no build.json, which names the packages to build.";
   public static readonly buildFolder: string = "_build/packages";
-  public static readonly buildPackageNamePattern: RegExp = /^noldova(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/;
+  public static readonly buildPackageNamePattern: RegExp = /^noldova(?:\.[a-z0-9]+)+$/;
   public static readonly buildScriptFields: readonly string[] = ["pre", "compile", "post"];
   public static readonly buildStepName: string = "build";
   public static readonly buildStepUsage: string = "[--version <version>] [<package>...], or --list-copies";
