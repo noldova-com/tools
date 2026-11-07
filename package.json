@@ -14,9 +14,9 @@
     "pipelines": "node -e \"if (!require('fs').existsSync('.pipelines/node_modules/@noldova/tools.pipelines.github')) { console.error('.pipelines holds no build tool yet; npm run build installs it.'); process.exit(1); }\" && node .pipelines/node_modules/@noldova/tools.pipelines.github/bin/pipelines.js"
   },
   "devDependencies": {
-    "@noldova/context.exceptions": "0.0.3",
-    "@noldova/context.json": "0.0.3",
-    "@noldova/context.testing": "0.0.3",
+    "@noldova/context.exceptions": "0.0.5",
+    "@noldova/context.json": "0.0.5",
+    "@noldova/context.testing": "0.0.5",
     "@types/node": "24.19.2",
     "typescript": "7.0.2"
   }
