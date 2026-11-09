@@ -85,7 +85,7 @@ export class DependentsStepTests {
     Assert.areEqual(`${JSON.stringify({ lockedFrom: pushed?.["package.json"] })}\n`, pushed?.["package-lock.json"]);
     Assert.areEqual(`${JSON.stringify({ lockedFrom: pushed?.["src/package.json"] })}\n`, pushed?.["src/package-lock.json"]);
     Assert.areEqual(2, npm.directories.length);
-    Assert.areEqual([false, false], npm.oldLocks);
+    Assert.areEqual("false,false", npm.oldLocks.join(","));
     Assert.isFalse(host.pushed.has("noldova-com/unpinned"));
     Assert.areEqual(
       [
