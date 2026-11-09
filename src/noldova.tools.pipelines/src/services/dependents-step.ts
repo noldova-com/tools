@@ -31,6 +31,10 @@ interface LockFile {
   readonly packages?: Readonly<Record<string, LockedPackage>>;
 }
 
+interface LockedPackages {
+  readonly packages: Readonly<Record<string, LockedPackage>>;
+}
+
 interface LockedPackage {
   readonly version: string;
   readonly dependencies?: Readonly<Record<string, string>>;
@@ -52,9 +56,14 @@ interface Manifest {
   readonly peerDependenciesMeta?: Readonly<Record<string, unknown>>;
 }
 
+interface OwnPin {
+  readonly field: string;
+  readonly manifestPaths: readonly string[];
+}
+
 interface OwnLock {
   readonly lockFilePath: string;
-  readonly fields: ReadonlyMap<string, string>;
+  readonly pins: ReadonlyMap<string, OwnPin>;
 }
 
 interface PeerChase {
@@ -186,13 +195,10 @@ export class DependentsStep implements IStep {
 
     const owners = DependentsStep.readOwners(directory, manifestPaths);
     const ownLocks = lockFilePaths.flatMap(t => DependentsStep.findOwnLock(directory, t, owners));
-    const shared = [...new Set(ownLocks.flatMap(t => [...t.fields.keys()]))].flatMap(t => {
-      const found = owners.get(t) ?? [];
-
-      return found.length > 1 ? [Resources.formatOwnManifests(t, found)] : [];
-    });
-    if (shared.length > 0)
-      return StepResult.succeeded(Resources.formatRepositoryOwnShared(repository, update.version, shared));
+    const shared = new Map(ownLocks.flatMap(t => [...t.pins]).filter(([, t]) => t.manifestPaths.length > 1)
+      .map(([packageName, t]) => [packageName, Resources.formatOwnManifests(packageName, t.manifestPaths)]));
+    if (shared.size > 0)
+      return StepResult.succeeded(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
     const allMoves = [...moves, ...peerMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
@@ -223,7 +229,7 @@ export class DependentsStep implements IStep {
     if (push !== null)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
-    const ownLines = ownLocks.map(t => Resources.formatOwnLocked(t.lockFilePath, [...t.fields.keys()]));
+    const ownLines = ownLocks.map(t => Resources.formatOwnLocked(t.lockFilePath, [...t.pins.keys()]));
     const body = Resources.formatUpdateBody(update.source, update.version, update.commit, allMoves.map(t => t.line), lockFilePaths, ownLines, update.notes);
     const proposal = await this.updateHost.proposeAsync(repository, branch, title, body, Resources.updateIssueSummary);
     if (proposal instanceof StepResult)
@@ -242,13 +248,12 @@ export class DependentsStep implements IStep {
     fs.mkdirSync(standIns, { recursive: true });
     const text = fs.readFileSync(manifestPath, Resources.textEncoding);
     const manifest: Record<string, unknown> = JSON.parse(text);
-    for (const [index, [packageName, field]] of [...ownLock.fields].entries()) {
-      const [owner] = owners.get(packageName) ?? [];
+    for (const [index, [packageName, pin]] of [...ownLock.pins].entries()) {
       const archive = path.join(standIns, `${index}${Resources.standInArchiveExtension}`);
-      DependentsStep.writeStandIn(archive, DependentsStep.createStandIn(packageName, owner === undefined ? {} : DependentsStep.readManifest(directory, owner), owners));
+      DependentsStep.writeStandIn(archive, DependentsStep.createStandIn(packageName, pin.manifestPaths.map(t => DependentsStep.readManifest(directory, t)), owners));
       for (const name of Resources.lockedDependencyFields) {
         const specifiers = DependentsStep.readField(manifest, name);
-        if (name === field)
+        if (name === pin.field)
           specifiers[packageName] = `${Resources.archiveSpecifierPrefix}${path.relative(folder, archive).split(path.sep).join(path.posix.sep)}`;
         else
           delete specifiers[packageName];
@@ -263,7 +268,7 @@ export class DependentsStep implements IStep {
     try {
       const result = await this.npm.lockAsync(folder, this.updateHost.credentialVariables);
       if (result.isSuccessful)
-        DependentsStep.leaveOutOwn(path.join(directory, ownLock.lockFilePath), new Set(ownLock.fields.keys()), JSON.parse(text));
+        DependentsStep.leaveOutOwn(path.join(directory, ownLock.lockFilePath), new Set(ownLock.pins.keys()), JSON.parse(text));
 
       return result;
     }
@@ -411,47 +416,41 @@ export class DependentsStep implements IStep {
   }
 
   // Finds the own packages a lock folder pins exactly while its lock holds no entry for them, and every own package
-  // they reach through their tracked manifests, each with the manifest field it goes in.
+  // they reach through their tracked manifests, each with the manifest field it goes in and the manifests that name it.
   private static findOwnLock(directory: string, lockFilePath: string, owners: ReadonlyMap<string, readonly string[]>): readonly OwnLock[] {
-    const manifestPath = path.posix.join(path.posix.dirname(lockFilePath), Resources.manifestFileName);
-    if (!fs.existsSync(path.join(directory, manifestPath)))
-      return [];
-
-    const manifest: Record<string, unknown> = JSON.parse(fs.readFileSync(path.join(directory, manifestPath), Resources.textEncoding));
+    const manifest: Record<string, unknown> = JSON.parse(fs.readFileSync(path.join(directory, path.dirname(lockFilePath), Resources.manifestFileName), Resources.textEncoding));
     const lock: LockFile = JSON.parse(fs.readFileSync(path.join(directory, lockFilePath), Resources.textEncoding));
     const locked = new Set(Object.keys(lock.packages ?? {}).map(t => t.slice(t.lastIndexOf(Resources.nodeModulesSegment) + Resources.nodeModulesSegment.length)));
-    const isUnlockedOwn = (packageName: string): boolean => owners.has(packageName) && !locked.has(packageName);
-    const fields = new Map<string, string>();
-    for (const field of Resources.lockedDependencyFields) {
-      const queue = Object.entries(DependentsStep.readField(manifest, field))
-        .filter(([t, version]) => isUnlockedOwn(t) && Resources.exactVersionPattern.test(version))
-        .map(([t]) => t);
-      for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-        if (fields.has(next))
-          continue;
+    const findOwn = (packageNames: readonly string[]): readonly (readonly [string, readonly string[]])[] =>
+      [...owners].filter(([t]) => packageNames.includes(t) && !locked.has(t));
+    const pins = new Map<string, OwnPin>();
+    const visit = (packageName: string, manifestPaths: readonly string[], field: string): void => {
+      if (pins.has(packageName))
+        return;
 
-        fields.set(next, field);
-        for (const owner of owners.get(next) ?? []) {
-          const reached = DependentsStep.readManifest(directory, owner);
-          queue.push(...[reached.dependencies, reached.optionalDependencies, reached.peerDependencies].flatMap(t => Object.keys(t ?? {})).filter(isUnlockedOwn));
-        }
-      }
-    }
+      pins.set(packageName, { field, manifestPaths });
+      for (const reached of manifestPaths.map(t => DependentsStep.readManifest(directory, t)))
+        for (const [name, paths] of findOwn([reached.dependencies, reached.optionalDependencies, reached.peerDependencies].flatMap(t => Object.keys(t ?? {}))))
+          visit(name, paths, field);
+    };
+    for (const field of Resources.lockedDependencyFields)
+      for (const [name, paths] of findOwn(Object.entries(DependentsStep.readField(manifest, field)).filter(([, t]) => Resources.exactVersionPattern.test(t)).map(([t]) => t)))
+        visit(name, paths, field);
 
-    return fields.size === 0 ? [] : [{ lockFilePath, fields }];
+    return pins.size === 0 ? [] : [{ lockFilePath, pins }];
   }
 
-  private static createStandIn(packageName: string, manifest: Manifest, owners: ReadonlyMap<string, readonly string[]>): Readonly<Record<string, unknown>> {
-    const external = <T>(entries: Readonly<Record<string, T>> | undefined): Readonly<Record<string, T>> =>
-      Object.fromEntries(Object.entries(entries ?? {}).filter(([t]) => !owners.has(t)));
+  private static createStandIn(packageName: string, manifests: readonly Manifest[], owners: ReadonlyMap<string, readonly string[]>): Readonly<Record<string, unknown>> {
+    const external = <T>(entries: readonly (Readonly<Record<string, T>> | undefined)[]): Readonly<Record<string, T>> =>
+      Object.fromEntries(entries.flatMap(t => Object.entries(t ?? {})).filter(([t]) => !owners.has(t)));
 
     return {
       name: packageName,
       version: Resources.standInVersion,
-      dependencies: external(manifest.dependencies),
-      optionalDependencies: external(manifest.optionalDependencies),
-      peerDependencies: external(manifest.peerDependencies),
-      peerDependenciesMeta: external(manifest.peerDependenciesMeta)
+      dependencies: external(manifests.map(t => t.dependencies)),
+      optionalDependencies: external(manifests.map(t => t.optionalDependencies)),
+      peerDependencies: external(manifests.map(t => t.peerDependencies)),
+      peerDependenciesMeta: external(manifests.map(t => t.peerDependenciesMeta))
     };
   }
 
@@ -469,9 +468,9 @@ export class DependentsStep implements IStep {
   }
 
   private static leaveOutOwn(lockPath: string, ownNames: ReadonlySet<string>, manifest: Readonly<Record<string, unknown>>): void {
-    const lock: LockFile = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
+    const lock: LockedPackages = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
     const isOwn = (key: string): boolean => key.split(Resources.nodeModulesSegment).slice(1).some(t => ownNames.has(t.replace(/\/$/, "")));
-    const entries = Object.entries(lock.packages ?? {})
+    const entries = Object.entries(lock.packages)
       .filter(([key]) => !isOwn(key))
       .map(([key, entry]): [string, unknown] => [key, key.length === 0 ? DependentsStep.restoreRoot(entry, manifest) : entry]);
     fs.writeFileSync(lockPath, `${JSON.stringify({ ...lock, packages: Object.fromEntries(entries) }, null, 2)}\n`);

@@ -621,9 +621,10 @@ export class DependentsStepTests {
   public async failsARepositoryWhoseLockFileDoesNotRefreshFromItsOwnPackagesAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     using pinned = DependentsStepTests.createTarget({
-      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/own\": \"0.0.2\" } }\n",
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/own\": \"0.0.2\", \"@noldova/own-core\": \"0.0.2\" } }\n",
       "package-lock.json": "{}\n",
-      "src/own/package.json": "{ \"name\": \"@noldova/own\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/r\": \"^1.0.0\" } }\n"
+      "src/own/package.json": "{ \"name\": \"@noldova/own\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/own-core\": \"__VERSION__\", \"@noldova/r\": \"^1.0.0\" } }\n",
+      "src/own-core/package.json": "{ \"name\": \"@noldova/own-core\", \"version\": \"__VERSION__\" }\n"
     });
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/pinned", pinned);
@@ -636,7 +637,7 @@ export class DependentsStepTests {
     Assert.areEqual(
       "noldova-com/pinned: Relocking package-lock.json, npm install --package-lock-only --ignore-scripts --no-audit --no-fund, exited with code 1: npm error code ETARGET",
       result.message.split("\n")[1]);
-    Assert.areEqual(JSON.stringify({ "@noldova/a": "0.0.4", "@noldova/own": "file:../0-own/0.tgz" }),
+    Assert.areEqual(JSON.stringify({ "@noldova/a": "0.0.4", "@noldova/own": "file:../0-own/1.tgz", "@noldova/own-core": "file:../0-own/0.tgz" }),
       JSON.stringify(JSON.parse(npm.givenManifests.join("")).dependencies));
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
