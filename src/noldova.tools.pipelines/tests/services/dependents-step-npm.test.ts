@@ -115,6 +115,27 @@ export class DependentsStepNpmTests {
     Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
   }
 
+  // The dependent pins a compiler newer than the exact peer core's new version needs.
+  @TestMethod
+  public async leavesTheDependentAtItsPinsWhenItPinsANewerVersionThanAMovedPackageNeedsAsync(): Promise<void> {
+    using _ = DependentsStepNpmTests.turnOffCompileCache();
+    await using registry = await LocalRegistryFixture.startAsync();
+    registry.publish("@noldova/compiler", "1.0.6");
+    registry.publish("@noldova/core", "1.0.1");
+    registry.publish("@noldova/window", "0.0.70", { peerDependencies: { "@noldova/core": "1.0.1" } });
+    using dependent = await DependentsStepNpmTests.createDependentAsync(registry, { "@noldova/compiler": "1.0.6", "@noldova/core": "1.0.1", "@noldova/window": "0.0.70" });
+    DependentsStepNpmTests.publishCore(registry, "1.0.5", "0.0.71");
+
+    const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      `${DependentsStepNpmTests.DEPENDENT}: left at its pins, since no version of these pinned packages accepts what 0.0.71 moves: `
+      + "@noldova/compiler 1.0.6 is newer than the 1.0.5 that @noldova/core 1.0.5 needs.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
+  }
+
   private static publishCore(registry: LocalRegistryFixture, version: string, windowVersion: string): void {
     registry.publish("@noldova/compiler", version);
     registry.publish("@noldova/core", version, { peerDependencies: { "@noldova/compiler": version }, peerDependenciesMeta: DependentsStepNpmTests.OPTIONAL_COMPILER });

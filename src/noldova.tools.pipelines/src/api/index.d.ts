@@ -2628,9 +2628,9 @@ export declare class ReproducibleStep implements IStep {
  * moves to its first later version whose exact peers are the moved
  * versions; the description names the package that required each. It
  * leaves the pins of packages the repository's own manifests name, which its
- * own next release moves. When no
- * such version exists, it leaves the repository as it is and names each
- * such pin, without failing it. Before it relocks,
+ * own next release moves. When a pin is newer than an exact peer a moved
+ * package needs, or no such version exists, it leaves the repository as it
+ * is and names each such pin, without failing it. Before it relocks,
  * it leaves a repository as it is when any of its lock files holds another
  * package that needs one of the moved packages at another exact version, as
  * a peer, and names each such package, since npm couldn't install the moved

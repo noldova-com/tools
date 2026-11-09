@@ -182,7 +182,7 @@ export class DependentsStepTests {
     host.repositories.set("noldova-com/pinned", pinned);
     const npm = new LockingNpm();
     npm.answer("@noldova/kit@0.0.5", "peerDependencies", { "@noldova/x": "1.0.5", "@noldova/r": "^2.0.0", "@noldova/n": 1, "@noldova/absent": "4.0.0", "@noldova/own": "0.0.2" });
-    npm.answer("@noldova/x@1.0.5", "peerDependencies", { "@noldova/y": "2.0.5", "@noldova/z": "2.0.0" });
+    npm.answer("@noldova/x@1.0.5", "peerDependencies", { "@noldova/y": "2.0.5", "@noldova/z": "3.0.0" });
     npm.views.set("@noldova/y@2.0.5 peerDependencies", new ProcessResult(1, "{ \"error\": { \"code\": \"E404\" } }\n", ""));
     npm.answer("@noldova/z@3.0.0", "peerDependencies", "3.0.0");
     npm.answer("@noldova/w@1.0.0", "peerDependencies", []);
@@ -210,6 +210,28 @@ export class DependentsStepTests {
         "0 @noldova/w@1.0.0 peerDependencies SECRET_TOKEN"
       ].join("\n"),
       npm.viewed.join("\n"));
+  }
+
+  @TestMethod
+  public async leavesARepositoryWhosePinIsNewerThanTheExactPeerAMovedPackageNeedsAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\" }, \"devDependencies\": { \"@noldova/z\": \"3.0.0\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/kit@0.0.5", "peerDependencies", { "@noldova/z": "2.0.0" });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, since no version of these pinned packages accepts what 0.0.4 moves: @noldova/z 3.0.0 is newer than the 2.0.0 that @noldova/kit 0.0.5 needs.",
+      result.message.split("\n")[1]);
+    Assert.areEqual(0, npm.directories.length);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
 
   @TestMethod

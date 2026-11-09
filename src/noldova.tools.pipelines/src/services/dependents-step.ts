@@ -211,7 +211,8 @@ export class DependentsStep implements IStep {
   // Moves, until nothing more moves, every exact pin older than the exact peer a moved package's new version needs,
   // and every exact pin whose version needs a moved package at another exact version, to the first later version that
   // needs the moved versions; adds what it moves to the moved packages. It leaves the pins of the repository's own
-  // packages, which its own next release moves.
+  // packages, which its own next release moves. A pin newer than an exact peer a moved package needs, or with no later
+  // version that needs the moved versions, is a miss.
   private async chasePeersAsync(directory: string, manifestPaths: readonly string[], moved: Map<string, string>): Promise<PeerChase> {
     const peers = new Map<string, ReadonlyMap<string, string>>();
     const moves: PinMove[] = [];
@@ -228,14 +229,22 @@ export class DependentsStep implements IStep {
       moves.push(...pinMoves);
     };
     for (;;) {
+      const misses: string[] = [];
       for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
         const [packageName, version] = next;
-        for (const [peerName, peerVersion] of await this.readPeersAsync(directory, packageName, version, peers))
-          if (!isSettled(peerName))
+        for (const [peerName, peerVersion] of await this.readPeersAsync(directory, packageName, version, peers)) {
+          if (isSettled(peerName))
+            continue;
+
+          const needed = Version.parse(peerVersion);
+          const newer = DependentsStep.readExactPins(directory, manifestPaths).filter(([t, pinned]) => t === peerName && Version.parse(pinned).compareTo(needed) > 0);
+          if (newer.length > 0)
+            misses.push(...newer.map(([, pinned]) => Resources.formatPeerNewer(peerName, pinned, peerVersion, packageName, version)));
+          else
             move(peerName, peerVersion, Resources.formatPeerReason(packageName, version));
+        }
       }
 
-      const misses: string[] = [];
       for (const [packageName, version] of DependentsStep.readExactPins(directory, manifestPaths).filter(([t]) => !isSettled(t))) {
         const needed = DependentsStep.findNeeded(await this.readPeersAsync(directory, packageName, version, peers), moved);
         const [first] = needed;

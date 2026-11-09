@@ -633,6 +633,10 @@ export class Resources {
     return `, the first version that needs \`${peerName}\` ${peerVersion} as a peer`;
   }
 
+  public static formatPeerNewer(packageName: string, version: string, peerVersion: string, neededBy: string, neededByVersion: string): string {
+    return `${packageName} ${version} is newer than the ${peerVersion} that ${neededBy} ${neededByVersion} needs`;
+  }
+
   public static formatPeerUnmatched(packageName: string, version: string, peerName: string, peerVersion: string, movedVersion: string): string {
     return `${packageName} ${version} needs ${peerName} ${peerVersion}, and no later version of it needs ${peerName} ${movedVersion}`;
   }
