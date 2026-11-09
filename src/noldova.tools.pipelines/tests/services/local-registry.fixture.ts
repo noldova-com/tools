@@ -8,6 +8,7 @@
 
 import { once } from "node:events";
 import http from "node:http";
+import { setImmediate } from "node:timers/promises";
 
 interface PublishedVersion {
   readonly dependencies?: Readonly<Record<string, string>>;
@@ -52,6 +53,9 @@ export class LocalRegistryFixture implements AsyncDisposable {
     this.server.closeAllConnections();
     this.server.close();
     await once(this.server, "close");
+    // The server emits close before libuv releases its listening handle, which happens in the loop's close phase;
+    // the next check phase comes after it.
+    await setImmediate();
   }
 
   private answer(request: http.IncomingMessage, response: http.ServerResponse): void {
