@@ -173,14 +173,15 @@ export class DependentsStepTests {
   public async movesTheExactPinsTheMovedPackagesNeedAsPeersUntilNothingMoreMovesAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     using pinned = DependentsStepTests.createTarget({
-      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\", \"@noldova/x\": \"1.0.0\", \"@noldova/r\": \"^1.0.0\" } }\n",
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\", \"@noldova/x\": \"1.0.0\", \"@noldova/r\": \"^1.0.0\", \"@noldova/own\": \"0.0.1\" } }\n",
       "package-lock.json": "{}\n",
-      "src/package.json": "{ \"devDependencies\": { \"@noldova/y\": \"2.0.0\", \"@noldova/z\": \"3.0.0\", \"@noldova/w\": \"1.0.0\" } }\n"
+      "src/package.json": "{ \"devDependencies\": { \"@noldova/y\": \"2.0.0\", \"@noldova/z\": \"3.0.0\", \"@noldova/w\": \"1.0.0\" } }\n",
+      "src/own/package.json": "{ \"name\": \"@noldova/own\", \"version\": \"0.0.1\" }\n"
     });
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/pinned", pinned);
     const npm = new LockingNpm();
-    npm.answer("@noldova/kit@0.0.5", "peerDependencies", { "@noldova/x": "1.0.5", "@noldova/r": "^2.0.0", "@noldova/n": 1, "@noldova/absent": "4.0.0" });
+    npm.answer("@noldova/kit@0.0.5", "peerDependencies", { "@noldova/x": "1.0.5", "@noldova/r": "^2.0.0", "@noldova/n": 1, "@noldova/absent": "4.0.0", "@noldova/own": "0.0.2" });
     npm.answer("@noldova/x@1.0.5", "peerDependencies", { "@noldova/y": "2.0.5", "@noldova/z": "2.0.0" });
     npm.views.set("@noldova/y@2.0.5 peerDependencies", new ProcessResult(1, "{ \"error\": { \"code\": \"E404\" } }\n", ""));
     npm.answer("@noldova/z@3.0.0", "peerDependencies", "3.0.0");

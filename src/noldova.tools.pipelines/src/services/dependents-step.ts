@@ -42,6 +42,7 @@ interface PinMove {
 }
 
 interface Manifest {
+  readonly name?: string;
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
 }
@@ -209,11 +210,14 @@ export class DependentsStep implements IStep {
 
   // Moves, until nothing more moves, every exact pin older than the exact peer a moved package's new version needs,
   // and every exact pin whose version needs a moved package at another exact version, to the first later version that
-  // needs the moved versions; adds what it moves to the moved packages.
+  // needs the moved versions; adds what it moves to the moved packages. It leaves the pins of the repository's own
+  // packages, which its own next release moves.
   private async chasePeersAsync(directory: string, manifestPaths: readonly string[], moved: Map<string, string>): Promise<PeerChase> {
     const peers = new Map<string, ReadonlyMap<string, string>>();
     const moves: PinMove[] = [];
     const queue = [...moved];
+    const own = new Set(manifestPaths.flatMap(t => DependentsStep.readManifest(directory, t).name ?? []));
+    const isSettled = (packageName: string): boolean => moved.has(packageName) || own.has(packageName);
     const move = (packageName: string, version: string, reason: string): void => {
       const pinMoves = manifestPaths.flatMap(t => DependentsStep.movePins(path.join(directory, t), t, [{ packageName, version, reason }]));
       if (pinMoves.length === 0)
@@ -227,12 +231,12 @@ export class DependentsStep implements IStep {
       for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
         const [packageName, version] = next;
         for (const [peerName, peerVersion] of await this.readPeersAsync(directory, packageName, version, peers))
-          if (!moved.has(peerName))
+          if (!isSettled(peerName))
             move(peerName, peerVersion, Resources.formatPeerReason(packageName, version));
       }
 
       const misses: string[] = [];
-      for (const [packageName, version] of DependentsStep.readExactPins(directory, manifestPaths).filter(([t]) => !moved.has(t))) {
+      for (const [packageName, version] of DependentsStep.readExactPins(directory, manifestPaths).filter(([t]) => !isSettled(t))) {
         const needed = DependentsStep.findNeeded(await this.readPeersAsync(directory, packageName, version, peers), moved);
         const [first] = needed;
         if (first === undefined)
@@ -309,13 +313,17 @@ export class DependentsStep implements IStep {
   private static readExactPins(directory: string, manifestPaths: readonly string[]): readonly (readonly [string, string])[] {
     const pins = new Map<string, readonly [string, string]>();
     for (const manifestPath of manifestPaths) {
-      const manifest: Manifest = JSON.parse(fs.readFileSync(path.join(directory, manifestPath), Resources.textEncoding));
+      const manifest = DependentsStep.readManifest(directory, manifestPath);
       for (const [packageName, version] of [...Object.entries(manifest.dependencies ?? {}), ...Object.entries(manifest.devDependencies ?? {})])
         if (Resources.exactVersionPattern.test(version))
           pins.set(`${packageName}@${version}`, [packageName, version]);
     }
 
     return [...pins.values()];
+  }
+
+  private static readManifest(directory: string, manifestPath: string): Manifest {
+    return JSON.parse(fs.readFileSync(path.join(directory, manifestPath), Resources.textEncoding));
   }
 
   private static readPeerPins(manifests: readonly JsonReader[], packageNames: readonly string[], releasedVersion: string): readonly PinTarget[] {
