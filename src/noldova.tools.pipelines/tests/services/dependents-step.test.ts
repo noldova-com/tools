@@ -195,7 +195,7 @@ export class DependentsStepTests {
     Assert.areEqual(
       [
         "- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4",
-        "- `package.json`: `@noldova/kit` from 0.0.4 to 0.0.5, which `@noldova/a` 0.0.4 needs as a peer",
+        "- `package.json`: `@noldova/kit` from 0.0.4 to 0.0.5, which `@noldova/a.b` 0.0.4 needs as a peer",
         "- `package.json`: `@noldova/x` from 1.0.0 to 1.0.5, which `@noldova/kit` 0.0.5 needs as a peer",
         "- `src/package.json`: `@noldova/y` from 2.0.0 to 2.0.5, which `@noldova/x` 1.0.5 needs as a peer"
       ].join("\n"),
