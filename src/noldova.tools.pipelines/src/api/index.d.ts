@@ -2584,10 +2584,10 @@ export declare class ReproducibleStep implements IStep {
  * files pin any of those packages exactly at an older version, it moves each
  * such pin to the version, removes from every tracked `package-lock.json`
  * the moved packages, what is nested under them and the entries that depend
- * on them, keeps every other entry, and has {@link Npm.lockAsync} resolve
- * what it removed, without the host's credential variables, so a package the
- * old lock keeps at an older version can't hold the moved pins back and
- * nothing the release doesn't move changes; it then commits,
+ * on them, keeps every other entry unless a package it resolves again needs
+ * it to change, and has {@link Npm.lockAsync} resolve what it removed,
+ * without the host's credential variables, so a package the old lock keeps
+ * at an older version can't hold the moved pins back; it then commits,
  * pushes the branch `pipelines/update-<source>` and proposes it, with the
  * moved pins and the release's notes in its description. When a released
  * package needs another package as a peer at an exact version, it moves the

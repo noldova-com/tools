@@ -660,7 +660,7 @@ export class Resources {
       `${source} released ${version} from commit ${commit}; this moves every exact pin of its packages that was older.`,
       "",
       ...moves.map(t => `- ${t}`),
-      ...lockFilePaths.map(t => `- \`${t}\`: the moved packages and the entries that depend on them resolved again with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\`; every other entry kept`),
+      ...lockFilePaths.map(t => `- \`${t}\`: the moved packages, the entries nested under them and the entries that depend on them resolved again with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\`; every other entry kept unless a resolved package needs it to change`),
       "",
       notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes" section.` : notes
     ].join(Resources.lineSeparator);
