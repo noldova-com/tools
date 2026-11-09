@@ -30,6 +30,8 @@ interface LockFile {
 
 interface LockedPackage {
   readonly version: string;
+  readonly dependencies?: Readonly<Record<string, string>>;
+  readonly optionalDependencies?: Readonly<Record<string, string>>;
   readonly peerDependencies?: Readonly<Record<string, string>>;
 }
 
@@ -147,8 +149,9 @@ export class DependentsStep implements IStep {
     if (blockers.length > 0)
       return StepResult.succeeded(Resources.formatRepositoryBlocked(repository, update.version, blockers));
 
+    const movedNames = new Set([...moves, ...peerMoves].map(t => t.packageName));
     for (const lockFilePath of lockFilePaths) {
-      fs.rmSync(path.join(directory, lockFilePath));
+      DependentsStep.unlockMoved(path.join(directory, lockFilePath), movedNames);
       const result = await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables);
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)));
@@ -216,6 +219,26 @@ export class DependentsStep implements IStep {
     }
 
     return [...conflicts];
+  }
+
+  private static unlockMoved(fullPath: string, packageNames: ReadonlySet<string>): void {
+    const lock: LockFile = JSON.parse(fs.readFileSync(fullPath, Resources.textEncoding));
+    if (lock.packages === undefined)
+      return;
+
+    const entries = Object.entries(lock.packages);
+    const unlocked = entries.filter(([key, entry]) => DependentsStep.isMovedOrDependent(key, entry, packageNames)).map(([key]) => key);
+    const kept = entries.filter(([key]) => !unlocked.some(t => key === t || key.startsWith(`${t}/`)));
+    fs.writeFileSync(fullPath, `${JSON.stringify({ ...lock, packages: Object.fromEntries(kept) }, null, 2)}\n`);
+  }
+
+  private static isMovedOrDependent(key: string, entry: LockedPackage, packageNames: ReadonlySet<string>): boolean {
+    const index = key.lastIndexOf(Resources.nodeModulesSegment);
+    if (index < 0)
+      return false;
+
+    return packageNames.has(key.slice(index + Resources.nodeModulesSegment.length))
+      || [entry.dependencies, entry.optionalDependencies, entry.peerDependencies].some(t => Object.keys(t ?? {}).some(n => packageNames.has(n)));
   }
 
   private static findLocked(packages: Readonly<Record<string, LockedPackage>>, key: string, name: string): LockedPackage | undefined {

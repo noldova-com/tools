@@ -2582,20 +2582,22 @@ export declare class ReproducibleStep implements IStep {
  * releases, as the {@link ArchiveStep} does, and checks out each repository
  * the {@link IUpdateHost} lists. In a repository whose tracked `package.json`
  * files pin any of those packages exactly at an older version, it moves each
- * such pin to the version, deletes every tracked `package-lock.json` and
- * writes it again with {@link Npm.lockAsync}, without the host's credential
- * variables, so a package the old lock keeps at an older version can't hold
- * the moved pins back, commits,
+ * such pin to the version, removes from every tracked `package-lock.json`
+ * the moved packages, what is nested under them and the entries that depend
+ * on them, keeps every other entry, and has {@link Npm.lockAsync} resolve
+ * what it removed, without the host's credential variables, so a package the
+ * old lock keeps at an older version can't hold the moved pins back and
+ * nothing the release doesn't move changes; it then commits,
  * pushes the branch `pipelines/update-<source>` and proposes it, with the
  * moved pins and the release's notes in its description. When a released
  * package needs another package as a peer at an exact version, it moves the
  * repository's exact pins of that package too, when older, and names in the
- * description the released package that needs each. Before it regenerates,
+ * description the released package that needs each. Before it relocks,
  * it leaves a repository as it is when any of its lock files holds another
  * package that needs one of the moved packages at another exact version, as
  * a peer, and names each such package, since npm couldn't install the moved
  * pins until that package accepts them; after, it leaves it as it is,
- * without chasing further, when a regenerated lock file still holds a
+ * without chasing further, when a relocked lock file still holds a
  * package whose exact peer differs from the version it locks. When the branch
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
