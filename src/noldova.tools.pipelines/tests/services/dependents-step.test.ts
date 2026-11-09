@@ -19,6 +19,8 @@ class LockingNpm extends Npm {
   public readonly directories: string[] = [];
   public readonly hiddenVariables: string[] = [];
   public readonly givenLocks: string[] = [];
+  public readonly views: Map<string, ProcessResult> = new Map();
+  public readonly viewed: string[] = [];
   public result: ProcessResult = new ProcessResult(0, "", "");
   public locked: object | null = null;
 
@@ -34,6 +36,16 @@ class LockingNpm extends Npm {
     fs.writeFileSync(path.join(directory, "package-lock.json"), `${JSON.stringify(locked)}\n`);
 
     return this.result;
+  }
+
+  public override async viewInAsync(directory: string, specifier: string, field: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
+    this.viewed.push(`${path.basename(directory)} ${specifier} ${field} ${hiddenVariables.join(",")}`);
+
+    return this.views.get(`${specifier} ${field}`) ?? new ProcessResult(1, "", "npm error code E404\n");
+  }
+
+  public answer(specifier: string, field: string, value: unknown): void {
+    this.views.set(`${specifier} ${field}`, new ProcessResult(0, `${JSON.stringify(value)}\n`, ""));
   }
 }
 
@@ -155,6 +167,123 @@ export class DependentsStepTests {
       }
     };
     Assert.areEqual(`${JSON.stringify(kept, null, 2)}\n`, npm.givenLocks.join("|"));
+  }
+
+  @TestMethod
+  public async movesTheExactPinsTheMovedPackagesNeedAsPeersUntilNothingMoreMovesAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\", \"@noldova/x\": \"1.0.0\", \"@noldova/r\": \"^1.0.0\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/package.json": "{ \"devDependencies\": { \"@noldova/y\": \"2.0.0\", \"@noldova/z\": \"3.0.0\", \"@noldova/w\": \"1.0.0\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/kit@0.0.5", "peerDependencies", { "@noldova/x": "1.0.5", "@noldova/r": "^2.0.0", "@noldova/n": 1, "@noldova/absent": "4.0.0" });
+    npm.answer("@noldova/x@1.0.5", "peerDependencies", { "@noldova/y": "2.0.5", "@noldova/z": "2.0.0" });
+    npm.views.set("@noldova/y@2.0.5 peerDependencies", new ProcessResult(1, "{ \"error\": { \"code\": \"E404\" } }\n", ""));
+    npm.answer("@noldova/z@3.0.0", "peerDependencies", "3.0.0");
+    npm.answer("@noldova/w@1.0.0", "peerDependencies", []);
+    npm.views.set("@noldova/a@0.0.4 peerDependencies", new ProcessResult(0, "\n", ""));
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 4 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    Assert.areEqual(
+      [
+        "- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4",
+        "- `package.json`: `@noldova/kit` from 0.0.4 to 0.0.5, which `@noldova/a` 0.0.4 needs as a peer",
+        "- `package.json`: `@noldova/x` from 1.0.0 to 1.0.5, which `@noldova/kit` 0.0.5 needs as a peer",
+        "- `src/package.json`: `@noldova/y` from 2.0.0 to 2.0.5, which `@noldova/x` 1.0.5 needs as a peer"
+      ].join("\n"),
+      host.proposals.join("").split("\n").filter(t => t.startsWith("- `") && t.includes(" from ")).join("\n"));
+    Assert.areEqual(
+      [
+        "0 @noldova/a@0.0.4 peerDependencies SECRET_TOKEN",
+        "0 @noldova/kit@0.0.5 peerDependencies SECRET_TOKEN",
+        "0 @noldova/x@1.0.5 peerDependencies SECRET_TOKEN",
+        "0 @noldova/y@2.0.5 peerDependencies SECRET_TOKEN",
+        "0 @noldova/z@3.0.0 peerDependencies SECRET_TOKEN",
+        "0 @noldova/w@1.0.0 peerDependencies SECRET_TOKEN"
+      ].join("\n"),
+      npm.viewed.join("\n"));
+  }
+
+  @TestMethod
+  public async movesAnExactPinThatNeedsAMovedPackageAtAnotherVersionToTheFirstVersionThatNeedsTheMovedOneAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\", \"@noldova/c\": \"0.0.1\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/package.json": "{ \"devDependencies\": { \"@noldova/cli\": \"1.0.0\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/cli@1.0.0", "peerDependencies", { "@noldova/kit": "0.0.4" });
+    npm.answer("@noldova/cli", "versions", ["0.9.0", "1.0.0", "1.0.1", "2.0.0", "1.0.3", "1.0.2", "1.0.3-nightly.20261101"]);
+    npm.answer("@noldova/cli@1.0.1", "peerDependencies", { "@noldova/kit": "0.0.4" });
+    npm.answer("@noldova/cli@1.0.2", "peerDependencies", { "@noldova/kit": "0.0.5", "@noldova/a": "0.0.3" });
+    npm.answer("@noldova/cli@1.0.3", "peerDependencies", { "@noldova/kit": "0.0.5", "@noldova/a": "0.0.4" });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "- `src/package.json`: `@noldova/cli` from 1.0.0 to 1.0.3, the first version that needs `@noldova/kit` 0.0.5 as a peer",
+      host.proposals.join("").split("\n").filter(t => t.includes("@noldova/cli")).join("\n"));
+    Assert.areEqual("{ \"devDependencies\": { \"@noldova/cli\": \"1.0.3\" } }\n", host.pushed.get("noldova-com/pinned")?.["src/package.json"]);
+    Assert.areEqual(
+      "@noldova/c@0.0.1 peerDependencies,@noldova/cli@1.0.0 peerDependencies,@noldova/cli versions,@noldova/cli@1.0.1 peerDependencies,@noldova/cli@1.0.2 peerDependencies,@noldova/cli@1.0.3 peerDependencies",
+      npm.viewed.filter(t => t.includes("/c")).map(t => t.split(" ").slice(1, 3).join(" ")).join(","));
+  }
+
+  @TestData("[\"1.0.1\", \"1.0.2\"]")
+  @TestData("\"1.0.1\"")
+  @TestData("{}")
+  @TestData("")
+  @TestMethod
+  public async leavesARepositoryWhosePinnedPackageHasNoVersionThatNeedsTheMovedOneAsync(versions: string): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\" }, \"devDependencies\": { \"@noldova/cli\": \"1.0.0\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/cli@1.0.0", "peerDependencies", { "@noldova/kit": "0.0.4" });
+    npm.views.set("@noldova/cli versions", new ProcessResult(0, `${versions}\n`, ""));
+    npm.answer("@noldova/cli@1.0.1", "peerDependencies", { "@noldova/a": "0.0.4" });
+    npm.answer("@noldova/cli@1.0.2", "peerDependencies", { "@noldova/kit": "0.0.6" });
+    npm.answer("@noldova/cli@1.0.3", "peerDependencies", { "@noldova/kit": "0.0.5" });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, since no version of these pinned packages accepts what 0.0.4 moves: @noldova/cli 1.0.0 needs @noldova/kit 0.0.4, and no later version of it needs @noldova/kit 0.0.5.",
+      result.message.split("\n")[1]);
+    Assert.areEqual(0, npm.directories.length);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async failsARepositoryWhenNpmCannotReadAPeerFromTheRegistryAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.views.set("@noldova/a@0.0.4 peerDependencies", new ProcessResult(1, "", "npm error code E500\n"));
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("noldova-com/pinned: @noldova/a@0.0.4: npm view exited with code 1: npm error code E500", result.message.split("\n")[1]);
+    Assert.areEqual(0, npm.directories.length);
   }
 
   @TestMethod

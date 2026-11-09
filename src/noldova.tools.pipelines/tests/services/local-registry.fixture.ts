@@ -13,6 +13,7 @@ import { setImmediate } from "node:timers/promises";
 interface PublishedVersion {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly peerDependencies?: Readonly<Record<string, string>>;
+  readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional: boolean }>>;
 }
 
 // A registry on the loopback address that serves only the packuments of the versions published to it, which is all

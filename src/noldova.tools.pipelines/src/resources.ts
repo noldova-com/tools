@@ -103,6 +103,7 @@ export class Resources {
   public static readonly lockPackagesField: string = "packages";
   public static readonly nodeModulesSegment: string = "node_modules/";
   public static readonly npmLockTimeoutMilliseconds: number = 300_000;
+  public static readonly npmJsonValues: readonly string[] = ["--json"];
   public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmNotFoundCode: string = "E404";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
@@ -113,6 +114,7 @@ export class Resources {
   public static readonly npmTagValues: readonly string[] = ["--tag"];
   public static readonly npmVersionValues: readonly string[] = ["--version"];
   public static readonly npmViewValues: readonly string[] = ["view"];
+  public static readonly npmVersionsField: string = "versions";
   public static readonly packagesFolderPath: string = "src";
   public static readonly parentFolderName: string = "..";
   public static readonly patchPartName: string = "patch";
@@ -245,6 +247,8 @@ export class Resources {
   public static readonly windowsNpmBuildValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd run build"];
   public static readonly windowsNpmListCopiesValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd run build --silent -- --list-copies"];
   public static readonly windowsNpmLockValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd install --package-lock-only --ignore-scripts --no-audit --no-fund"];
+  public static readonly windowsNpmProgram: string = "npm.cmd";
+  public static readonly windowsShellValues: readonly string[] = ["/d", "/s", "/c"];
   public static readonly windowsNpmVersionValues: readonly string[] = ["/d", "/s", "/c", "npm.cmd --version"];
   public static readonly windowsPlatform: string = "win32";
   public static readonly windowsShellProgram: string = "cmd.exe";
@@ -623,6 +627,18 @@ export class Resources {
 
   public static formatPeerReason(packageName: string, version: string): string {
     return `, which \`${packageName}\` ${version} needs as a peer`;
+  }
+
+  public static formatPeerMatchReason(peerName: string, peerVersion: string): string {
+    return `, the first version that needs \`${peerName}\` ${peerVersion} as a peer`;
+  }
+
+  public static formatPeerUnmatched(packageName: string, version: string, peerName: string, peerVersion: string, movedVersion: string): string {
+    return `${packageName} ${version} needs ${peerName} ${peerVersion}, and no later version of it needs ${peerName} ${movedVersion}`;
+  }
+
+  public static formatRepositoryUnmatched(repository: string, version: string, misses: readonly string[]): string {
+    return `${repository}: left at its pins, since no version of these pinned packages accepts what ${version} moves: ${misses.join("; ")}.`;
   }
 
   public static formatRepositoryFailed(repository: string, message: string): string {
