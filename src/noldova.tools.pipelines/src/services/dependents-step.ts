@@ -148,6 +148,7 @@ export class DependentsStep implements IStep {
       return StepResult.succeeded(Resources.formatRepositoryBlocked(repository, update.version, blockers));
 
     for (const lockFilePath of lockFilePaths) {
+      fs.rmSync(path.join(directory, lockFilePath));
       const result = await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables);
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)));

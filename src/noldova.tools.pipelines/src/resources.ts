@@ -614,7 +614,7 @@ export class Resources {
   }
 
   public static formatRepositoryConflicted(repository: string, version: string, conflicts: readonly string[]): string {
-    return `${repository}: left at its pins, since the lock files refreshed for ${version} still hold packages whose exact peers differ from what they lock: ${conflicts.join("; ")}.`;
+    return `${repository}: left at its pins, since the lock files regenerated for ${version} still hold packages whose exact peers differ from what they lock: ${conflicts.join("; ")}.`;
   }
 
   public static formatPeerBlocker(filePath: string, packageName: string, version: string, peerName: string, peerVersion: string): string {
@@ -630,7 +630,7 @@ export class Resources {
   }
 
   public static formatLockFailed(lockFilePath: string, exitCode: number | null, errorOutput: string): string {
-    return Resources.formatFailureLine(`Refreshing ${lockFilePath}, npm ${Resources.npmLockValues.join(Resources.valueSeparator)}, exited with code ${exitCode}`, errorOutput);
+    return Resources.formatFailureLine(`Regenerating ${lockFilePath}, npm ${Resources.npmLockValues.join(Resources.valueSeparator)}, exited with code ${exitCode}`, errorOutput);
   }
 
   public static formatPinMoved(filePath: string, packageName: string, from: string, to: string): string {
@@ -660,7 +660,7 @@ export class Resources {
       `${source} released ${version} from commit ${commit}; this moves every exact pin of its packages that was older.`,
       "",
       ...moves.map(t => `- ${t}`),
-      ...lockFilePaths.map(t => `- \`${t}\`: refreshed with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\``),
+      ...lockFilePaths.map(t => `- \`${t}\`: regenerated with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\``),
       "",
       notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes" section.` : notes
     ].join(Resources.lineSeparator);

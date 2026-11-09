@@ -18,6 +18,7 @@ import { GitRepositoryFixture } from "./git-repository.fixture.js";
 class LockingNpm extends Npm {
   public readonly directories: string[] = [];
   public readonly hiddenVariables: string[] = [];
+  public readonly oldLocks: boolean[] = [];
   public result: ProcessResult = new ProcessResult(0, "", "");
   public locked: object | null = null;
 
@@ -28,6 +29,7 @@ class LockingNpm extends Npm {
   public override async lockAsync(directory: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
     this.directories.push(path.basename(directory));
     this.hiddenVariables.push(...hiddenVariables);
+    this.oldLocks.push(fs.existsSync(path.join(directory, "package-lock.json")));
     const locked = this.locked ?? { lockedFrom: fs.readFileSync(path.join(directory, "package.json"), "utf8") };
     fs.writeFileSync(path.join(directory, "package-lock.json"), `${JSON.stringify(locked)}\n`);
 
@@ -83,6 +85,7 @@ export class DependentsStepTests {
     Assert.areEqual(`${JSON.stringify({ lockedFrom: pushed?.["package.json"] })}\n`, pushed?.["package-lock.json"]);
     Assert.areEqual(`${JSON.stringify({ lockedFrom: pushed?.["src/package.json"] })}\n`, pushed?.["src/package-lock.json"]);
     Assert.areEqual(2, npm.directories.length);
+    Assert.areEqual("false,false", npm.oldLocks.join(","));
     Assert.isFalse(host.pushed.has("noldova-com/unpinned"));
     Assert.areEqual(
       [
@@ -98,8 +101,8 @@ export class DependentsStepTests {
           "- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4",
           "- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4",
           "- `src/package.json`: `@noldova/a.b` from 0.0.2 to 0.0.4",
-          "- `package-lock.json`: refreshed with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`",
-          "- `src/package-lock.json`: refreshed with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`",
+          "- `package-lock.json`: regenerated with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`",
+          "- `src/package-lock.json`: regenerated with `npm install --package-lock-only --ignore-scripts --no-audit --no-fund`",
           "",
           "## Release notes for 0.0.4",
           "",
@@ -213,7 +216,7 @@ export class DependentsStepTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(
-      "noldova-com/pinned: left at its pins, since the lock files refreshed for 0.0.4 still hold packages whose exact peers differ from what they lock: package-lock.json locks @noldova/kit 0.0.5, which needs @noldova/z 2.0.0.",
+      "noldova-com/pinned: left at its pins, since the lock files regenerated for 0.0.4 still hold packages whose exact peers differ from what they lock: package-lock.json locks @noldova/kit 0.0.5, which needs @noldova/z 2.0.0.",
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
@@ -387,7 +390,7 @@ export class DependentsStepTests {
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(
-      "noldova-com/pinned: Refreshing package-lock.json, npm install --package-lock-only --ignore-scripts --no-audit --no-fund, exited with code 1: npm error code E401; npm error Unable to authenticate",
+      "noldova-com/pinned: Regenerating package-lock.json, npm install --package-lock-only --ignore-scripts --no-audit --no-fund, exited with code 1: npm error code E401; npm error Unable to authenticate",
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
