@@ -52,8 +52,6 @@ interface Manifest {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
   readonly optionalDependencies?: Readonly<Record<string, string>>;
-  readonly peerDependencies?: Readonly<Record<string, string>>;
-  readonly peerDependenciesMeta?: Readonly<Record<string, unknown>>;
 }
 
 interface OwnPin {
@@ -240,7 +238,8 @@ export class DependentsStep implements IStep {
 
   // Relocks a folder that pins the repository's own unpublished packages: each one, and each own package it reaches,
   // resolves from a stand-in archive built from its tracked manifest, so npm never asks the registry for it; then the
-  // lock leaves out every entry at or under an own package, and its root entry keeps the folder's pins.
+  // lock leaves out every entry at or under an own package, and its root entry keeps the folder's pins. A stand-in
+  // names no peers, so npm installs none for an own package, as a lock made with --legacy-peer-deps holds none.
   private async lockOwnAsync(directory: string, ownLock: OwnLock, owners: ReadonlyMap<string, readonly string[]>): Promise<ProcessResult> {
     const folder = path.join(directory, path.dirname(ownLock.lockFilePath));
     const manifestPath = path.join(folder, Resources.manifestFileName);
@@ -416,7 +415,7 @@ export class DependentsStep implements IStep {
   }
 
   // Finds the own packages a lock folder pins exactly while its lock holds no entry for them, and every own package
-  // they reach through their tracked manifests, each with the manifest field it goes in and the manifests that name it.
+  // they reach by dependency or optional dependency through their tracked manifests, each with the manifest field it goes in and the manifests that name it.
   private static findOwnLock(directory: string, lockFilePath: string, owners: ReadonlyMap<string, readonly string[]>): readonly OwnLock[] {
     const manifest: Record<string, unknown> = JSON.parse(fs.readFileSync(path.join(directory, path.dirname(lockFilePath), Resources.manifestFileName), Resources.textEncoding));
     const lock: LockFile = JSON.parse(fs.readFileSync(path.join(directory, lockFilePath), Resources.textEncoding));
@@ -430,7 +429,7 @@ export class DependentsStep implements IStep {
 
       pins.set(packageName, { field, manifestPaths });
       for (const reached of manifestPaths.map(t => DependentsStep.readManifest(directory, t)))
-        for (const [name, paths] of findOwn([reached.dependencies, reached.optionalDependencies, reached.peerDependencies].flatMap(t => Object.keys(t ?? {}))))
+        for (const [name, paths] of findOwn([reached.dependencies, reached.optionalDependencies].flatMap(t => Object.keys(t ?? {}))))
           visit(name, paths, field);
     };
     for (const field of Resources.lockedDependencyFields)
@@ -448,9 +447,7 @@ export class DependentsStep implements IStep {
       name: packageName,
       version: Resources.standInVersion,
       dependencies: external(manifests.map(t => t.dependencies)),
-      optionalDependencies: external(manifests.map(t => t.optionalDependencies)),
-      peerDependencies: external(manifests.map(t => t.peerDependencies)),
-      peerDependenciesMeta: external(manifests.map(t => t.peerDependenciesMeta))
+      optionalDependencies: external(manifests.map(t => t.optionalDependencies))
     };
   }
 
