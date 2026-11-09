@@ -637,12 +637,16 @@ export class Resources {
     return `${packageName} ${version} is newer than the ${peerVersion} that ${neededBy} ${neededByVersion} needs`;
   }
 
+  public static formatPeerMovedElsewhere(packageName: string, movedVersion: string, peerVersion: string, neededBy: string, neededByVersion: string): string {
+    return `${packageName} moves to ${movedVersion}, but ${neededBy} ${neededByVersion} needs ${peerVersion}`;
+  }
+
   public static formatPeerUnmatched(packageName: string, version: string, peerName: string, peerVersion: string, movedVersion: string): string {
     return `${packageName} ${version} needs ${peerName} ${peerVersion}, and no later version of it needs ${peerName} ${movedVersion}`;
   }
 
   public static formatRepositoryUnmatched(repository: string, version: string, misses: readonly string[]): string {
-    return `${repository}: left at its pins, since no version of these pinned packages accepts what ${version} moves: ${misses.join("; ")}.`;
+    return `${repository}: left at its pins, which can't take what ${version} moves: ${misses.join("; ")}.`;
   }
 
   public static formatRepositoryFailed(repository: string, message: string): string {

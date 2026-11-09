@@ -109,7 +109,7 @@ export class DependentsStepNpmTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(
-      `${DependentsStepNpmTests.DEPENDENT}: left at its pins, since no version of these pinned packages accepts what 0.0.71 moves: `
+      `${DependentsStepNpmTests.DEPENDENT}: left at its pins, which can't take what 0.0.71 moves: `
       + "@noldova/compiler-cli 1.0.1 needs @noldova/compiler 1.0.1, and no later version of it needs @noldova/compiler 1.0.5.",
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
@@ -130,7 +130,7 @@ export class DependentsStepNpmTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(
-      `${DependentsStepNpmTests.DEPENDENT}: left at its pins, since no version of these pinned packages accepts what 0.0.71 moves: `
+      `${DependentsStepNpmTests.DEPENDENT}: left at its pins, which can't take what 0.0.71 moves: `
       + "@noldova/compiler 1.0.6 is newer than the 1.0.5 that @noldova/core 1.0.5 needs.",
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));

@@ -228,7 +228,30 @@ export class DependentsStepTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(
-      "noldova-com/pinned: left at its pins, since no version of these pinned packages accepts what 0.0.4 moves: @noldova/z 3.0.0 is newer than the 2.0.0 that @noldova/kit 0.0.5 needs.",
+      "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/z 3.0.0 is newer than the 2.0.0 that @noldova/kit 0.0.5 needs.",
+      result.message.split("\n")[1]);
+    Assert.areEqual(0, npm.directories.length);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async leavesARepositoryWhoseMovedPackagesNeedAnotherAtTwoExactVersionsAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\", \"@noldova/q\": \"1.0.0\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/a@0.0.4", "peerDependencies", { "@noldova/q": "1.0.4" });
+    npm.answer("@noldova/kit@0.0.5", "peerDependencies", { "@noldova/q": "1.0.5" });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/q moves to 1.0.4, but @noldova/kit 0.0.5 needs 1.0.5.",
       result.message.split("\n")[1]);
     Assert.areEqual(0, npm.directories.length);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
@@ -287,7 +310,7 @@ export class DependentsStepTests {
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual(
-      "noldova-com/pinned: left at its pins, since no version of these pinned packages accepts what 0.0.4 moves: @noldova/cli 1.0.0 needs @noldova/kit 0.0.4, and no later version of it needs @noldova/kit 0.0.5.",
+      "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/cli 1.0.0 needs @noldova/kit 0.0.4, and no later version of it needs @noldova/kit 0.0.5.",
       result.message.split("\n")[1]);
     Assert.areEqual(0, npm.directories.length);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));

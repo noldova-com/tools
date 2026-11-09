@@ -211,8 +211,9 @@ export class DependentsStep implements IStep {
   // Moves, until nothing more moves, every exact pin older than the exact peer a moved package's new version needs,
   // and every exact pin whose version needs a moved package at another exact version, to the first later version that
   // needs the moved versions; adds what it moves to the moved packages. It leaves the pins of the repository's own
-  // packages, which its own next release moves. A pin newer than an exact peer a moved package needs, or with no later
-  // version that needs the moved versions, is a miss.
+  // packages, which its own next release moves. A pin newer than an exact peer a moved package needs, a moved package
+  // another one needs at another exact version, or a pin with no later version that needs the moved versions, is a
+  // miss.
   private async chasePeersAsync(directory: string, manifestPaths: readonly string[], moved: Map<string, string>): Promise<PeerChase> {
     const peers = new Map<string, ReadonlyMap<string, string>>();
     const moves: PinMove[] = [];
@@ -233,6 +234,9 @@ export class DependentsStep implements IStep {
       for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
         const [packageName, version] = next;
         for (const [peerName, peerVersion] of await this.readPeersAsync(directory, packageName, version, peers)) {
+          const movedVersion = moved.get(peerName);
+          if (movedVersion !== undefined && movedVersion !== peerVersion)
+            misses.push(Resources.formatPeerMovedElsewhere(peerName, movedVersion, peerVersion, packageName, version));
           if (isSettled(peerName))
             continue;
 
