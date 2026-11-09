@@ -2649,8 +2649,9 @@ export declare class ReproducibleStep implements IStep {
  * `--legacy-peer-deps` holds none; the
  * lock then leaves out every entry at or under an own package, and its root
  * entry keeps the folder's pins. When more than one tracked manifest names
- * such a package, it leaves the repository as it is and names them, without
- * failing it. When the branch
+ * such a package, or when that relock drops an entry the old lock marks as a
+ * peer and no moved package's locked entry names, it leaves the repository as
+ * it is and names them, without failing it. When the branch
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
  * so nobody's commits are lost. A repository that pins none of them is left

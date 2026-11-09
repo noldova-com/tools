@@ -37,6 +37,7 @@ interface LockedPackages {
 
 interface LockedPackage {
   readonly version: string;
+  readonly peer?: boolean;
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly optionalDependencies?: Readonly<Record<string, string>>;
   readonly peerDependencies?: Readonly<Record<string, string>>;
@@ -201,13 +202,18 @@ export class DependentsStep implements IStep {
     const allMoves = [...moves, ...peerMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
     for (const lockFilePath of lockFilePaths) {
-      DependentsStep.unlockMoved(path.join(directory, lockFilePath), movedNames);
       const ownLock = ownLocks.find(t => t.lockFilePath === lockFilePath);
+      const keptPeers = ownLock === undefined ? [] : DependentsStep.readKeptPeers(path.join(directory, lockFilePath), movedNames);
+      DependentsStep.unlockMoved(path.join(directory, lockFilePath), movedNames);
       const result = ownLock === undefined
         ? await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables)
         : await this.lockOwnAsync(directory, ownLock, owners);
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)));
+
+      const lost = DependentsStep.findLost(path.join(directory, lockFilePath), keptPeers);
+      if (lost.length > 0)
+        return StepResult.succeeded(Resources.formatRepositoryPeersLost(repository, update.version, lockFilePath, lost));
     }
 
     const conflicts = lockFilePaths.flatMap(t => DependentsStep.findConflicts(path.join(directory, t), t, null));
@@ -437,6 +443,28 @@ export class DependentsStep implements IStep {
         visit(name, paths, field);
 
     return pins.size === 0 ? [] : [{ lockFilePath, pins }];
+  }
+
+  // Reads the entries a lock marks as peers that no moved package's locked entry names, so the relock keeps them unless
+  // it stops installing them.
+  private static readKeptPeers(lockPath: string, movedNames: ReadonlySet<string>): readonly string[] {
+    const lock: LockFile = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
+    const entries = Object.entries(lock.packages ?? {});
+    const explained = new Set(entries.filter(([key]) => movedNames.has(DependentsStep.readLockedName(key)))
+      .flatMap(([, entry]) => [entry.dependencies, entry.optionalDependencies, entry.peerDependencies].flatMap(t => Object.keys(t ?? {}))));
+
+    return entries.filter(([key, entry]) => entry.peer === true && !movedNames.has(DependentsStep.readLockedName(key)) && !explained.has(DependentsStep.readLockedName(key)))
+      .map(([key]) => key);
+  }
+
+  private static findLost(lockPath: string, keptPeers: readonly string[]): readonly string[] {
+    const lock: LockedPackages = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
+
+    return keptPeers.filter(t => !Object.hasOwn(lock.packages, t));
+  }
+
+  private static readLockedName(key: string): string {
+    return key.slice(key.lastIndexOf(Resources.nodeModulesSegment) + Resources.nodeModulesSegment.length);
   }
 
   private static createStandIn(packageName: string, manifests: readonly Manifest[], owners: ReadonlyMap<string, readonly string[]>): Readonly<Record<string, unknown>> {

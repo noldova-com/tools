@@ -661,6 +661,10 @@ export class Resources {
     return `${repository}: left at its pins for ${version}, since a lock folder pins its own unpublished packages and more than one tracked manifest names the same one: ${shared.join("; ")}.`;
   }
 
+  public static formatRepositoryPeersLost(repository: string, version: string, lockFilePath: string, keys: readonly string[]): string {
+    return `${repository}: left at its pins for ${version}, since relocking ${lockFilePath}, which installs no peer for the repository's own packages, would drop the peers it locks that no moved package names: ${keys.join(", ")}.`;
+  }
+
   public static formatOwnManifests(packageName: string, manifestPaths: readonly string[]): string {
     return `${packageName} in ${manifestPaths.join(", ")}`;
   }

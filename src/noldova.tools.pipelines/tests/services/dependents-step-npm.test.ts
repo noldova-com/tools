@@ -178,6 +178,22 @@ export class DependentsStepNpmTests {
     Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
   }
 
+  // The dependent locks its own packages with their peers, so its old lock holds the own package's peer, which the
+  // relock, installing no peer for an own package, would drop.
+  @TestMethod
+  public async leavesTheDependentAtItsPinsWhenTheOwnRelockWouldDropALockedPeerAsync(): Promise<void> {
+    using _ = DependentsStepNpmTests.turnOffCompileCache();
+    await using registry = await LocalRegistryFixture.startAsync();
+    using dependent = await DependentsStepNpmTests.createOwnDependentAsync(registry, {}, { "node_modules/@noldova/peer": { version: "1.0.0", peer: true } });
+
+    const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(`${DependentsStepNpmTests.DEPENDENT}: left at its pins for 0.0.71, since relocking app/package-lock.json, which installs no peer for the repository's own `
+      + "packages, would drop the peers it locks that no moved package names: node_modules/@noldova/peer.", result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
+  }
+
   private static publishCore(registry: LocalRegistryFixture, version: string, windowVersion: string): void {
     registry.publish("@noldova/compiler", version);
     registry.publish("@noldova/core", version, { peerDependencies: { "@noldova/compiler": version }, peerDependenciesMeta: DependentsStepNpmTests.OPTIONAL_COMPILER });
@@ -209,7 +225,8 @@ export class DependentsStepNpmTests {
 
   // A dependent with two own packages, the first depending on the second, and an app folder that pins the first. The app
   // folder's lock is made before the pin, which npm can't resolve, and then takes it only in its root entry.
-  private static async createOwnDependentAsync(registry: LocalRegistryFixture, files: Readonly<Record<string, string>>): Promise<GitRepositoryFixture> {
+  private static async createOwnDependentAsync(registry: LocalRegistryFixture, files: Readonly<Record<string, string>>,
+    lockedPeers: Readonly<Record<string, object>> = {}): Promise<GitRepositoryFixture> {
     registry.publish("@noldova/core", "1.0.1");
     registry.publish("@noldova/window", "0.0.70", { peerDependencies: { "@noldova/core": "1.0.1" } });
     registry.publish("@noldova/unrelated", "2.0.0");
@@ -233,7 +250,7 @@ export class DependentsStepNpmTests {
     const pinned = { ...pins, [DependentsStepNpmTests.OWN]: "0.0.2" };
     dependent.commit({
       "app/package.json": `${JSON.stringify({ name: "app", version: "1.0.0", dependencies: pinned }, null, 2)}\n`,
-      [DependentsStepNpmTests.APP_LOCK]: `${JSON.stringify({ ...lock, packages: { ...lock.packages, "": { ...lock.packages[""], dependencies: pinned } } }, null, 2)}\n`
+      [DependentsStepNpmTests.APP_LOCK]: `${JSON.stringify({ ...lock, packages: { ...lock.packages, "": { ...lock.packages[""], dependencies: pinned }, ...lockedPeers } }, null, 2)}\n`
     });
     registry.publish("@noldova/core", "1.0.5");
     registry.publish("@noldova/window", "0.0.71", { peerDependencies: { "@noldova/core": "1.0.5" } });
