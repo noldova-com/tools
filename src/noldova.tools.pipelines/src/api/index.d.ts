@@ -1675,6 +1675,33 @@ export declare class Npm {
   public lockAsync(directory: string, hiddenVariables?: readonly string[]): Promise<ProcessResult>;
 
   /**
+   * Views a field of a package or a version as JSON with `npm view <specifier>
+   * <field> --json --prefer-online`, run in a directory, so the registries its
+   * own npm configuration names answer, without the hidden variables; on
+   * Windows, through `cmd.exe`.
+   *
+   * @param directory The directory npm runs in, such as a dependent's
+   * checkout.
+   * @param specifier The package, such as `@noldova/a`, or one of its
+   * versions, such as `@noldova/a@0.0.4`.
+   * @param field The field, such as `peerDependencies` or `versions`.
+   * @param hiddenVariables The environment variables npm doesn't get, such as
+   * a credential meant for something else; omitted, it gets them all.
+   * @returns A promise of how `npm view` ended: on success, its output is the
+   * field's value as JSON, empty when the version or the field doesn't exist.
+   * It rejects with {@link ProcessException} if the program cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const npm = new Npm(new ProcessRunner(), process.cwd());
+   * const result = await npm.viewInAsync("/tmp/dependent", "@noldova/a@0.0.4", "peerDependencies");
+   * JSON.parse(result.output); // { "@noldova/b": "0.0.4" } when that version has that peer
+   * ```
+   */
+  public viewInAsync(directory: string, specifier: string, field: string, hiddenVariables?: readonly string[]): Promise<ProcessResult>;
+
+  /**
    * Reads the version of the npm that runs, with `npm --version`, or on
    * Windows `cmd.exe /d /s /c "npm.cmd --version"`, a fixed command.
    *
@@ -2582,20 +2609,34 @@ export declare class ReproducibleStep implements IStep {
  * releases, as the {@link ArchiveStep} does, and checks out each repository
  * the {@link IUpdateHost} lists. In a repository whose tracked `package.json`
  * files pin any of those packages exactly at an older version, it moves each
- * such pin to the version, deletes every tracked `package-lock.json` and
- * writes it again with {@link Npm.lockAsync}, without the host's credential
- * variables, so a package the old lock keeps at an older version can't hold
- * the moved pins back, commits,
+ * such pin to the version, removes from every tracked `package-lock.json`
+ * the moved packages, what is nested under them and the entries that depend
+ * on them, keeps every other entry unless a package it resolves again needs
+ * it to change, and has {@link Npm.lockAsync} resolve what it removed,
+ * without the host's credential variables, so a package the old lock keeps
+ * at an older version can't hold the moved pins back; it then commits,
  * pushes the branch `pipelines/update-<source>` and proposes it, with the
  * moved pins and the release's notes in its description. When a released
  * package needs another package as a peer at an exact version, it moves the
  * repository's exact pins of that package too, when older, and names in the
- * description the released package that needs each. Before it regenerates,
+ * description the released package that needs each. It then follows the
+ * moved packages through the registries the repository's own npm
+ * configuration names, with {@link Npm.viewInAsync}, until nothing more
+ * moves: an exact pin, as a dependency or a dev dependency, older than an
+ * exact peer a moved package's new version needs moves to that version, and
+ * an exact pin whose version needs a moved package at another exact version
+ * moves to its first later version whose exact peers are the moved
+ * versions; the description names the package that required each. It
+ * leaves the pins of packages the repository's own manifests name, which its
+ * own next release moves. When a pin is newer than an exact peer a moved
+ * package needs, a moved package needs another at a version other than the
+ * one it moved to, or no such version exists, it leaves the repository as it
+ * is and names each such pin, without failing it. Before it relocks,
  * it leaves a repository as it is when any of its lock files holds another
  * package that needs one of the moved packages at another exact version, as
  * a peer, and names each such package, since npm couldn't install the moved
  * pins until that package accepts them; after, it leaves it as it is,
- * without chasing further, when a regenerated lock file still holds a
+ * without chasing further, when a relocked lock file still holds a
  * package whose exact peer differs from the version it locks. When the branch
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,

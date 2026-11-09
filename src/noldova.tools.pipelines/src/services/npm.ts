@@ -42,6 +42,17 @@ export class Npm {
     return StepResult.failed(Resources.formatNpmFailed(specifier, Resources.npmViewValues, result.exitCode, result.errorOutput));
   }
 
+  // Views a field as JSON from the registries the directory's own npm configuration names, without the hidden
+  // variables.
+  public async viewInAsync(directory: string, specifier: string, field: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
+    const environment = Object.fromEntries(hiddenVariables.map(t => [t, undefined]));
+    const values = [...Resources.npmViewValues, specifier, field, ...Resources.npmJsonValues, ...Resources.npmPreferOnlineValues];
+
+    return this.platform === Resources.windowsPlatform
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, [...Resources.windowsShellValues, [Resources.windowsNpmProgram, ...values].join(Resources.valueSeparator)], directory, environment)
+      : await this.processRunner.runAsync(Resources.npmProgram, values, directory, environment);
+  }
+
   public async publishAsync(archivePath: string, tag: string, access: string, registry: string): Promise<ProcessResult> {
     const values = [...Resources.npmPublishValues, path.resolve(archivePath), ...Resources.npmTagValues, tag, ...Resources.npmAccessValues, access, ...Resources.npmRegistryValues, registry];
 

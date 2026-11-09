@@ -44,6 +44,30 @@ export class NpmTests {
     Assert.areEqual("release: npm view @noldova/a@0.0.4 dist.integrity --prefer-online --registry https://registry.example/", processRunner.calls.join("\n"));
   }
 
+  @TestData("linux", "dependent: npm view @noldova/a@0.0.4 peerDependencies --json --prefer-online")
+  @TestData("win32", "dependent: cmd.exe /d /s /c npm.cmd view @noldova/a@0.0.4 peerDependencies --json --prefer-online")
+  @TestMethod
+  public async viewsAFieldAsJsonInTheDirectoryGivenWithoutTheHiddenVariablesAsync(platform: string, expected: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "{}\n", ""));
+
+    const result = await new Npm(processRunner, "release", platform).viewInAsync("dependent", "@noldova/a@0.0.4", "peerDependencies", ["GITHUB_TOKEN"]);
+
+    Assert.areEqual("{}\n", result.output);
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
+    Assert.areEqual("{}", JSON.stringify(processRunner.environments[0]));
+    Assert.areEqual("GITHUB_TOKEN", Object.keys(processRunner.environments[0] ?? {}).join(","));
+  }
+
+  @TestMethod
+  public async viewsAFieldInTheDirectoryWithEveryVariableWhenNoneIsHiddenAsync(): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "", ""));
+
+    await new Npm(processRunner, "release", "linux").viewInAsync("dependent", "@noldova/a", "versions");
+
+    Assert.areEqual("{}", JSON.stringify(processRunner.environments[0]));
+    Assert.areEqual(0, Object.keys(processRunner.environments[0] ?? {}).length);
+  }
+
   @TestMethod
   public async publishesAnArchiveByItsFullPathWithTheTagAndAccessToTheRegistryAsync(): Promise<void> {
     const processRunner = new RecordingProcessRunner(new ProcessResult(1, "", "npm error code E403"));
