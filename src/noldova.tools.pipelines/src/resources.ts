@@ -152,6 +152,14 @@ export class Resources {
   public static readonly unchangedStepUsage: string = "";
   public static readonly updateIssueSummary: string = "A release moved packages this repository pins exactly";
   public static readonly textEncoding: BufferEncoding = "utf8";
+  public static readonly lockedDependencyFields: readonly string[] = ["dependencies", "devDependencies", "optionalDependencies"];
+  public static readonly standInArchiveExtension: string = ".tgz";
+  public static readonly standInEntryName: string = "package/package.json";
+  public static readonly standInFolderSuffix: string = "-own";
+  public static readonly standInVersion: string = "0.0.0";
+  public static readonly tarBlockSize: number = 512;
+  public static readonly tarChecksumOffset: number = 148;
+  public static readonly tarHeaderEncoding: BufferEncoding = "ascii";
   public static readonly usesPattern: RegExp = /^([ \t]*(?:-[ \t]+)?uses:[ \t]*)([^@\s#]+)@([0-9a-f]{40})(?:[ \t]+#[ \t]*(\S+))?/gm;
   public static readonly workflowExtensions: readonly string[] = [".yml", ".yaml"];
   public static readonly workflowsFolderPath: string = ".github/workflows";
@@ -649,6 +657,37 @@ export class Resources {
     return `${repository}: left at its pins, which can't take what ${version} moves: ${misses.join("; ")}.`;
   }
 
+  public static formatRepositoryOwnShared(repository: string, version: string, shared: readonly string[]): string {
+    return `${repository}: left at its pins for ${version}, since a lock folder pins its own unpublished packages and more than one tracked manifest names the same one: ${shared.join("; ")}.`;
+  }
+
+  public static formatOwnManifests(packageName: string, manifestPaths: readonly string[]): string {
+    return `${packageName} in ${manifestPaths.join(", ")}`;
+  }
+
+  public static formatOwnLocked(lockFilePath: string, packageNames: readonly string[]): string {
+    return `\`${lockFilePath}\`: the repository's own ${packageNames.map(t => `\`${t}\``).join(", ")} locked from their tracked manifests, without asking the registry; their entries left out, and the root entry keeps the folder's pins`;
+  }
+
+  public static formatTarHeaderFields(entryName: string, size: number): readonly (readonly [number, string])[] {
+    return [
+      [0, entryName],
+      [100, "0000644\0"],
+      [108, "0000000\0"],
+      [116, "0000000\0"],
+      [124, `${size.toString(8).padStart(11, "0")}\0`],
+      [136, "00000000000\0"],
+      [148, "        "],
+      [156, "0"],
+      [257, "ustar\0"],
+      [263, "00"]
+    ];
+  }
+
+  public static formatTarChecksum(checksum: number): string {
+    return `${checksum.toString(8).padStart(6, "0")}\0 `;
+  }
+
   public static formatRepositoryFailed(repository: string, message: string): string {
     return `${repository}: ${message}`;
   }
@@ -677,7 +716,7 @@ export class Resources {
     return `pipelines/update-${source}`;
   }
 
-  public static formatUpdateBody(source: string, version: string, commit: string, moves: readonly string[], lockFilePaths: readonly string[], notes: string): string {
+  public static formatUpdateBody(source: string, version: string, commit: string, moves: readonly string[], lockFilePaths: readonly string[], ownLines: readonly string[], notes: string): string {
     return [
       "## Summary",
       "",
@@ -685,6 +724,7 @@ export class Resources {
       "",
       ...moves.map(t => `- ${t}`),
       ...lockFilePaths.map(t => `- \`${t}\`: the moved packages, the entries nested under them and the entries that depend on them resolved again with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\`; every other entry kept unless a resolved package needs it to change`),
+      ...ownLines.map(t => `- ${t}`),
       "",
       notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes" section.` : notes
     ].join(Resources.lineSeparator);

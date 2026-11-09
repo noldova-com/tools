@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import fs from "node:fs";
 import path from "node:path";
 
 import { Assert, TestClass, TestMethod } from "@noldova/context.testing";
@@ -32,6 +33,8 @@ export class DependentsStepNpmTests {
   private static readonly CACHE_FOLDER: string = ".npm-cache";
   private static readonly COMPILE_CACHE_OFF: string = "NODE_DISABLE_COMPILE_CACHE";
   private static readonly DEPENDENT: string = "noldova-com/dependent";
+  private static readonly APP_LOCK: string = "app/package-lock.json";
+  private static readonly OWN: string = "@noldova/own";
   private static readonly OPTIONAL_COMPILER: Readonly<Record<string, { readonly optional: boolean }>> = { "@noldova/compiler": { optional: true } };
 
   @TestMethod
@@ -136,6 +139,43 @@ export class DependentsStepNpmTests {
     Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
   }
 
+  // The app folder pins the dependent's own package, which no registry holds: the dependent packs its own archives to
+  // lock it, and its lock keeps only the pin, in the root entry.
+  @TestMethod
+  public async relocksAFolderThatPinsTheDependentsOwnUnpublishedPackageAsync(): Promise<void> {
+    using _ = DependentsStepNpmTests.turnOffCompileCache();
+    await using registry = await LocalRegistryFixture.startAsync();
+    using dependent = await DependentsStepNpmTests.createOwnDependentAsync(registry, {});
+
+    const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("@noldova/core 1.0.5, @noldova/extra 1.0.0, @noldova/unrelated 2.0.0, @noldova/window 0.0.71",
+      DependentsStepNpmTests.readLocked(host, DependentsStepNpmTests.APP_LOCK));
+    const lock: { readonly packages: Readonly<Record<string, { readonly dependencies?: unknown }>> } =
+      JSON.parse(host.pushed.get(DependentsStepNpmTests.DEPENDENT)?.[DependentsStepNpmTests.APP_LOCK] ?? "{}");
+    Assert.areEqual(JSON.stringify({ "@noldova/core": "1.0.5", "@noldova/window": "0.0.71", [DependentsStepNpmTests.OWN]: "0.0.2" }), JSON.stringify(lock.packages[""]?.dependencies));
+    Assert.areEqual(JSON.stringify({ "@noldova/core": "1.0.5", "@noldova/window": "0.0.71", [DependentsStepNpmTests.OWN]: "0.0.2" }),
+      JSON.stringify(JSON.parse(host.pushed.get(DependentsStepNpmTests.DEPENDENT)?.["app/package.json"] ?? "{}").dependencies));
+    Assert.isTrue(host.proposals.join("").includes("- `app/package-lock.json`: the repository's own `@noldova/own`, `@noldova/own-core` locked from their tracked manifests, "
+      + "without asking the registry; their entries left out, and the root entry keeps the folder's pins\n"), host.proposals.join(""));
+  }
+
+  @TestMethod
+  public async leavesTheDependentAtItsPinsWhenTwoTrackedManifestsNameAnOwnPackageItLocksAsync(): Promise<void> {
+    using _ = DependentsStepNpmTests.turnOffCompileCache();
+    await using registry = await LocalRegistryFixture.startAsync();
+    using dependent = await DependentsStepNpmTests.createOwnDependentAsync(registry,
+      { "fixtures/own/package.json": `${JSON.stringify({ name: "@noldova/own-core", version: "1.0.0" })}\n` });
+
+    const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(`${DependentsStepNpmTests.DEPENDENT}: left at its pins for 0.0.71, since a lock folder pins its own unpublished packages and more than one tracked manifest `
+      + "names the same one: @noldova/own-core in fixtures/own/package.json, src/own-core/package.json.", result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
+  }
+
   private static publishCore(registry: LocalRegistryFixture, version: string, windowVersion: string): void {
     registry.publish("@noldova/compiler", version);
     registry.publish("@noldova/core", version, { peerDependencies: { "@noldova/compiler": version }, peerDependenciesMeta: DependentsStepNpmTests.OPTIONAL_COMPILER });
@@ -165,6 +205,37 @@ export class DependentsStepNpmTests {
     return dependent;
   }
 
+  // A dependent with two own packages, the first depending on the second, and an app folder that pins the first. The app
+  // folder's lock is made before the pin, which npm can't resolve, and then takes it only in its root entry.
+  private static async createOwnDependentAsync(registry: LocalRegistryFixture, files: Readonly<Record<string, string>>): Promise<GitRepositoryFixture> {
+    registry.publish("@noldova/core", "1.0.1");
+    registry.publish("@noldova/window", "0.0.70", { peerDependencies: { "@noldova/core": "1.0.1" } });
+    registry.publish("@noldova/unrelated", "2.0.0");
+    registry.publish("@noldova/extra", "1.0.0");
+    const dependent = await DependentsStepNpmTests.createDependentAsync(registry, { "@noldova/core": "1.0.1" });
+    const pins = { "@noldova/core": "1.0.1", "@noldova/window": "0.0.70" };
+    dependent.write({
+      ...files,
+      "app/.npmrc": fs.readFileSync(path.join(dependent.directory, ".npmrc"), "utf8"),
+      "app/package.json": `${JSON.stringify({ name: "app", version: "1.0.0", dependencies: pins }, null, 2)}\n`,
+      "src/own/package.json": `${JSON.stringify({ name: DependentsStepNpmTests.OWN, version: "__VERSION__", dependencies: { "@noldova/own-core": "__VERSION__", "@noldova/unrelated": "^2.0.0" } })}\n`,
+      "src/own-core/package.json": `${JSON.stringify({ name: "@noldova/own-core", version: "__VERSION__", dependencies: { "@noldova/extra": "1.0.0" } })}\n`
+    });
+    const locked = await new Npm(new ProcessRunner(), dependent.directory).lockAsync(path.join(dependent.directory, "app"));
+    Assert.isTrue(locked.isSuccessful, locked.errorOutput);
+    const lockPath = path.join(dependent.directory, DependentsStepNpmTests.APP_LOCK);
+    const lock: { readonly packages: Readonly<Record<string, object>> } = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+    const pinned = { ...pins, [DependentsStepNpmTests.OWN]: "0.0.2" };
+    dependent.commit({
+      "app/package.json": `${JSON.stringify({ name: "app", version: "1.0.0", dependencies: pinned }, null, 2)}\n`,
+      [DependentsStepNpmTests.APP_LOCK]: `${JSON.stringify({ ...lock, packages: { ...lock.packages, "": { ...lock.packages[""], dependencies: pinned } } }, null, 2)}\n`
+    });
+    registry.publish("@noldova/core", "1.0.5");
+    registry.publish("@noldova/window", "0.0.71", { peerDependencies: { "@noldova/core": "1.0.5" } });
+
+    return dependent;
+  }
+
   private static async releaseWindowAsync(dependent: GitRepositoryFixture, peerDependencies: Readonly<Record<string, string>>): Promise<DependentsRun> {
     using source = GitRepositoryFixture.create();
     source.commit({ "src/window/package.json": `${JSON.stringify({ name: "@noldova/window", peerDependencies })}\n` });
@@ -177,8 +248,8 @@ export class DependentsStepNpmTests {
     return { result: await step.runAsync(["0.0.71", source.readHead()]), host };
   }
 
-  private static readLocked(host: FakeUpdateHost): string {
-    const lock: { readonly packages: Readonly<Record<string, LockedVersion>> } = JSON.parse(host.pushed.get(DependentsStepNpmTests.DEPENDENT)?.["package-lock.json"] ?? "{}");
+  private static readLocked(host: FakeUpdateHost, lockFilePath: string = "package-lock.json"): string {
+    const lock: { readonly packages: Readonly<Record<string, LockedVersion>> } = JSON.parse(host.pushed.get(DependentsStepNpmTests.DEPENDENT)?.[lockFilePath] ?? "{}");
 
     return Object.entries(lock.packages).filter(([key]) => key.length > 0).map(([key, entry]) => `${key.slice("node_modules/".length)} ${entry.version}`).sort().join(", ");
   }

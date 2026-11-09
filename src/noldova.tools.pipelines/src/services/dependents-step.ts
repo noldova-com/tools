@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 
 import type { JsonReader } from "@noldova/context.json";
 
@@ -17,6 +18,7 @@ import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import type { IUpdateHost } from "../interfaces/i-update-host.js";
 import { DependentsUpdate, type PinTarget } from "../models/dependents-update.js";
+import type { ProcessResult } from "../models/process-result.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -45,6 +47,14 @@ interface Manifest {
   readonly name?: string;
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
+  readonly optionalDependencies?: Readonly<Record<string, string>>;
+  readonly peerDependencies?: Readonly<Record<string, string>>;
+  readonly peerDependenciesMeta?: Readonly<Record<string, unknown>>;
+}
+
+interface OwnLock {
+  readonly lockFilePath: string;
+  readonly fields: ReadonlyMap<string, string>;
 }
 
 interface PeerChase {
@@ -174,11 +184,24 @@ export class DependentsStep implements IStep {
     if (blockers.length > 0)
       return StepResult.succeeded(Resources.formatRepositoryBlocked(repository, update.version, blockers));
 
+    const owners = DependentsStep.readOwners(directory, manifestPaths);
+    const ownLocks = lockFilePaths.flatMap(t => DependentsStep.findOwnLock(directory, t, owners));
+    const shared = [...new Set(ownLocks.flatMap(t => [...t.fields.keys()]))].flatMap(t => {
+      const found = owners.get(t) ?? [];
+
+      return found.length > 1 ? [Resources.formatOwnManifests(t, found)] : [];
+    });
+    if (shared.length > 0)
+      return StepResult.succeeded(Resources.formatRepositoryOwnShared(repository, update.version, shared));
+
     const allMoves = [...moves, ...peerMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
     for (const lockFilePath of lockFilePaths) {
       DependentsStep.unlockMoved(path.join(directory, lockFilePath), movedNames);
-      const result = await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables);
+      const ownLock = ownLocks.find(t => t.lockFilePath === lockFilePath);
+      const result = ownLock === undefined
+        ? await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.updateHost.credentialVariables)
+        : await this.lockOwnAsync(directory, ownLock, owners);
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)));
     }
@@ -200,12 +223,53 @@ export class DependentsStep implements IStep {
     if (push !== null)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
-    const body = Resources.formatUpdateBody(update.source, update.version, update.commit, allMoves.map(t => t.line), lockFilePaths, update.notes);
+    const ownLines = ownLocks.map(t => Resources.formatOwnLocked(t.lockFilePath, [...t.fields.keys()]));
+    const body = Resources.formatUpdateBody(update.source, update.version, update.commit, allMoves.map(t => t.line), lockFilePaths, ownLines, update.notes);
     const proposal = await this.updateHost.proposeAsync(repository, branch, title, body, Resources.updateIssueSummary);
     if (proposal instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, proposal.message));
 
     return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, allMoves.length));
+  }
+
+  // Relocks a folder that pins the repository's own unpublished packages: each one, and each own package it reaches,
+  // resolves from a stand-in archive built from its tracked manifest, so npm never asks the registry for it; then the
+  // lock leaves out every entry at or under an own package, and its root entry keeps the folder's pins.
+  private async lockOwnAsync(directory: string, ownLock: OwnLock, owners: ReadonlyMap<string, readonly string[]>): Promise<ProcessResult> {
+    const folder = path.join(directory, path.dirname(ownLock.lockFilePath));
+    const manifestPath = path.join(folder, Resources.manifestFileName);
+    const standIns = `${directory}${Resources.standInFolderSuffix}`;
+    fs.mkdirSync(standIns, { recursive: true });
+    const text = fs.readFileSync(manifestPath, Resources.textEncoding);
+    const manifest: Record<string, unknown> = JSON.parse(text);
+    for (const [index, [packageName, field]] of [...ownLock.fields].entries()) {
+      const [owner] = owners.get(packageName) ?? [];
+      const archive = path.join(standIns, `${index}${Resources.standInArchiveExtension}`);
+      DependentsStep.writeStandIn(archive, DependentsStep.createStandIn(packageName, owner === undefined ? {} : DependentsStep.readManifest(directory, owner), owners));
+      for (const name of Resources.lockedDependencyFields) {
+        const specifiers = DependentsStep.readField(manifest, name);
+        if (name === field)
+          specifiers[packageName] = `${Resources.archiveSpecifierPrefix}${path.relative(folder, archive).split(path.sep).join(path.posix.sep)}`;
+        else
+          delete specifiers[packageName];
+        if (Object.keys(specifiers).length > 0)
+          manifest[name] = specifiers;
+        else
+          delete manifest[name];
+      }
+    }
+
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+    try {
+      const result = await this.npm.lockAsync(folder, this.updateHost.credentialVariables);
+      if (result.isSuccessful)
+        DependentsStep.leaveOutOwn(path.join(directory, ownLock.lockFilePath), new Set(ownLock.fields.keys()), JSON.parse(text));
+
+      return result;
+    }
+    finally {
+      fs.writeFileSync(manifestPath, text);
+    }
   }
 
   // Moves, until nothing more moves, every exact pin older than the exact peer a moved package's new version needs,
@@ -333,6 +397,105 @@ export class DependentsStep implements IStep {
     }
 
     return [...pins.values()];
+  }
+
+  private static readOwners(directory: string, manifestPaths: readonly string[]): ReadonlyMap<string, readonly string[]> {
+    const owners = new Map<string, readonly string[]>();
+    for (const manifestPath of manifestPaths) {
+      const { name } = DependentsStep.readManifest(directory, manifestPath);
+      if (name !== undefined)
+        owners.set(name, [...owners.get(name) ?? [], manifestPath]);
+    }
+
+    return owners;
+  }
+
+  // Finds the own packages a lock folder pins exactly while its lock holds no entry for them, and every own package
+  // they reach through their tracked manifests, each with the manifest field it goes in.
+  private static findOwnLock(directory: string, lockFilePath: string, owners: ReadonlyMap<string, readonly string[]>): readonly OwnLock[] {
+    const manifestPath = path.posix.join(path.posix.dirname(lockFilePath), Resources.manifestFileName);
+    if (!fs.existsSync(path.join(directory, manifestPath)))
+      return [];
+
+    const manifest: Record<string, unknown> = JSON.parse(fs.readFileSync(path.join(directory, manifestPath), Resources.textEncoding));
+    const lock: LockFile = JSON.parse(fs.readFileSync(path.join(directory, lockFilePath), Resources.textEncoding));
+    const locked = new Set(Object.keys(lock.packages ?? {}).map(t => t.slice(t.lastIndexOf(Resources.nodeModulesSegment) + Resources.nodeModulesSegment.length)));
+    const isUnlockedOwn = (packageName: string): boolean => owners.has(packageName) && !locked.has(packageName);
+    const fields = new Map<string, string>();
+    for (const field of Resources.lockedDependencyFields) {
+      const queue = Object.entries(DependentsStep.readField(manifest, field))
+        .filter(([t, version]) => isUnlockedOwn(t) && Resources.exactVersionPattern.test(version))
+        .map(([t]) => t);
+      for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+        if (fields.has(next))
+          continue;
+
+        fields.set(next, field);
+        for (const owner of owners.get(next) ?? []) {
+          const reached = DependentsStep.readManifest(directory, owner);
+          queue.push(...[reached.dependencies, reached.optionalDependencies, reached.peerDependencies].flatMap(t => Object.keys(t ?? {})).filter(isUnlockedOwn));
+        }
+      }
+    }
+
+    return fields.size === 0 ? [] : [{ lockFilePath, fields }];
+  }
+
+  private static createStandIn(packageName: string, manifest: Manifest, owners: ReadonlyMap<string, readonly string[]>): Readonly<Record<string, unknown>> {
+    const external = <T>(entries: Readonly<Record<string, T>> | undefined): Readonly<Record<string, T>> =>
+      Object.fromEntries(Object.entries(entries ?? {}).filter(([t]) => !owners.has(t)));
+
+    return {
+      name: packageName,
+      version: Resources.standInVersion,
+      dependencies: external(manifest.dependencies),
+      optionalDependencies: external(manifest.optionalDependencies),
+      peerDependencies: external(manifest.peerDependencies),
+      peerDependenciesMeta: external(manifest.peerDependenciesMeta)
+    };
+  }
+
+  // Writes a gzipped tar archive holding only package/package.json, which is all npm reads to lock a package.
+  private static writeStandIn(archivePath: string, manifest: Readonly<Record<string, unknown>>): void {
+    const content = Buffer.from(JSON.stringify(manifest), Resources.textEncoding);
+    const block = Resources.tarBlockSize;
+    const header = Buffer.alloc(block);
+    for (const [offset, value] of Resources.formatTarHeaderFields(Resources.standInEntryName, content.length))
+      header.write(value, offset, Resources.tarHeaderEncoding);
+    header.write(Resources.formatTarChecksum(header.reduce((sum, t) => sum + t, 0)), Resources.tarChecksumOffset, Resources.tarHeaderEncoding);
+    const body = Buffer.alloc(Math.ceil(content.length / block) * block);
+    content.copy(body);
+    fs.writeFileSync(archivePath, zlib.gzipSync(Buffer.concat([header, body, Buffer.alloc(block * 2)])));
+  }
+
+  private static leaveOutOwn(lockPath: string, ownNames: ReadonlySet<string>, manifest: Readonly<Record<string, unknown>>): void {
+    const lock: LockFile = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
+    const isOwn = (key: string): boolean => key.split(Resources.nodeModulesSegment).slice(1).some(t => ownNames.has(t.replace(/\/$/, "")));
+    const entries = Object.entries(lock.packages ?? {})
+      .filter(([key]) => !isOwn(key))
+      .map(([key, entry]): [string, unknown] => [key, key.length === 0 ? DependentsStep.restoreRoot(entry, manifest) : entry]);
+    fs.writeFileSync(lockPath, `${JSON.stringify({ ...lock, packages: Object.fromEntries(entries) }, null, 2)}\n`);
+  }
+
+  private static restoreRoot(entry: LockedPackage, manifest: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+    const restored: Record<string, unknown> = { ...entry };
+    for (const field of Resources.lockedDependencyFields) {
+      const specifiers = manifest[field];
+      if (specifiers === undefined)
+        delete restored[field];
+      else
+        restored[field] = specifiers;
+    }
+
+    return restored;
+  }
+
+  private static readField(manifest: Readonly<Record<string, unknown>>, field: string): Record<string, string> {
+    const value = manifest[field];
+
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).filter((t: [string, unknown]): t is [string, string] => typeof t[1] === "string"))
+      : {};
   }
 
   private static readManifest(directory: string, manifestPath: string): Manifest {

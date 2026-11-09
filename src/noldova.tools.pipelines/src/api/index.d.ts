@@ -2637,7 +2637,17 @@ export declare class ReproducibleStep implements IStep {
  * a peer, and names each such package, since npm couldn't install the moved
  * pins until that package accepts them; after, it leaves it as it is,
  * without chasing further, when a relocked lock file still holds a
- * package whose exact peer differs from the version it locks. When the branch
+ * package whose exact peer differs from the version it locks. A lock folder
+ * whose `package.json` pins exactly a package one of the repository's own
+ * tracked manifests names, while its lock holds no entry for it, as when the
+ * repository locks its own unpublished packages from its built archives, is
+ * relocked without asking a registry for it: that package, and each own
+ * package its manifest reaches, resolves from a stand-in archive holding only
+ * a manifest with the tracked manifest's dependencies on other packages; the
+ * lock then leaves out every entry at or under an own package, and its root
+ * entry keeps the folder's pins. When more than one tracked manifest names
+ * such a package, it leaves the repository as it is and names them, without
+ * failing it. When the branch
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
  * so nobody's commits are lost. A repository that pins none of them is left
