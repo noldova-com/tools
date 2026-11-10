@@ -740,7 +740,7 @@ export class DependentsStepTests {
       version: "0.0.4",
       commit: source.readHead(),
       packageNames: ["@noldova/a", "@noldova/a.b", "@noldova/b"],
-      peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: ", which `@noldova/a` 0.0.4 needs as a peer" }]
+      peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: ", which `@noldova/a.b` 0.0.4 needs as a peer" }]
     };
     Assert.areEqual(`noldova-com/pinned ${pinned.readHead()} ${JSON.stringify(request)}`, host.relockRequests.join("\n"));
     const pushed = host.pushed.get("noldova-com/pinned");

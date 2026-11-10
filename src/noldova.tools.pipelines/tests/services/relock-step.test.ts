@@ -186,7 +186,7 @@ export class RelockStepTests {
   }
 
   private static createRequest(packageName: string): string {
-    return JSON.stringify({ source: "source", version: "0.0.4", commit: "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", packageNames: [packageName], peerPins: [] });
+    return JSON.stringify({ source: "source", version: "0.0.4", commit: "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", packageNames: [packageName], peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: null }] });
   }
 
   private static createTarget(): GitRepositoryFixture {
