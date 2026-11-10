@@ -103,6 +103,7 @@ export class Resources {
   public static readonly millisecondsPerSecond: number = 1000;
   public static readonly manifestFileName: string = "package.json";
   public static readonly messagePartSeparator: string = "; ";
+  public static readonly failedScriptOutputLines: number = 10;
   public static readonly minorPartName: string = "minor";
   public static readonly mixedLineEndings: string = "mixed";
   public static readonly nameField: string = "name";
@@ -700,6 +701,10 @@ export class Resources {
 
   public static formatLockScriptsUntracked(lockFilePaths: readonly string[]): string {
     return `The lock scripts name lock files the repository doesn't track: ${lockFilePaths.join(", ")}.`;
+  }
+
+  public static keepLastOutputLines(output: string): string {
+    return output.split(Resources.lineBreakPattern).filter(t => t.trim().length > 0).slice(-Resources.failedScriptOutputLines).join("\n");
   }
 
   public static formatLockScriptFailed(lockFilePath: string, script: string, exitCode: number | null, errorOutput: string): string {
