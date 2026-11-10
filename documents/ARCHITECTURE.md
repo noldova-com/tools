@@ -30,3 +30,4 @@ This document holds only what is this repository's own; a rule here that is stri
   Only the prune step deletes one, and only on GitHub Packages: the release versions older than the newest it keeps that no repository's lock file holds.
   A version on npm's registry is never deleted.
 - Only the dependents step writes to other repositories: its own branch, `pipelines/update-<repository>`, and the issue and pull request that propose it, never their default branch.
+  It may also start a repository's own `relock.yml`, whose relock step changes only that run's checkout and writes its result to a file, never to a repository.

@@ -409,6 +409,42 @@ export declare class GitHubUpdates implements IUpdateHost {
   public readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
 
   /**
+   * Starts a repository's relock, when it has `.github/workflows/relock.yml`:
+   * dispatches that workflow on its default branch with the inputs `commit`
+   * and `request`, and asks for the run's id. The token needs to write the
+   * repository's Actions.
+   *
+   * @param repository The repository's full name.
+   * @param commit The commit the run checks out, such as the head of the
+   * step's own checkout.
+   * @param request The release, as the dependents step formats it.
+   * @returns A promise of the run's id, `null` when the repository has no
+   * such workflow, or a failed {@link StepResult} with the request, the
+   * status and GitHub's message for an answer it doesn't expect, or when a
+   * variable is missing.
+   */
+  public startRelockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult>;
+
+  /**
+   * Reads a started run every 15 seconds until it completes, then downloads
+   * its artifact `relock` through the address GitHub redirects to, without
+   * the token, and reads `relock.json` from it, stored or deflated. Every
+   * read of this host shares one budget of 20 minutes of waits, since the
+   * dependents step starts every run before it reads the first. The token
+   * needs to read the repository's Actions.
+   *
+   * @param repository The repository's full name.
+   * @param run The run's id.
+   * @returns A promise of what `relock.json` holds, or a failed
+   * {@link StepResult} with the request, the status and GitHub's message for
+   * an answer it doesn't expect, with the run's address when the run fails,
+   * doesn't finish within the budget, or leaves no such artifact or file, or
+   * an archive it can't read, such as one compressed another way or whose
+   * parts reach past its end, or when a variable is missing.
+   */
+  public readRelockAsync(repository: string, run: string): Promise<string | StepResult>;
+
+  /**
    * Clones the repository's default branch, one commit deep, into the
    * directory.
    *

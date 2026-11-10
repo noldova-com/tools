@@ -145,6 +145,30 @@ export class NpmTests {
     Assert.isTrue(Object.values(processRunner.environments[0] ?? {}).every(t => t === undefined));
   }
 
+  @TestData("linux", "checkout: npm run lock:app")
+  @TestData("win32", "checkout: cmd.exe /d /s /c npm.cmd run lock:app")
+  @TestMethod
+  public async runsAScriptInTheDirectoryGivenAsTheirPlatformRunsItAsync(platform: string, expected: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(1, "", "npm error"));
+
+    const result = await new Npm(processRunner, "release", platform).runScriptAsync("checkout", "lock:app", ["GITHUB_TOKEN"]);
+
+    Assert.areEqual(1, result.exitCode);
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
+    Assert.areEqual("GITHUB_TOKEN", Object.keys(processRunner.environments[0] ?? {}).join(","));
+    Assert.isTrue(Object.values(processRunner.environments[0] ?? {}).every(t => t === undefined));
+    Assert.areEqual(300000, processRunner.timeouts[0]);
+  }
+
+  @TestMethod
+  public async runsAScriptWithEveryVariableWhenNoneIsHiddenAsync(): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "", ""));
+
+    await new Npm(processRunner, "release", "linux").runScriptAsync("checkout", "lock:app");
+
+    Assert.areEqual("{}", JSON.stringify(processRunner.environments[0]));
+  }
+
   @TestMethod
   public async rejectsWhenReadingItsVersionFailsAsync(): Promise<void> {
     const npm = new Npm(new RecordingProcessRunner(new ProcessResult(1, "", "npm error broken\n")), "release");
