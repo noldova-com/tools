@@ -79,6 +79,14 @@ export class Npm {
       : await this.processRunner.runAsync(Resources.npmProgram, Resources.npmLockValues, directory, environment, Resources.npmLockTimeoutMilliseconds);
   }
 
+  public async runScriptAsync(directory: string, script: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
+    const environment = Object.fromEntries(hiddenVariables.map(t => [t, undefined]));
+
+    return this.platform === Resources.windowsPlatform
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.formatWindowsNpmScriptValues(script), directory, environment, Resources.npmLockTimeoutMilliseconds)
+      : await this.processRunner.runAsync(Resources.npmProgram, [...Resources.npmScriptValues, script], directory, environment, Resources.npmLockTimeoutMilliseconds);
+  }
+
   public async readVersionAsync(): Promise<string> {
     const result = this.platform === Resources.windowsPlatform
       ? await this.processRunner.runAsync(Resources.windowsShellProgram, Resources.windowsNpmVersionValues, this.workingDirectory)

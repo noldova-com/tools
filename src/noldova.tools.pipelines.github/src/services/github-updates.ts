@@ -8,9 +8,11 @@
 
 import { setTimeout as delayAsync } from "node:timers/promises";
 
+import type { JsonReader } from "@noldova/context.json";
 import { type IStepOutput, type IUpdateHost, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
 
 import { GitHubAnswer } from "../models/github-answer.js";
+import { ZipArchive } from "../models/zip-archive.js";
 import { Resources } from "../resources.js";
 import { GitHubApi } from "./github-api.js";
 
@@ -21,6 +23,7 @@ export class GitHubUpdates implements IUpdateHost {
   private readonly waitAsync: (milliseconds: number) => Promise<void>;
   private readonly createSignal: (timeoutMilliseconds: number) => AbortSignal;
   private readonly output: IStepOutput | undefined;
+  private relockWaits: number = 0;
 
   public readonly credentialVariables: readonly string[] = [Resources.tokenVariable];
 
@@ -90,6 +93,62 @@ export class GitHubUpdates implements IUpdateHost {
     const pull = answer.readItems().find(t => t.readNullableString(Resources.mergeCommitField) === commit);
 
     return pull === undefined ? "" : GitHubUpdates.findNotes(pull.readNullableString(Resources.bodyField) ?? "", version);
+  }
+
+  public async startRelockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult> {
+    const missing = this.findMissingVariable();
+    if (missing !== null)
+      return missing;
+
+    const workflow = await this.requestAsync(Resources.readMethod, Resources.formatRelockWorkflowResource(repository));
+    if (workflow instanceof StepResult)
+      return workflow;
+    if (workflow.status === Resources.notFoundStatus)
+      return null;
+    if (workflow.status !== Resources.foundStatus)
+      return workflow.toFailure();
+
+    const target = await this.readFoundAsync(Resources.readMethod, Resources.formatRepositoryResource(repository));
+    if (target instanceof StepResult)
+      return target;
+
+    const inputs = { [Resources.relockCommitInput]: commit, [Resources.relockRequestInput]: request };
+    const dispatch = await this.readFoundAsync(Resources.createMethod, Resources.formatRelockDispatchResource(repository),
+      { [Resources.refField]: target.readString(Resources.defaultBranchField), [Resources.inputsField]: inputs, [Resources.returnRunDetailsField]: true });
+    if (dispatch instanceof StepResult)
+      return dispatch;
+
+    this.output?.writeProgress(Resources.formatRelockStarted(repository, dispatch.readString(Resources.htmlUrlField)));
+
+    return String(dispatch.readInteger(Resources.workflowRunIdField));
+  }
+
+  public async readRelockAsync(repository: string, run: string): Promise<string | StepResult> {
+    const missing = this.findMissingVariable();
+    if (missing !== null)
+      return missing;
+
+    const finished = await this.waitForRunAsync(repository, run);
+    if (typeof finished !== "string")
+      return finished;
+
+    const artifacts = await this.readFoundAsync(Resources.readMethod, Resources.formatRunArtifactsResource(repository, run));
+    if (artifacts instanceof StepResult)
+      return artifacts;
+
+    const artifact = artifacts.readObjectArray(Resources.artifactsField).find(t => t.readString(Resources.nameField) === Resources.relockArtifactName);
+    if (artifact === undefined)
+      return StepResult.failed(Resources.formatRelockArtifactMissing(finished));
+
+    const archive = await this.createApi().downloadAsync(Resources.formatArtifactArchiveResource(repository, String(artifact.readInteger(Resources.idField))));
+    if (archive instanceof StepResult)
+      return archive;
+
+    const text = ZipArchive.readText(archive, Resources.relockResultFileName);
+    if (text instanceof StepResult)
+      return StepResult.failed(Resources.formatRelockArtifactUnread(finished, text.message));
+
+    return text ?? StepResult.failed(Resources.formatRelockResultMissing(finished));
   }
 
   public async checkOutAsync(repository: string, directory: string): Promise<StepResult | null> {
@@ -182,6 +241,28 @@ export class GitHubUpdates implements IUpdateHost {
     return pull.status === Resources.createdStatus ? pull.readBody().readString(Resources.htmlUrlField) : pull.toFailure();
   }
 
+  // Reads the run until it completes, waiting between reads from the one budget every run of this host shares, since the
+  // dependents step starts every repository's run before it reads the first; answers the run's address once it succeeded.
+  private async waitForRunAsync(repository: string, run: string): Promise<string | StepResult> {
+    for (;;) {
+      const answer = await this.readFoundAsync(Resources.readMethod, Resources.formatRunResource(repository, run));
+      if (answer instanceof StepResult)
+        return answer;
+
+      const runUrl = answer.readString(Resources.htmlUrlField);
+      if (answer.readString(Resources.statusField) === Resources.completedStatus) {
+        const conclusion = answer.readNullableString(Resources.conclusionField);
+
+        return conclusion === Resources.successConclusion ? runUrl : StepResult.failed(Resources.formatRelockRunFailed(runUrl, conclusion));
+      }
+      if (this.relockWaits >= Resources.relockPollCount)
+        return StepResult.failed(Resources.formatRelockRunUnfinished(runUrl));
+
+      this.relockWaits++;
+      await this.waitAsync(Resources.relockPollMilliseconds);
+    }
+  }
+
   private async runGitAsync(values: readonly string[], workingDirectory: string): Promise<StepResult | null> {
     const result = await this.processRunner.runAsync(Resources.gitProgram, values, workingDirectory, this.createGitEnvironment());
 
@@ -215,10 +296,20 @@ export class GitHubUpdates implements IUpdateHost {
     return this.environment[name] ?? "";
   }
 
-  private async requestAsync(method: string, resource: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer | StepResult> {
-    const api = new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.tokenVariable), this.timeoutMilliseconds, this.waitAsync, this.createSignal);
+  private async requestAsync(method: string, resource: string, body?: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
+    return await this.createApi().requestAsync(method, resource, body);
+  }
 
-    return await api.requestAsync(method, resource, body);
+  private async readFoundAsync(method: string, resource: string, body?: Readonly<Record<string, unknown>>): Promise<JsonReader | StepResult> {
+    const answer = await this.requestAsync(method, resource, body);
+    if (answer instanceof StepResult)
+      return answer;
+
+    return answer.status === Resources.foundStatus ? answer.readBody() : answer.toFailure();
+  }
+
+  private createApi(): GitHubApi {
+    return new GitHubApi(this.readVariable(Resources.apiUrlVariable), this.readVariable(Resources.tokenVariable), this.timeoutMilliseconds, this.waitAsync, this.createSignal);
   }
 
   private static findNotes(body: string, version: string): string {
