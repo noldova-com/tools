@@ -2859,7 +2859,8 @@ export declare class RelockedFiles {
  * root instead, after its moved entries are removed and every other lock
  * file is relocked, and without stand-in archives, for a lock the
  * repository makes its own way. A script that fails is reported with its
- * standard error, or its standard output when standard error is empty.
+ * standard error, or the last 10 lines of its standard output when
+ * standard error is empty.
  */
 export declare class RelockStep implements IStep {
   /**

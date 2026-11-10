@@ -132,7 +132,7 @@ export class DependentRelock {
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, script === undefined
           ? Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)
-          : Resources.formatLockScriptFailed(lockFilePath, script, result.exitCode, result.errorOutput.trim().length > 0 ? result.errorOutput : result.output)));
+          : Resources.formatLockScriptFailed(lockFilePath, script, result.exitCode, result.errorOutput.trim().length > 0 ? result.errorOutput : Resources.keepLastOutputLines(result.output))));
 
       const lost = DependentRelock.findLost(path.join(directory, lockFilePath), keptPeers);
       if (lost.length > 0)

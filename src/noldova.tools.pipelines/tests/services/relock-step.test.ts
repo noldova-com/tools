@@ -146,6 +146,18 @@ export class RelockStepTests {
   }
 
   @TestMethod
+  public async keepsOnlyTheLastLinesOfAFailedScriptsOutputAsync(): Promise<void> {
+    using target = RelockStepTests.createTarget();
+    const npm = new ScriptNpm(target.directory);
+    const lines = Array.from({ length: 12 }, (_, index) => `step ${index + 1}`);
+    npm.scriptResult = new ProcessResult(1, `${lines.join("\n\n")}\n`, "");
+
+    const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createRequest("@noldova/a"), "relock.json", "app/package-lock.json=lock:app"]);
+
+    Assert.areEqual(`noldova-com/pinned: Relocking app/package-lock.json, npm run lock:app, exited with code 1: ${lines.slice(2).join("; ")}`, result.message);
+  }
+
+  @TestMethod
   public async writesALockScriptForAnUntrackedLockFileAsAFailedResultAsync(): Promise<void> {
     using target = RelockStepTests.createTarget();
     const npm = new ScriptNpm(target.directory);
