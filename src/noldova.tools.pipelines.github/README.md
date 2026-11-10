@@ -16,7 +16,7 @@ npm install @noldova/tools.pipelines.github
 A job installs the package at an exact version, without install scripts, and calls `pipelines` with a step's name and values in the checkout:
 
 ```yaml
-- run: npm install --global --ignore-scripts @noldova/tools.pipelines.github@0.0.17
+- run: npm install --global --ignore-scripts @noldova/tools.pipelines.github@0.0.18
 - run: pipelines source "$VERSION" "$COMMIT"
 - id: nightly
   run: |
