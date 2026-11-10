@@ -13,11 +13,13 @@ import { Resources } from "../resources.js";
 import { StepResult } from "./step-result.js";
 
 export class RelockedFiles {
+  public readonly commit: string;
   public readonly moves: readonly string[];
   public readonly lockLines: readonly string[];
   public readonly files: Readonly<Record<string, string>>;
 
-  public constructor(moves: readonly string[], lockLines: readonly string[], files: Readonly<Record<string, string>>) {
+  public constructor(commit: string, moves: readonly string[], lockLines: readonly string[], files: Readonly<Record<string, string>>) {
+    this.commit = commit;
     this.moves = moves;
     this.lockLines = lockLines;
     this.files = files;
@@ -26,7 +28,7 @@ export class RelockedFiles {
   public static format(relocked: StepResult | RelockedFiles): string {
     return JSON.stringify(relocked instanceof StepResult
       ? { [Resources.relockSucceededField]: relocked.isSuccessful, [Resources.relockMessageField]: relocked.message }
-      : { [Resources.relockMovesField]: relocked.moves, [Resources.relockLockLinesField]: relocked.lockLines, [Resources.relockFilesField]: relocked.files });
+      : { [Resources.relockCommitField]: relocked.commit, [Resources.relockMovesField]: relocked.moves, [Resources.relockLockLinesField]: relocked.lockLines, [Resources.relockFilesField]: relocked.files });
   }
 
   public static parse(text: string): StepResult | RelockedFiles {
@@ -39,7 +41,7 @@ export class RelockedFiles {
 
     const files = reader.readObject(Resources.relockFilesField);
 
-    return new RelockedFiles(reader.readStringArray(Resources.relockMovesField), reader.readStringArray(Resources.relockLockLinesField),
+    return new RelockedFiles(reader.readString(Resources.relockCommitField), reader.readStringArray(Resources.relockMovesField), reader.readStringArray(Resources.relockLockLinesField),
       Object.fromEntries(Object.keys(files.toJson()).map(t => [t, files.readString(t)])));
   }
 }

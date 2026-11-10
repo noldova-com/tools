@@ -875,20 +875,35 @@ export declare interface IUpdateHost {
   readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
 
   /**
-   * Has a repository relock itself, when the host can: runs the repository's
-   * own relock, which runs the {@link RelockStep} in a checkout of the
-   * commit, prepared as the repository's own build does, and reads what it
-   * wrote.
+   * Starts a repository's own relock, when the host can: the relock runs the
+   * {@link RelockStep} in a checkout of the commit, prepared as the
+   * repository's own build does, while the step goes on to the next
+   * repository.
    *
    * @param repository The repository's full name.
    * @param commit The commit the relock checks out.
    * @param request The release, which the relock step reads.
-   * @returns A promise of the relock step's result file, which
-   * {@link RelockedFiles.parse} reads, `null` when the repository doesn't
-   * relock itself and the step relocks it in its own checkout, or a failed
-   * {@link StepResult} that says why the host could not have it relock.
+   * @returns A promise of what names the started relock, for
+   * {@link readRelockAsync}, `null` when the repository doesn't relock itself
+   * and the step relocks it in its own checkout, or a failed
+   * {@link StepResult} that says why the host could not start it.
    */
-  relockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult>;
+  startRelockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult>;
+
+  /**
+   * Waits for a relock {@link startRelockAsync} started and reads what its
+   * relock step wrote. The host's waits for all the relocks of one step
+   * share one time limit, since every relock starts before the first is
+   * read.
+   *
+   * @param repository The repository's full name.
+   * @param run What {@link startRelockAsync} answered.
+   * @returns A promise of the relock step's result file, which
+   * {@link RelockedFiles.parse} reads, or a failed {@link StepResult} that
+   * says why the host could not read it, such as a relock that failed or
+   * didn't finish within the time limit.
+   */
+  readRelockAsync(repository: string, run: string): Promise<string | StepResult>;
 
   /**
    * Checks out a repository's default branch into a new directory, as a git
@@ -2692,11 +2707,14 @@ export declare class ReproducibleStep implements IStep {
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
  * so nobody's commits are lost. A repository that pins none of them is left
- * as it is. Before it moves anything, it asks {@link IUpdateHost.relockAsync}
- * whether the repository relocks itself; when it does, the step takes the
- * line the repository's {@link RelockStep} wrote, or writes the files it
- * changed, each a tracked `package.json` or `package-lock.json`, into its
- * checkout, and commits, pushes and proposes them as above; any other file
+ * as it is. It first checks out every repository and asks
+ * {@link IUpdateHost.startRelockAsync} whether each relocks itself, starting
+ * every such relock, and then finishes the repositories in order; for one
+ * that relocks itself, it reads with {@link IUpdateHost.readRelockAsync} the
+ * line the repository's {@link RelockStep} wrote, or the files it changed,
+ * which it writes into its checkout, each a tracked `package.json` or
+ * `package-lock.json`, and commits, pushes and proposes them as above; any
+ * other file, and a relock of a commit other than the one it checked out,
  * fails that repository.
  */
 export declare class DependentsStep implements IStep {
@@ -2767,11 +2785,16 @@ export declare class DependentsStep implements IStep {
 }
 
 /**
- * What a repository's own relock wrote: the moved pins, a line for each
+ * What a repository's own relock wrote: the commit it ran at, the moved pins, a line for each
  * relocked lock file, and the text of each tracked `package.json` and
  * `package-lock.json` that changed.
  */
 export declare class RelockedFiles {
+  /**
+   * The full id of the commit the relock ran at.
+   */
+  public readonly commit: string;
+
   /**
    * The moved pins, each as the proposal's description lists it.
    */
@@ -2790,11 +2813,12 @@ export declare class RelockedFiles {
   /**
    * Creates the result.
    *
+   * @param commit The commit the relock ran at.
    * @param moves The moved pins.
    * @param lockLines The lock files' lines.
    * @param files The changed files' text, by path.
    */
-  public constructor(moves: readonly string[], lockLines: readonly string[], files: Readonly<Record<string, string>>);
+  public constructor(commit: string, moves: readonly string[], lockLines: readonly string[], files: Readonly<Record<string, string>>);
 
   /**
    * Writes a result, or a repository's line, as the JSON the relock step's

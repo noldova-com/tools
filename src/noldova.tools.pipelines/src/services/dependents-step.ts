@@ -27,6 +27,14 @@ import { Git } from "./git.js";
 import type { Npm } from "./npm.js";
 import type { ProcessRunner } from "./process-runner.js";
 
+interface StartedUpdate {
+  readonly repository: string;
+  readonly directory: string;
+  readonly git: Git;
+  readonly head: string;
+  readonly run: string | null;
+}
+
 export class DependentsStep implements IStep {
   private readonly archiveStep: ArchiveStep;
   private readonly updateHost: IUpdateHost;
@@ -82,8 +90,11 @@ export class DependentsStep implements IStep {
     let isSuccessful = true;
     const root = fs.mkdtempSync(path.join(this.temporaryRoot, Resources.dependentsFolderPrefix));
     try {
-      for (const [index, repository] of repositories.entries()) {
-        const result = await this.tryUpdateAsync(update, repository, path.join(root, String(index)));
+      const started: (StepResult | StartedUpdate)[] = [];
+      for (const [index, repository] of repositories.entries())
+        started.push(await DependentsStep.tryAsync(repository, async () => await this.startAsync(update, repository, path.join(root, String(index)))));
+      for (const start of started) {
+        const result = start instanceof StepResult ? start : await DependentsStep.tryAsync(start.repository, async () => await this.finishAsync(update, start));
         isSuccessful &&= result.isSuccessful;
         if (this.output === undefined)
           lines.push(result.message);
@@ -104,9 +115,9 @@ export class DependentsStep implements IStep {
     return isSuccessful ? StepResult.succeeded(message) : StepResult.failed(message);
   }
 
-  private async tryUpdateAsync(update: DependentsUpdate, repository: string, directory: string): Promise<StepResult> {
+  private static async tryAsync<T>(repository: string, action: () => Promise<T | StepResult>): Promise<T | StepResult> {
     try {
-      return await this.updateAsync(update, repository, directory);
+      return await action();
     }
     catch (error: unknown) {
       if (!(error instanceof Error))
@@ -116,13 +127,25 @@ export class DependentsStep implements IStep {
     }
   }
 
-  private async updateAsync(update: DependentsUpdate, repository: string, directory: string): Promise<StepResult> {
+  // Checks a repository out and, when the host has it relock itself, starts that relock, so every repository's relock
+  // runs while the step waits for the first.
+  private async startAsync(update: DependentsUpdate, repository: string, directory: string): Promise<StepResult | StartedUpdate> {
     const checkout = await this.updateHost.checkOutAsync(repository, directory);
     if (checkout !== null)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, checkout.message));
 
     const git = new Git(this.processRunner, directory);
-    const relocked = await this.relockAsync(update, repository, directory, git);
+    const head = await git.readHeadAsync();
+    const run = await this.updateHost.startRelockAsync(repository, head, update.formatRequest());
+    if (run instanceof StepResult)
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, run.message));
+
+    return { repository, directory, git, head, run };
+  }
+
+  private async finishAsync(update: DependentsUpdate, started: StartedUpdate): Promise<StepResult> {
+    const { repository, directory, git } = started;
+    const relocked = started.run === null ? await this.relock.relockAsync(update, repository, directory, new Map()) : await this.readRelockAsync(started, started.run);
     if (relocked instanceof StepResult)
       return relocked;
 
@@ -147,18 +170,19 @@ export class DependentsStep implements IStep {
     return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, relocked.moves.length));
   }
 
-  // Relocks the checkout here, or, when the host has the repository relock itself, writes the files that relock changed
-  // into the checkout, each one a tracked manifest or lock file.
-  private async relockAsync(update: DependentsUpdate, repository: string, directory: string, git: Git): Promise<StepResult | RelockedFiles> {
-    const answer = await this.updateHost.relockAsync(repository, await git.readHeadAsync(), update.formatRequest());
-    if (answer === null)
-      return await this.relock.relockAsync(update, repository, directory, new Map());
+  // Reads what the repository's own relock wrote and, when it changed files, writes them into the checkout, each one a
+  // tracked manifest or lock file, from a relock of the checkout's own commit.
+  private async readRelockAsync(started: StartedUpdate, run: string): Promise<StepResult | RelockedFiles> {
+    const { repository, directory, git, head } = started;
+    const answer = await this.updateHost.readRelockAsync(repository, run);
     if (answer instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, answer.message));
 
     const relocked = RelockedFiles.parse(answer);
     if (relocked instanceof StepResult)
       return relocked;
+    if (relocked.commit !== head)
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatRelockedElsewhere(relocked.commit, head)));
 
     const tracked = new Set((await git.listTrackedFilesAsync()).map(t => t.filePath)
       .filter(t => [Resources.manifestFileName, Resources.lockFileName].includes(path.posix.basename(t))));

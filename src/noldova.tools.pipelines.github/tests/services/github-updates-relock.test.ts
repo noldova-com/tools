@@ -53,7 +53,7 @@ export class GitHubUpdatesRelockTests {
   public async answersNullForARepositoryWithoutTheRelockWorkflowAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({});
 
-    Assert.isNull(await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST));
+    Assert.isNull(await GitHubUpdatesRelockTests.createUpdates(api).startRelockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST));
     Assert.areEqual(GitHubUpdatesRelockTests.WORKFLOW, api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
   }
 
@@ -68,16 +68,16 @@ export class GitHubUpdatesRelockTests {
     await using api = await GitHubApiFixture.startAsync({
       ...GitHubUpdatesRelockTests.createAnswers(),
       [GitHubUpdatesRelockTests.RUN]: [
-        GitHubApiAnswer.json(200, { status: "queued", conclusion: null }),
-        GitHubApiAnswer.json(200, { status: "in_progress", conclusion: null }),
-        GitHubApiAnswer.json(200, { status: "completed", conclusion: "success" })
+        GitHubApiAnswer.json(200, { status: "queued", conclusion: null, html_url: GitHubUpdatesRelockTests.RUN_URL }),
+        GitHubApiAnswer.json(200, { status: "in_progress", conclusion: null, html_url: GitHubUpdatesRelockTests.RUN_URL }),
+        GitHubApiAnswer.json(200, { status: "completed", conclusion: "success", html_url: GitHubUpdatesRelockTests.RUN_URL })
       ],
       [GitHubUpdatesRelockTests.DOWNLOAD]: GitHubApiAnswer.binary(archive)
     });
     const output = new RecordingOutput();
     const waits: number[] = [];
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api, output, waits).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api, output, waits));
 
     Assert.areEqual(GitHubUpdatesRelockTests.RESULT, result);
     Assert.areEqual("15000,15000", waits.join(","));
@@ -122,7 +122,7 @@ export class GitHubUpdatesRelockTests {
     const key = keys[request] ?? "";
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [key]: GitHubApiAnswer.json(403, { message: "Refused" }) });
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
 
     const [method, resource] = key.split(" ");
     Assert.areEqual(`GitHub answered ${method} ${resource?.slice(1)} with 403: Refused`, GitHubUpdatesRelockTests.readFailure(result));
@@ -135,7 +135,7 @@ export class GitHubUpdatesRelockTests {
     const key = request === "workflow" ? GitHubUpdatesRelockTests.WORKFLOW : GitHubUpdatesRelockTests.TARGET;
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [key]: GitHubApiAnswer.RESET });
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
 
     Assert.isTrue(GitHubUpdatesRelockTests.readFailure(result).startsWith(`GitHub gave no answer to ${key.replace(" /", " ")}: `));
   }
@@ -144,31 +144,38 @@ export class GitHubUpdatesRelockTests {
   @TestData(null, "The repository's relock run https://github.example/noldova-com/target/actions/runs/77 ended without a conclusion, so its pins are left as they are.")
   @TestMethod
   public async failsARunThatDidntSucceedAsync(conclusion: string | null, expected: string): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.RUN]: GitHubApiAnswer.json(200, { status: "completed", conclusion }) });
+    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.RUN]: GitHubApiAnswer.json(200, { status: "completed", conclusion, html_url: GitHubUpdatesRelockTests.RUN_URL }) });
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
 
     Assert.areEqual(expected, GitHubUpdatesRelockTests.readFailure(result));
     Assert.isFalse(api.requests.some(t => `${t.method} ${t.url}` === GitHubUpdatesRelockTests.ARTIFACTS));
   }
 
   @TestMethod
-  public async failsARunThatDoesntFinishInTimeAsync(): Promise<void> {
-    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.RUN]: GitHubApiAnswer.json(200, { status: "in_progress", conclusion: null }) });
+  public async sharesOneWaitBudgetAcrossEveryRunAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      ...GitHubUpdatesRelockTests.createAnswers(),
+      [GitHubUpdatesRelockTests.RUN]: GitHubApiAnswer.json(200, { status: "in_progress", conclusion: null, html_url: GitHubUpdatesRelockTests.RUN_URL })
+    });
     const waits: number[] = [];
+    const updates = GitHubUpdatesRelockTests.createUpdates(api, undefined, waits);
+    const expected = "The repository's relock run https://github.example/noldova-com/target/actions/runs/77 didn't finish within the 20 minutes the dependents step waits for all relock runs together, so its pins are left as they are.";
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api, undefined, waits).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const first = await updates.readRelockAsync(GitHubUpdatesRelockTests.REPOSITORY, "77");
+    const second = await updates.readRelockAsync(GitHubUpdatesRelockTests.REPOSITORY, "77");
 
-    Assert.areEqual("The repository's relock run https://github.example/noldova-com/target/actions/runs/77 didn't finish within 60 minutes, so its pins are left as they are.", GitHubUpdatesRelockTests.readFailure(result));
-    Assert.areEqual(240, waits.length);
-    Assert.areEqual(241, api.requests.filter(t => `${t.method} ${t.url}` === GitHubUpdatesRelockTests.RUN).length);
+    Assert.areEqual(expected, GitHubUpdatesRelockTests.readFailure(first));
+    Assert.areEqual(expected, GitHubUpdatesRelockTests.readFailure(second));
+    Assert.areEqual(80, waits.length);
+    Assert.areEqual(82, api.requests.filter(t => `${t.method} ${t.url}` === GitHubUpdatesRelockTests.RUN).length);
   }
 
   @TestMethod
   public async failsARunWithoutTheArtifactAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.ARTIFACTS]: GitHubApiAnswer.json(200, { artifacts: [{ id: 5, name: "other" }] }) });
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
 
     Assert.areEqual("The repository's relock run https://github.example/noldova-com/target/actions/runs/77 left no artifact named relock.", GitHubUpdatesRelockTests.readFailure(result));
   }
@@ -187,7 +194,7 @@ export class GitHubUpdatesRelockTests {
       answers[GitHubUpdatesRelockTests.DOWNLOAD] = new GitHubApiAnswer(404, "", "");
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), ...answers });
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
 
     Assert.areEqual(expected, GitHubUpdatesRelockTests.readFailure(result));
   }
@@ -196,7 +203,7 @@ export class GitHubUpdatesRelockTests {
   public async failsWhenTheDownloadGetsNoAnswerAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.ARCHIVE]: GitHubApiAnswer.HELD });
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
 
     Assert.areEqual("GitHub gave no answer to GET repos/noldova-com/target/actions/artifacts/5/zip: The operation was aborted due to timeout", GitHubUpdatesRelockTests.readFailure(result));
   }
@@ -214,9 +221,45 @@ export class GitHubUpdatesRelockTests {
     };
     const updates = new GitHubUpdates(GitHubUpdatesRelockTests.createEnvironment(api), undefined, undefined, async () => {}, createSignal);
 
-    const rejection = await updates.relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST).then(() => null, (error: unknown) => error);
+    const rejection = await GitHubUpdatesRelockTests.relockAsync(updates).then(() => null, (error: unknown) => error);
 
     Assert.areEqual("The signal broke.", rejection instanceof Error ? rejection.message : String(rejection));
+  }
+
+  @TestData("method")
+  @TestData("end record")
+  @TestData("directory entry")
+  @TestData("local header")
+  @TestData("data")
+  @TestMethod
+  public async failsAnArchiveItCantReadAsync(fault: string): Promise<void> {
+    const archive = ZipArchiveFixture.create([{ name: "relock.json", text: GitHubUpdatesRelockTests.RESULT, isDeflated: false }]);
+    const size = archive.length;
+    const end = size - 22;
+    const entry = archive.readUInt32LE(end + 16);
+    const reasons: Record<string, string> = {
+      "method": "relock.json is compressed with method 12; only 0, stored, and 8, deflated, are read.",
+      "end record": "The archive's end record reaches past its end: 22 bytes at 2 in an archive of 9.",
+      "directory entry": `The archive's directory entry reaches past its end: 46 bytes at ${size - 10} in an archive of ${size}.`,
+      "local header": `The archive's local header reaches past its end: 30 bytes at ${size} in an archive of ${size}.`,
+      "data": `The archive's data of relock.json reaches past its end: 100000 bytes at 41 in an archive of ${size}.`
+    };
+    let body = archive;
+    if (fault === "method")
+      archive.writeUInt16LE(12, entry + 10);
+    else if (fault === "end record")
+      body = Buffer.concat([Buffer.from("xx"), Buffer.from([0x50, 0x4b, 0x05, 0x06]), Buffer.from("abc")]);
+    else if (fault === "directory entry")
+      archive.writeUInt32LE(size - 10, end + 16);
+    else if (fault === "local header")
+      archive.writeUInt32LE(size, entry + 42);
+    else
+      archive.writeUInt32LE(100000, entry + 20);
+    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.DOWNLOAD]: GitHubApiAnswer.binary(body) });
+
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
+
+    Assert.areEqual(`The relock artifact of ${GitHubUpdatesRelockTests.RUN_URL} can't be read: ${reasons[fault] ?? ""}`, GitHubUpdatesRelockTests.readFailure(result));
   }
 
   @TestData("without")
@@ -226,9 +269,15 @@ export class GitHubUpdatesRelockTests {
     const body = archive === "without" ? ZipArchiveFixture.create([{ name: "other.json", text: "{}", isDeflated: true }]) : Buffer.from(GitHubUpdatesRelockTests.RESULT, "utf8");
     await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.DOWNLOAD]: GitHubApiAnswer.binary(body) });
 
-    const result = await GitHubUpdatesRelockTests.createUpdates(api).relockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
 
     Assert.areEqual("The relock artifact of https://github.example/noldova-com/target/actions/runs/77 holds no relock.json.", GitHubUpdatesRelockTests.readFailure(result));
+  }
+
+  private static async relockAsync(updates: GitHubUpdates): Promise<string | null | StepResult> {
+    const run = await updates.startRelockAsync(GitHubUpdatesRelockTests.REPOSITORY, GitHubUpdatesRelockTests.COMMIT, GitHubUpdatesRelockTests.REQUEST);
+
+    return typeof run === "string" ? await updates.readRelockAsync(GitHubUpdatesRelockTests.REPOSITORY, run) : run;
   }
 
   private static createAnswers(): Record<string, GitHubApiAnswer | readonly GitHubApiAnswer[]> {
@@ -236,7 +285,7 @@ export class GitHubUpdatesRelockTests {
       [GitHubUpdatesRelockTests.WORKFLOW]: GitHubApiAnswer.json(200, { id: 3, path: ".github/workflows/relock.yml" }),
       [GitHubUpdatesRelockTests.TARGET]: GitHubApiAnswer.json(200, { default_branch: "trunk" }),
       [GitHubUpdatesRelockTests.DISPATCH]: GitHubApiAnswer.json(200, { workflow_run_id: 77, html_url: GitHubUpdatesRelockTests.RUN_URL }),
-      [GitHubUpdatesRelockTests.RUN]: GitHubApiAnswer.json(200, { status: "completed", conclusion: "success" }),
+      [GitHubUpdatesRelockTests.RUN]: GitHubApiAnswer.json(200, { status: "completed", conclusion: "success", html_url: GitHubUpdatesRelockTests.RUN_URL }),
       [GitHubUpdatesRelockTests.ARTIFACTS]: GitHubApiAnswer.json(200, { artifacts: [{ id: 4, name: "other" }, { id: 5, name: "relock" }] }),
       [GitHubUpdatesRelockTests.ARCHIVE]: GitHubApiAnswer.redirect("/download/relock.zip"),
       [GitHubUpdatesRelockTests.DOWNLOAD]: GitHubApiAnswer.binary(ZipArchiveFixture.create([{ name: "relock.json", text: GitHubUpdatesRelockTests.RESULT, isDeflated: true }]))

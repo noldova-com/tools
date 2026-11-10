@@ -714,6 +714,10 @@ export class Resources {
     return `${repository}: moved ${moveCount} pins and wrote the ${fileCount} files that changed into the result.`;
   }
 
+  public static formatRelockedElsewhere(relocked: string, head: string): string {
+    return `The repository's relock ran at ${relocked}, not at ${head}, the commit the step checked out and sent, so none of its files are taken.`;
+  }
+
   public static formatRelockedUntracked(filePaths: readonly string[]): string {
     return `The repository's relock changed files that aren't its tracked package.json or package-lock.json files, so none are taken: ${filePaths.join(", ")}.`;
   }

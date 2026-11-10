@@ -150,7 +150,7 @@ export class DependentRelock {
       return script === undefined ? Resources.formatLocked(t) : Resources.formatScriptLocked(t, script);
     });
 
-    return new RelockedFiles(allMoves.map(t => t.line), [...lockLines, ...ownLocks.map(t => Resources.formatOwnLocked(t.lockFilePath, [...t.pins.keys()]))],
+    return new RelockedFiles(await git.readHeadAsync(), allMoves.map(t => t.line), [...lockLines, ...ownLocks.map(t => Resources.formatOwnLocked(t.lockFilePath, [...t.pins.keys()]))],
       Object.fromEntries([...after].filter(([t, text]) => before.get(t) !== text)));
   }
 

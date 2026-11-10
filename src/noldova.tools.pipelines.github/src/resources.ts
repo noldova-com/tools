@@ -100,7 +100,10 @@ export class Resources {
   public static readonly relockArtifactName: string = "relock";
   public static readonly relockResultFileName: string = "relock.json";
   public static readonly relockPollMilliseconds: number = 15_000;
-  public static readonly relockPollCount: number = 240;
+  public static readonly relockPollCount: number = 80;
+  public static readonly zipEndRecordPart: string = "end record";
+  public static readonly zipEntryPart: string = "directory entry";
+  public static readonly zipLocalHeaderPart: string = "local header";
   public static readonly retryAfterMaxSeconds: number = 60;
   public static readonly retryAfterPattern: RegExp = /^[0-9]+$/;
   public static readonly actionsValue: string = "true";
@@ -202,11 +205,27 @@ export class Resources {
   }
 
   public static formatRelockRunUnfinished(runUrl: string): string {
-    return `The repository's relock run ${runUrl} didn't finish within ${Resources.relockPollCount * Resources.relockPollMilliseconds / 60_000} minutes, so its pins are left as they are.`;
+    return `The repository's relock run ${runUrl} didn't finish within the ${Resources.relockPollCount * Resources.relockPollMilliseconds / 60_000} minutes the dependents step waits for all relock runs together, so its pins are left as they are.`;
   }
 
   public static formatRelockArtifactMissing(runUrl: string): string {
     return `The repository's relock run ${runUrl} left no artifact named ${Resources.relockArtifactName}.`;
+  }
+
+  public static formatRelockArtifactUnread(runUrl: string, reason: string): string {
+    return `The ${Resources.relockArtifactName} artifact of ${runUrl} can't be read: ${reason}`;
+  }
+
+  public static formatZipMethodUnsupported(name: string, method: number): string {
+    return `${name} is compressed with method ${method}; only 0, stored, and 8, deflated, are read.`;
+  }
+
+  public static formatZipDataPart(name: string): string {
+    return `data of ${name}`;
+  }
+
+  public static formatZipOutOfRange(part: string, start: number, length: number, size: number): string {
+    return `The archive's ${part} reaches past its end: ${length} bytes at ${start} in an archive of ${size}.`;
   }
 
   public static formatRelockResultMissing(runUrl: string): string {

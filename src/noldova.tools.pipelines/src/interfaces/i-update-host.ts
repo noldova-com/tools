@@ -17,7 +17,9 @@ export interface IUpdateHost {
 
   readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
 
-  relockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult>;
+  startRelockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult>;
+
+  readRelockAsync(repository: string, run: string): Promise<string | StepResult>;
 
   checkOutAsync(repository: string, directory: string): Promise<StepResult | null>;
 

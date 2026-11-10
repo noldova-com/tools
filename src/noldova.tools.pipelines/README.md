@@ -307,9 +307,9 @@ result.message; // "Looked for exact pins of @noldova/a, @noldova/b older than 0
 - It succeeds with one line for each repository, and fails, after trying every other repository, with the line of each that failed; an error in one repository, such as git failing, is that repository's line.
 - Given an output, it writes each repository's line there instead, as a success or a failure, as soon as that repository is done, so a run stopped partway still shows the repositories it finished; its result's message is then only the summary.
 - It removes its temporary folder whether it succeeds or fails, and makes it in the root its constructor is given, or in `os.tmpdir()`.
-- Before it moves anything in a checkout, it asks the host's `relockAsync` whether the repository relocks itself, giving the checkout's head commit and the release as a request: the source, the version, the commit, the released packages and the peers they pin.
-  When the host answers `null`, it moves and relocks in the checkout as above.
-  Otherwise the host's answer is what the repository's relock step wrote: a repository's line, which becomes that repository's line, or the moved pins, the lock lines and the files that changed, which it writes into the checkout, each one a tracked `package.json` or `package-lock.json`, before it commits, pushes and proposes as above; a file that is neither fails that repository, and so does a failure the host answers.
+- It first checks out every repository and asks the host's `startRelockAsync` whether each relocks itself, giving the checkout's head commit and the release as a request: the source, the version, the commit, the released packages and the peers they pin; the host starts each such relock, so they run together. Then it finishes the repositories in order.
+  When the host answered `null`, it moves and relocks in the checkout as above.
+  Otherwise it reads with the host's `readRelockAsync` what the repository's relock step wrote: a repository's line, which becomes that repository's line, or the commit it ran at, the moved pins, the lock lines and the files that changed, which it writes into the checkout, each one a tracked `package.json` or `package-lock.json`, before it commits, pushes and proposes as above; a file that is neither, a relock of another commit than the checkout's, and a failure the host answers fail that repository.
 
 ### The relock step
 
@@ -327,7 +327,7 @@ result.message; // "noldova-com/example: moved 2 pins and wrote the 4 files that
 
 - `<repository>` is the dependent's full name, which starts each line; `<request>` is the release as the dependents step sends it.
 - Each `<lock file>=<npm script>` relocks that tracked lock file with `npm run <npm script>` at the checkout's root instead, after its moved entries are removed as above, for a lock the repository makes its own way, such as one that takes the repository's own packages from its build; such a lock skips the stand-in archives. A script name is letters, digits and `:`, `.`, `_` and `-`; a lock file named twice, or a value without both parts, fails the step before it changes anything, and so does a wrong number of values.
-- The result file holds JSON: the repository's line and whether it succeeded, when the repository is left as it is or fails, or the moved pins, the lock lines and the text of each tracked `package.json` and `package-lock.json` that changed. A lock script for a lock file the repository doesn't track, a failed lock or script run, and an error, such as npm failing, are a failed line in the file; the step itself still succeeds, so the release's dependents step reports them.
+- The result file holds JSON: the repository's line and whether it succeeded, when the repository is left as it is or fails, or the checkout's head commit, the moved pins, the lock lines and the text of each tracked `package.json` and `package-lock.json` that changed. A lock script for a lock file the repository doesn't track, a failed lock or script run, and an error, such as npm failing, are a failed line in the file; the step itself still succeeds, so the release's dependents step reports them.
 
 ### The pins step
 

@@ -84,6 +84,7 @@ export class RelockStepTests {
     if (!(written instanceof RelockedFiles))
       throw new Error(`The result is a message: ${written.message}`);
 
+    Assert.areEqual(target.readHead(), written.commit);
     Assert.areEqual("`app/package.json`: `@noldova/a` from 0.0.3 to 0.0.4|`package.json`: `@noldova/a` from 0.0.3 to 0.0.4", written.moves.join("|"));
     Assert.areEqual(
       [
