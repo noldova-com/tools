@@ -38,6 +38,7 @@ A job installs the package at an exact version, without install scripts, and cal
 | `reproducible` | `<folder>` |
 | `dependents` | `<version> <commit>` |
 | `pins` | `<version> <commit>` |
+| `relock` | `<repository> <request> <result file> [<lock file>=<npm script>...]` |
 | `installed` | `[<folder>]` |
 | `build` | `[--version <version>] [<package>...]`, or `--list-copies` |
 | `test` | `[--skip-test-details] [--skip-coverage-details] [<filter>...]` |
@@ -124,6 +125,7 @@ It runs in a checkout of the released commit, and reads `GITHUB_API_URL`, `GITHU
 - A lock refresh that runs longer than 5 minutes is stopped and fails that repository, on Linux and macOS runners only.
 - The release notes are the section of the pull request whose merge commit is the commit, headed `Release notes`, or `Release notes for <version>` with the version, at any heading level, up to the next heading of that level or higher, or a line that starts with `Agent:`, a pull request's signature; without one, the proposal has none.
 - When the branch exists, the step replaces it, with `--force-with-lease`, only while it is at a commit of the step's own; then it updates the open pull request and its issue. Otherwise it opens an issue, which says what the new version is, and a pull request that closes it, against the repository's default branch.
+- A repository that has `.github/workflows/relock.yml` relocks itself: the step dispatches that workflow on the repository's default branch, with the inputs `commit`, the checkout's head commit, and `request`, the release; it waits for the run, reading it every 15 seconds for up to 60 minutes, downloads its artifact `relock`, and reads `relock.json` from it, which the run's relock step wrote. A run that doesn't succeed or finish in time, a missing artifact or file, and a download GitHub refuses fail that repository. The token then also needs to write the repository's Actions, to dispatch, and to read them, for the run and its artifact; the artifact's download sends the token only to GitHub's API, never to the address it redirects to. A repository without the workflow is moved and relocked in the step's own checkout.
 - The step fails, naming the variable, when one is missing or empty; it fails for a repository, after trying every other, with git's exit code and error output, or with the request, the status and GitHub's message for an answer it doesn't expect.
 
 ### The pins step
@@ -149,6 +151,17 @@ It runs in a clone of the shared repository that holds the commit, and reads the
 - The output, the release notes, the branch and the failures work as in the dependents step.
 
 ### When GitHub is briefly unavailable
+
+### The relock step
+
+`pipelines relock <repository> <request> <result file> [<lock file>=<npm script>...]` runs in a dependent's `relock.yml`, which the dependents step dispatches, in a checkout of the commit the input `commit` names, after the job prepared it as the repository's own build does.
+It reads the registries with the job's own token, as the repository's install does, and needs no other; it writes the result file, which the job uploads as the artifact `relock`, holding `relock.json`:
+
+```yaml
+- env:
+    REQUEST: ${{ inputs.request }}
+  run: pipelines relock "$GITHUB_REPOSITORY" "$REQUEST" "$RUNNER_TEMP/relock/relock.json" app/package-lock.json=lock:app
+```
 
 The prune, tag, dependents and pins steps send a request again, up to two more times, waiting 5 and then 15 seconds, when GitHub answers 502, 503 or 504, doesn't answer within a minute, or the connection fails.
 A failing answer with a `Retry-After` header of up to 60 seconds is sent again too, after that wait, such as a 403 for a rate limit.

@@ -15,19 +15,29 @@ export class GitHubApiAnswer {
   public static readonly RESET: GitHubApiAnswer = new GitHubApiAnswer(0, "", "", false, "", true);
 
   public readonly status: number;
-  public readonly body: string;
+  public readonly body: string | Buffer;
   public readonly contentType: string;
   public readonly isHeld: boolean;
   public readonly retryAfter: string;
   public readonly isReset: boolean;
+  public readonly location: string;
 
-  public constructor(status: number, body: string, contentType: string = "application/json; charset=utf-8", isHeld: boolean = false, retryAfter: string = "", isReset: boolean = false) {
+  public constructor(status: number, body: string | Buffer, contentType: string = "application/json; charset=utf-8", isHeld: boolean = false, retryAfter: string = "", isReset: boolean = false, location: string = "") {
     this.status = status;
     this.body = body;
     this.contentType = contentType;
     this.isHeld = isHeld;
     this.retryAfter = retryAfter;
     this.isReset = isReset;
+    this.location = location;
+  }
+
+  public static redirect(location: string): GitHubApiAnswer {
+    return new GitHubApiAnswer(302, "", "", false, "", false, location);
+  }
+
+  public static binary(body: Buffer): GitHubApiAnswer {
+    return new GitHubApiAnswer(200, body, "application/zip");
   }
 
   public static json(status: number, value: unknown, retryAfter: string = ""): GitHubApiAnswer {
@@ -86,7 +96,8 @@ export class GitHubApiFixture implements AsyncDisposable {
         response.writeHead(answer.status, {
           "Connection": "close",
           ...(answer.contentType.length === 0 ? {} : { "Content-Type": answer.contentType }),
-          ...(answer.retryAfter.length === 0 ? {} : { "Retry-After": answer.retryAfter })
+          ...(answer.retryAfter.length === 0 ? {} : { "Retry-After": answer.retryAfter }),
+          ...(answer.location.length === 0 ? {} : { "Location": answer.location })
         });
         response.end(answer.body);
       });

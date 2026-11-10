@@ -96,6 +96,7 @@ export class GitHubUpdatesTests {
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await missing.pushAsync(GitHubUpdatesTests.REPOSITORY, "target", GitHubUpdatesTests.BRANCH, null)));
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.fetchBranchAsync(GitHubUpdatesTests.REPOSITORY, "target", GitHubUpdatesTests.BRANCH)));
     Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await empty.proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Title", "Body", "Summary")));
+    Assert.areEqual(expected, GitHubUpdatesTests.readFailure(await missing.relockAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.COMMIT, "{}")));
     Assert.areEqual(0, api.requests.length);
   }
 

@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, DependentsStep, Git, Npm, ProcessResult, ProcessRunner, StepResult, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, DependentsStep, Git, Npm, ProcessResult, ProcessRunner, RelockedFiles, StepResult, Tar } from "@noldova/tools.pipelines";
 
 import { FakeUpdateHost, RecordingOutput } from "./fake-update-host.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
@@ -719,6 +719,88 @@ export class DependentsStepTests {
 
     Assert.isFalse(result.isSuccessful);
     Assert.isTrue(result.message.includes(source.readHead()), result.message);
+  }
+
+  @TestMethod
+  public async proposesWhatTheRepositoryRelockedItselfAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const files = { "package.json": "{ \"moved\": true }\n", "src/package-lock.json": "{ \"relocked\": true }\n" };
+    host.relocks.set("noldova-com/pinned", RelockedFiles.format(new RelockedFiles(["`package.json`: `@noldova/a` from 0.0.3 to 0.0.4"], ["`src/package-lock.json`: relocked by the repository"], files)));
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 1 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    const request = {
+      source: "source",
+      version: "0.0.4",
+      commit: source.readHead(),
+      packageNames: ["@noldova/a", "@noldova/a.b", "@noldova/b"],
+      peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: ", which `@noldova/a` 0.0.4 needs as a peer" }]
+    };
+    Assert.areEqual(`noldova-com/pinned ${pinned.readHead()} ${JSON.stringify(request)}`, host.relockRequests.join("\n"));
+    const pushed = host.pushed.get("noldova-com/pinned");
+    Assert.areEqual(files["package.json"], pushed?.["package.json"]);
+    Assert.areEqual(files["src/package-lock.json"], pushed?.["src/package-lock.json"]);
+    Assert.areEqual(DependentsStepTests.PINNED["src/package.json"], pushed?.["src/package.json"]);
+    Assert.areEqual(DependentsStepTests.PINNED["package-lock.json"], pushed?.["package-lock.json"]);
+    Assert.areEqual(0, npm.directories.length + npm.viewed.length);
+    const body = host.proposals[0] ?? "";
+    Assert.isTrue(body.includes("\n- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4\n- `src/package-lock.json`: relocked by the repository\n"), body);
+  }
+
+  @TestData(true)
+  @TestData(false)
+  @TestMethod
+  public async takesTheLineTheRepositoryWroteForItselfAsync(isSuccessful: boolean): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const line = "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: a reason.";
+    host.relocks.set("noldova-com/pinned", RelockedFiles.format(isSuccessful ? StepResult.succeeded(line) : StepResult.failed(line)));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.areEqual(isSuccessful, result.isSuccessful);
+    Assert.areEqual(line, result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async failsARepositoryWhoseRelockTheHostCouldntGetAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.relocks.set("noldova-com/pinned", StepResult.failed("The relock run ended failure."));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("noldova-com/pinned: The relock run ended failure.", result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async failsARepositoryWhoseRelockChangedOtherFilesAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.relocks.set("noldova-com/pinned", RelockedFiles.format(new RelockedFiles(["a move"], [], { "package.json": "{}\n", "README.md": "Changed.\n", "other/package.json": "{}\n" })));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      "noldova-com/pinned: The repository's relock changed files that aren't its tracked package.json or package-lock.json files, so none are taken: README.md, other/package.json.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
 
   private static createSource(): GitRepositoryFixture {

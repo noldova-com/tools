@@ -82,6 +82,25 @@ export class Resources {
   public static readonly referencesPath: string = "git/refs";
   public static readonly repositoryVariable: string = "GITHUB_REPOSITORY";
   public static readonly retryAfterHeader: string = "Retry-After";
+  public static readonly locationHeader: string = "Location";
+  public static readonly redirectStatus: number = 302;
+  public static readonly manualRedirect: "manual" = "manual";
+  public static readonly relockWorkflowFile: string = "relock.yml";
+  public static readonly relockCommitInput: string = "commit";
+  public static readonly relockRequestInput: string = "request";
+  public static readonly refField: string = "ref";
+  public static readonly inputsField: string = "inputs";
+  public static readonly returnRunDetailsField: string = "return_run_details";
+  public static readonly workflowRunIdField: string = "workflow_run_id";
+  public static readonly statusField: string = "status";
+  public static readonly conclusionField: string = "conclusion";
+  public static readonly completedStatus: string = "completed";
+  public static readonly successConclusion: string = "success";
+  public static readonly artifactsField: string = "artifacts";
+  public static readonly relockArtifactName: string = "relock";
+  public static readonly relockResultFileName: string = "relock.json";
+  public static readonly relockPollMilliseconds: number = 15_000;
+  public static readonly relockPollCount: number = 240;
   public static readonly retryAfterMaxSeconds: number = 60;
   public static readonly retryAfterPattern: RegExp = /^[0-9]+$/;
   public static readonly actionsValue: string = "true";
@@ -152,6 +171,50 @@ export class Resources {
 
   public static formatRepositoryResource(repository: string): string {
     return `repos/${repository}`;
+  }
+
+  public static formatRelockWorkflowResource(repository: string): string {
+    return Resources.formatResource(repository, `actions/workflows/${Resources.relockWorkflowFile}`);
+  }
+
+  public static formatRelockDispatchResource(repository: string): string {
+    return Resources.formatResource(repository, `actions/workflows/${Resources.relockWorkflowFile}/dispatches`);
+  }
+
+  public static formatRunResource(repository: string, runId: string): string {
+    return Resources.formatResource(repository, `actions/runs/${runId}`);
+  }
+
+  public static formatRunArtifactsResource(repository: string, runId: string): string {
+    return Resources.formatResource(repository, `actions/runs/${runId}/artifacts`);
+  }
+
+  public static formatArtifactArchiveResource(repository: string, artifactId: string): string {
+    return Resources.formatResource(repository, `actions/artifacts/${artifactId}/zip`);
+  }
+
+  public static formatRelockStarted(repository: string, runUrl: string): string {
+    return `${repository} relocks itself in ${runUrl}`;
+  }
+
+  public static formatRelockRunFailed(runUrl: string, conclusion: string | null): string {
+    return `The repository's relock run ${runUrl} ended ${conclusion ?? "without a conclusion"}, so its pins are left as they are.`;
+  }
+
+  public static formatRelockRunUnfinished(runUrl: string): string {
+    return `The repository's relock run ${runUrl} didn't finish within ${Resources.relockPollCount * Resources.relockPollMilliseconds / 60_000} minutes, so its pins are left as they are.`;
+  }
+
+  public static formatRelockArtifactMissing(runUrl: string): string {
+    return `The repository's relock run ${runUrl} left no artifact named ${Resources.relockArtifactName}.`;
+  }
+
+  public static formatRelockResultMissing(runUrl: string): string {
+    return `The ${Resources.relockArtifactName} artifact of ${runUrl} holds no ${Resources.relockResultFileName}.`;
+  }
+
+  public static formatDownloadFailed(resource: string, status: number, statusText: string): string {
+    return `GitHub answered the download of ${resource} with ${status} ${statusText}.`;
   }
 
   public static formatIssueBody(summary: string, branch: string): string {

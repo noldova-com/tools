@@ -32,6 +32,23 @@ export class Resources {
   public static readonly dependentsFolderPrefix: string = "pipelines-dependents-";
   public static readonly dependentsStepName: string = "dependents";
   public static readonly dependentsStepUsage: string = "<version> <commit>";
+  public static readonly lockScriptPattern: RegExp = /^[A-Za-z0-9][A-Za-z0-9:._-]*$/;
+  public static readonly lockScriptSeparator: string = "=";
+  public static readonly npmScriptValues: readonly string[] = ["run"];
+  public static readonly relockCommitField: string = "commit";
+  public static readonly relockFilesField: string = "files";
+  public static readonly relockLockLinesField: string = "lockLines";
+  public static readonly relockMessageField: string = "message";
+  public static readonly relockMovesField: string = "moves";
+  public static readonly relockPackageNameField: string = "packageName";
+  public static readonly relockPackageNamesField: string = "packageNames";
+  public static readonly relockPeerPinsField: string = "peerPins";
+  public static readonly relockReasonField: string = "reason";
+  public static readonly relockSourceField: string = "source";
+  public static readonly relockStepName: string = "relock";
+  public static readonly relockStepUsage: string = "<repository> <request> <result file> [<lock file>=<npm script>...]";
+  public static readonly relockSucceededField: string = "isSuccessful";
+  public static readonly relockVersionField: string = "version";
   public static readonly dependabotFilePaths: readonly string[] = [".github/dependabot.yml", ".github/dependabot.yaml"];
   public static readonly failureExitCode: number = 1;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
@@ -673,6 +690,38 @@ export class Resources {
     return `\`${lockFilePath}\`: the repository's own ${packageNames.map(t => `\`${t}\``).join(", ")} locked from their tracked manifests, without asking the registry; their entries left out, and the root entry keeps the folder's pins`;
   }
 
+  public static formatLocked(lockFilePath: string): string {
+    return `\`${lockFilePath}\`: the moved packages, the entries nested under them and the entries that depend on them resolved again with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\`; every other entry kept unless a resolved package needs it to change`;
+  }
+
+  public static formatScriptLocked(lockFilePath: string, script: string): string {
+    return `\`${lockFilePath}\`: the moved packages, the entries nested under them and the entries that depend on them resolved again with the repository's own \`npm ${Resources.npmScriptValues.join(Resources.valueSeparator)} ${script}\`, after the dependent prepared its checkout as its own build does`;
+  }
+
+  public static formatLockScriptsUntracked(lockFilePaths: readonly string[]): string {
+    return `The lock scripts name lock files the repository doesn't track: ${lockFilePaths.join(", ")}.`;
+  }
+
+  public static formatLockScriptFailed(lockFilePath: string, script: string, exitCode: number | null, errorOutput: string): string {
+    return Resources.formatFailureLine(`Relocking ${lockFilePath}, npm ${Resources.npmScriptValues.join(Resources.valueSeparator)} ${script}, exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatLockScriptInvalid(value: string): string {
+    return `${value} isn't a lock script: give each tracked lock file once, as <lock file>=<npm script>, such as app/package-lock.json=lock:app, with a script name of letters, digits and : . _ -.`;
+  }
+
+  public static formatRelockWritten(repository: string, moveCount: number, fileCount: number): string {
+    return `${repository}: moved ${moveCount} pins and wrote the ${fileCount} files that changed into the result.`;
+  }
+
+  public static formatRelockedUntracked(filePaths: readonly string[]): string {
+    return `The repository's relock changed files that aren't its tracked package.json or package-lock.json files, so none are taken: ${filePaths.join(", ")}.`;
+  }
+
+  public static formatWindowsNpmScriptValues(script: string): readonly string[] {
+    return ["/d", "/s", "/c", `npm.cmd ${Resources.npmScriptValues.join(Resources.valueSeparator)} ${script}`];
+  }
+
   public static formatTarHeaderFields(entryName: string, size: number): readonly (readonly [number, string])[] {
     return [
       [0, entryName],
@@ -720,15 +769,14 @@ export class Resources {
     return `pipelines/update-${source}`;
   }
 
-  public static formatUpdateBody(source: string, version: string, commit: string, moves: readonly string[], lockFilePaths: readonly string[], ownLines: readonly string[], notes: string): string {
+  public static formatUpdateBody(source: string, version: string, commit: string, moves: readonly string[], lockLines: readonly string[], notes: string): string {
     return [
       "## Summary",
       "",
       `${source} released ${version} from commit ${commit}; this moves every exact pin of its packages that was older.`,
       "",
       ...moves.map(t => `- ${t}`),
-      ...lockFilePaths.map(t => `- \`${t}\`: the moved packages, the entries nested under them and the entries that depend on them resolved again with \`npm ${Resources.npmLockValues.join(Resources.valueSeparator)}\`; every other entry kept unless a resolved package needs it to change`),
-      ...ownLines.map(t => `- ${t}`),
+      ...lockLines.map(t => `- ${t}`),
       "",
       notes.length === 0 ? `The pull request that merged ${commit} has no "Release notes" section.` : notes
     ].join(Resources.lineSeparator);

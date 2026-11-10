@@ -409,6 +409,27 @@ export declare class GitHubUpdates implements IUpdateHost {
   public readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
 
   /**
+   * Has a repository relock itself, when it has `.github/workflows/relock.yml`:
+   * dispatches that workflow on its default branch with the inputs `commit`
+   * and `request` and asks for the run's id; reads the run every 15 seconds,
+   * for up to 60 minutes, until it completes; then downloads its artifact
+   * `relock` through the address GitHub redirects to, without the token, and
+   * reads `relock.json` from it. The token needs to read and write the
+   * repository's Actions.
+   *
+   * @param repository The repository's full name.
+   * @param commit The commit the run checks out, such as the head of the
+   * step's own checkout.
+   * @param request The release, as the dependents step formats it.
+   * @returns A promise of what `relock.json` holds, `null` when the
+   * repository has no such workflow, or a failed {@link StepResult} with the
+   * request, the status and GitHub's message for an answer it doesn't
+   * expect, with the run's address when the run fails, doesn't finish in
+   * time or leaves no such artifact or file, or when a variable is missing.
+   */
+  public relockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult>;
+
+  /**
    * Clones the repository's default branch, one commit deep, into the
    * directory.
    *

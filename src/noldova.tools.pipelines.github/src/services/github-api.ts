@@ -30,7 +30,7 @@ export class GitHubApi {
     return AbortSignal.timeout(timeoutMilliseconds);
   }
 
-  public async requestAsync(method: string, resource: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer | StepResult> {
+  public async requestAsync(method: string, resource: string, body?: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
     for (const retryMilliseconds of Resources.apiRetryMilliseconds) {
       const answer = await this.sendAsync(method, resource, body);
       const waitMilliseconds = answer instanceof StepResult ? retryMilliseconds : answer.readRetryMilliseconds(retryMilliseconds);
@@ -43,7 +43,38 @@ export class GitHubApi {
     return await this.sendAsync(method, resource, body);
   }
 
-  private async sendAsync(method: string, resource: string, body?: Readonly<Record<string, string>>): Promise<GitHubAnswer | StepResult> {
+  // Downloads what a resource redirects to, such as an artifact's archive, sending the token only to the API, never to the
+  // address the redirect names.
+  public async downloadAsync(resource: string): Promise<Buffer | StepResult> {
+    try {
+      const response = await fetch(`${this.apiUrl}/${resource}`, {
+        headers: {
+          [Resources.authorizationHeader]: Resources.formatAuthorization(this.token),
+          [Resources.apiVersionHeader]: Resources.apiVersion
+        },
+        redirect: Resources.manualRedirect,
+        signal: this.createSignal(this.timeoutMilliseconds)
+      });
+      const location = response.headers.get(Resources.locationHeader);
+      await response.arrayBuffer();
+      if (response.status !== Resources.redirectStatus || location === null)
+        return StepResult.failed(Resources.formatDownloadFailed(resource, response.status, response.statusText));
+
+      const download = await fetch(new URL(location, this.apiUrl), { signal: this.createSignal(this.timeoutMilliseconds) });
+      if (download.status !== Resources.foundStatus)
+        return StepResult.failed(Resources.formatDownloadFailed(resource, download.status, download.statusText));
+
+      return Buffer.from(await download.arrayBuffer());
+    }
+    catch (error: unknown) {
+      if (!GitHubApi.isUnanswered(error))
+        throw error;
+
+      return GitHubApi.failUnanswered(Resources.readMethod, resource, error);
+    }
+  }
+
+  private async sendAsync(method: string, resource: string, body?: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
     try {
       const response = await fetch(`${this.apiUrl}/${resource}`, {
         method,
@@ -64,8 +95,12 @@ export class GitHubApi {
       if (!GitHubApi.isUnanswered(error))
         throw error;
 
-      return StepResult.failed(Resources.formatApiUnanswered(method, resource, (error.cause instanceof Error ? error.cause.message : "") || error.message));
+      return GitHubApi.failUnanswered(method, resource, error);
     }
+  }
+
+  private static failUnanswered(method: string, resource: string, error: Error): StepResult {
+    return StepResult.failed(Resources.formatApiUnanswered(method, resource, (error.cause instanceof Error ? error.cause.message : "") || error.message));
   }
 
   private static isUnanswered(error: unknown): error is Error {

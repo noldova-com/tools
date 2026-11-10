@@ -875,6 +875,22 @@ export declare interface IUpdateHost {
   readReleaseNotesAsync(version: string, commit: string): Promise<string | StepResult>;
 
   /**
+   * Has a repository relock itself, when the host can: runs the repository's
+   * own relock, which runs the {@link RelockStep} in a checkout of the
+   * commit, prepared as the repository's own build does, and reads what it
+   * wrote.
+   *
+   * @param repository The repository's full name.
+   * @param commit The commit the relock checks out.
+   * @param request The release, which the relock step reads.
+   * @returns A promise of the relock step's result file, which
+   * {@link RelockedFiles.parse} reads, `null` when the repository doesn't
+   * relock itself and the step relocks it in its own checkout, or a failed
+   * {@link StepResult} that says why the host could not have it relock.
+   */
+  relockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult>;
+
+  /**
    * Checks out a repository's default branch into a new directory, as a git
    * clone the step can commit in.
    *
@@ -1673,6 +1689,27 @@ export declare class Npm {
    * ```
    */
   public lockAsync(directory: string, hiddenVariables?: readonly string[]): Promise<ProcessResult>;
+
+  /**
+   * Runs a script of the directory's `package.json` with `npm run <script>`,
+   * as the lock refresh runs npm: through `cmd.exe` on Windows, and stopped
+   * after 5 minutes elsewhere.
+   *
+   * @param directory The directory whose `package.json` names the script.
+   * @param script The script's name, such as `lock:app`.
+   * @param hiddenVariables The environment variables npm doesn't get;
+   * omitted, it gets them all.
+   * @returns A promise of npm's exit code and of what it wrote; a script
+   * that fails still resolves. It rejects with {@link ProcessException} if
+   * the program cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * (await new Npm(new ProcessRunner(), process.cwd()).runScriptAsync(process.cwd(), "lock:app")).isSuccessful; // true when the script succeeds
+   * ```
+   */
+  public runScriptAsync(directory: string, script: string, hiddenVariables?: readonly string[]): Promise<ProcessResult>;
 
   /**
    * Views a field of a package or a version as JSON with `npm view <specifier>
@@ -2655,7 +2692,12 @@ export declare class ReproducibleStep implements IStep {
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
  * so nobody's commits are lost. A repository that pins none of them is left
- * as it is.
+ * as it is. Before it moves anything, it asks {@link IUpdateHost.relockAsync}
+ * whether the repository relocks itself; when it does, the step takes the
+ * line the repository's {@link RelockStep} wrote, or writes the files it
+ * changed, each a tracked `package.json` or `package-lock.json`, into its
+ * checkout, and commits, pushes and proposes them as above; any other file
+ * fails that repository.
  */
 export declare class DependentsStep implements IStep {
   /**
@@ -2719,6 +2761,129 @@ export declare class DependentsStep implements IStep {
    * // Looked for exact pins of @noldova/tools.pipelines, @noldova/tools.pipelines.github older than 0.0.4 in 2 repositories:
    * // noldova-com/example: moved 2 pins in https://github.com/noldova-com/example/pull/7
    * // noldova-com/sample: pins none of them below 0.0.4.
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * What a repository's own relock wrote: the moved pins, a line for each
+ * relocked lock file, and the text of each tracked `package.json` and
+ * `package-lock.json` that changed.
+ */
+export declare class RelockedFiles {
+  /**
+   * The moved pins, each as the proposal's description lists it.
+   */
+  public readonly moves: readonly string[];
+
+  /**
+   * A line for each relocked lock file, saying how it was relocked.
+   */
+  public readonly lockLines: readonly string[];
+
+  /**
+   * The text of each file that changed, by its path in the repository.
+   */
+  public readonly files: Readonly<Record<string, string>>;
+
+  /**
+   * Creates the result.
+   *
+   * @param moves The moved pins.
+   * @param lockLines The lock files' lines.
+   * @param files The changed files' text, by path.
+   */
+  public constructor(moves: readonly string[], lockLines: readonly string[], files: Readonly<Record<string, string>>);
+
+  /**
+   * Writes a result, or a repository's line, as the JSON the relock step's
+   * result file holds.
+   *
+   * @param relocked The result, or the line as a {@link StepResult}.
+   * @returns The JSON.
+   * @example
+   * ```ts
+   * import { RelockedFiles, StepResult } from "@noldova/tools.pipelines";
+   *
+   * RelockedFiles.format(StepResult.succeeded("noldova-com/example: pins none of them below 0.0.4."));
+   * // {"isSuccessful":true,"message":"noldova-com/example: pins none of them below 0.0.4."}
+   * ```
+   */
+  public static format(relocked: StepResult | RelockedFiles): string;
+
+  /**
+   * Reads what {@link format} wrote.
+   *
+   * @param text The JSON.
+   * @returns The result, or the repository's line as a {@link StepResult}
+   * that succeeded or failed as it did. It throws when the text isn't such
+   * JSON.
+   */
+  public static parse(text: string): StepResult | RelockedFiles;
+}
+
+/**
+ * The step a repository runs to relock itself for a release:
+ * `relock <repository> <request> <result file> [<lock file>=<npm script>...]`.
+ * Run in the repository's own checkout, prepared as its own build does, it
+ * moves the pins and relocks as the {@link DependentsStep} does in its
+ * checkout, with the repository's own npm configuration and credentials,
+ * and writes the result file, which {@link RelockedFiles.parse} reads,
+ * without committing or pushing. Each `<lock file>=<npm script>` relocks
+ * that tracked lock file with {@link Npm.runScriptAsync} at the checkout's
+ * root instead, after its moved entries are removed, and without stand-in
+ * archives, for a lock the repository makes its own way.
+ */
+export declare class RelockStep implements IStep {
+  /**
+   * The step's name, `"relock"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes,
+   * `"<repository> <request> <result file> [<lock file>=<npm script>...]"`.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param processRunner What runs git in the checkout.
+   * @param npm What views packages, refreshes the lock files and runs the
+   * lock scripts.
+   * @param workingDirectory The checkout, which the result file's path is
+   * relative to.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner, RelockStep } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new RelockStep(processRunner, new Npm(processRunner, process.cwd()), process.cwd());
+   * step.name; // "relock"
+   * ```
+   */
+  public constructor(processRunner: ProcessRunner, npm: Npm, workingDirectory: string);
+
+  /**
+   * Relocks the checkout and writes the result file.
+   *
+   * @param values The repository's full name, the release as the
+   * {@link DependentsStep} sends it, the result file's path, and any lock
+   * scripts.
+   * @returns A promise of the result, which says how many pins moved and
+   * files changed, or holds the repository's line. It fails, writing
+   * nothing, for fewer than three values and for a lock script that isn't
+   * `<lock file>=<npm script>`, with a script name of letters, digits and
+   * `:`, `.`, `_` and `-`, or names a lock file twice; a lock script for an
+   * untracked lock file, a failed relock and an error, such as npm failing,
+   * are a failed line in the file, and the step succeeds. It throws when
+   * the request isn't the release's JSON.
+   * @example
+   * ```ts
+   * (await step.runAsync(["noldova-com/example", request, "relock.json", "app/package-lock.json=lock:app"])).message;
+   * // noldova-com/example: moved 2 pins and wrote the 4 files that changed into the result.
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

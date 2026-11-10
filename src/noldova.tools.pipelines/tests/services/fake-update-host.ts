@@ -22,6 +22,8 @@ export class FakeUpdateHost implements IUpdateHost {
   public readonly failures: Map<string, StepResult> = new Map();
   public readonly pushed: Map<string, Readonly<Record<string, string>>> = new Map();
   public readonly proposals: string[] = [];
+  public readonly relocks: Map<string, string | StepResult> = new Map();
+  public readonly relockRequests: string[] = [];
   public readonly events: string[] = [];
   public source: string | StepResult = "source";
   public listed: StepResult | null = null;
@@ -37,6 +39,12 @@ export class FakeUpdateHost implements IUpdateHost {
 
   public async readReleaseNotesAsync(): Promise<string | StepResult> {
     return this.notes;
+  }
+
+  public async relockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult> {
+    this.relockRequests.push(`${repository} ${commit} ${request}`);
+
+    return this.relocks.get(repository) ?? null;
   }
 
   public async checkOutAsync(repository: string, directory: string): Promise<StepResult | null> {
