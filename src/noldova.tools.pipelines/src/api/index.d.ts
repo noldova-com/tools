@@ -2856,8 +2856,10 @@ export declare class RelockedFiles {
  * and writes the result file, which {@link RelockedFiles.parse} reads,
  * without committing or pushing. Each `<lock file>=<npm script>` relocks
  * that tracked lock file with {@link Npm.runScriptAsync} at the checkout's
- * root instead, after its moved entries are removed, and without stand-in
- * archives, for a lock the repository makes its own way.
+ * root instead, after its moved entries are removed and every other lock
+ * file is relocked, and without stand-in archives, for a lock the
+ * repository makes its own way. A script that fails is reported with its
+ * standard error, or its standard output when standard error is empty.
  */
 export declare class RelockStep implements IStep {
   /**

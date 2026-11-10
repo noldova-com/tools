@@ -17,6 +17,7 @@ import { GitRepositoryFixture } from "./git-repository.fixture.js";
 class ScriptNpm extends Npm {
   private readonly root: string;
 
+  public readonly calls: string[] = [];
   public readonly locked: string[] = [];
   public readonly scripts: string[] = [];
   public scriptResult: ProcessResult = new ProcessResult(0, "", "");
@@ -30,6 +31,7 @@ class ScriptNpm extends Npm {
   }
 
   public override async lockAsync(directory: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
+    this.calls.push(`lock ${path.relative(this.root, directory) || "."}`);
     this.locked.push(`${path.relative(this.root, directory) || "."} ${hiddenVariables.join(",")}`);
     fs.writeFileSync(path.join(directory, "package-lock.json"), `${JSON.stringify({ lockedFrom: fs.readFileSync(path.join(directory, "package.json"), "utf8") })}\n`);
 
@@ -37,6 +39,7 @@ class ScriptNpm extends Npm {
   }
 
   public override async runScriptAsync(directory: string, script: string, hiddenVariables: readonly string[] = []): Promise<ProcessResult> {
+    this.calls.push(`script ${script}`);
     this.scripts.push(`${path.relative(this.root, directory) || "."} ${script} ${hiddenVariables.join(",")}`);
     fs.writeFileSync(path.join(directory, "app", "package-lock.json"), `${JSON.stringify({ scripted: fs.readFileSync(path.join(directory, "app", "package.json"), "utf8") })}\n`);
 
@@ -98,6 +101,7 @@ export class RelockStepTests {
     Assert.areEqual(`${JSON.stringify({ scripted: written.files["app/package.json"] })}\n`, written.files["app/package-lock.json"]);
     Assert.areEqual(". lock:app ", npm.scripts.join("|"));
     Assert.areEqual(". |src ", npm.locked.join("|"));
+    Assert.areEqual("lock .|lock src|script lock:app", npm.calls.join("|"));
   }
 
   @TestMethod
@@ -117,7 +121,7 @@ export class RelockStepTests {
   public async writesAFailedScriptAsAFailedResultAsync(): Promise<void> {
     using target = RelockStepTests.createTarget();
     const npm = new ScriptNpm(target.directory);
-    npm.scriptResult = new ProcessResult(2, "", "npm error lock broke\n");
+    npm.scriptResult = new ProcessResult(2, "build output\n", "npm error lock broke\n");
 
     const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createRequest("@noldova/a"), "relock.json", "app/package-lock.json=lock:app"]);
 
@@ -126,6 +130,19 @@ export class RelockStepTests {
     Assert.isTrue(written instanceof StepResult && !written.isSuccessful);
     Assert.isTrue(result.message.startsWith("noldova-com/pinned: Relocking app/package-lock.json, npm run lock:app, exited with code 2"), result.message);
     Assert.isTrue(result.message.includes("npm error lock broke"), result.message);
+    Assert.isFalse(result.message.includes("build output"), result.message);
+  }
+
+  @TestMethod
+  public async writesAFailedScriptsOutputWhenItsErrorOutputIsEmptyAsync(): Promise<void> {
+    using target = RelockStepTests.createTarget();
+    const npm = new ScriptNpm(target.directory);
+    npm.scriptResult = new ProcessResult(1, "> lock:app\nThe build is stale; run npm run build.\n", " \n");
+
+    const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createRequest("@noldova/a"), "relock.json", "app/package-lock.json=lock:app"]);
+
+    Assert.isTrue(result.message.startsWith("noldova-com/pinned: Relocking app/package-lock.json, npm run lock:app, exited with code 1: "), result.message);
+    Assert.isTrue(result.message.includes("The build is stale; run npm run build."), result.message);
   }
 
   @TestMethod

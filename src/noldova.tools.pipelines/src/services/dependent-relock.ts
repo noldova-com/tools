@@ -119,7 +119,7 @@ export class DependentRelock {
 
     const allMoves = [...moves, ...peerMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
-    for (const lockFilePath of lockFilePaths) {
+    for (const lockFilePath of [...lockFilePaths.filter(t => !lockScripts.has(t)), ...lockFilePaths.filter(t => lockScripts.has(t))]) {
       const script = lockScripts.get(lockFilePath);
       const ownLock = ownLocks.find(t => t.lockFilePath === lockFilePath);
       const keptPeers = ownLock === undefined ? [] : DependentRelock.readKeptPeers(path.join(directory, lockFilePath), movedNames);
@@ -132,7 +132,7 @@ export class DependentRelock {
       if (!result.isSuccessful)
         return StepResult.failed(Resources.formatRepositoryFailed(repository, script === undefined
           ? Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)
-          : Resources.formatLockScriptFailed(lockFilePath, script, result.exitCode, result.errorOutput)));
+          : Resources.formatLockScriptFailed(lockFilePath, script, result.exitCode, result.errorOutput.trim().length > 0 ? result.errorOutput : result.output)));
 
       const lost = DependentRelock.findLost(path.join(directory, lockFilePath), keptPeers);
       if (lost.length > 0)
