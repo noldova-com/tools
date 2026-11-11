@@ -92,15 +92,19 @@ export class ArchiveStep implements IStep {
   }
 
   public async readPackageManifestsAsync(commit: string): Promise<readonly JsonReader[]> {
+    return (await this.readManifestsAsync(commit, Resources.manifestFileName)).filter(t => !ArchiveStep.isPrivate(t));
+  }
+
+  public async readModuleIdsAsync(commit: string): Promise<readonly string[]> {
+    return (await this.readManifestsAsync(commit, Resources.moduleFileName)).map(t => t.readString(Resources.moduleIdField)).sort();
+  }
+
+  private async readManifestsAsync(commit: string, fileName: string): Promise<readonly JsonReader[]> {
     const manifests: JsonReader[] = [];
     for (const filePath of await this.git.listFilesAsync(commit, Resources.packagesFolderPath)) {
       const segments = filePath.split(Resources.pathSeparator);
-      if (segments.at(-1) !== Resources.manifestFileName || segments.includes(Resources.testsFolderName))
-        continue;
-
-      const manifest = JsonReader.parse(await this.git.readFileAsync(commit, filePath), filePath);
-      if (!ArchiveStep.isPrivate(manifest))
-        manifests.push(manifest);
+      if (segments.at(-1) === fileName && !segments.includes(Resources.testsFolderName))
+        manifests.push(JsonReader.parse(await this.git.readFileAsync(commit, filePath), filePath));
     }
 
     return manifests;

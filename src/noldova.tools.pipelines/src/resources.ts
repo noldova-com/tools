@@ -106,6 +106,9 @@ export class Resources {
   public static readonly failedScriptOutputLines: number = 10;
   public static readonly minorPartName: string = "minor";
   public static readonly mixedLineEndings: string = "mixed";
+  public static readonly moduleDependenciesPattern: RegExp = /"(?:dependencies|optionalDependencies)"\s*:\s*\{[^{}]*\}/g;
+  public static readonly moduleFileName: string = "module.json";
+  public static readonly moduleIdField: string = "id";
   public static readonly nameField: string = "name";
   public static readonly newlineByte: number = 10;
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
