@@ -657,6 +657,42 @@ export class ArchiveStepTests {
     Assert.isTrue(exception.path.startsWith("src/noldova.b/package.json"), exception.path);
   }
 
+  @TestMethod
+  public async readsTheIdsOfTheModulesUnderSourceOutsideTestsAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({
+      ...ArchiveStepTests.PACKAGES,
+      "module.json": "{ \"id\": \"outside\" }",
+      "src/noldova.b/module.json": "{ \"id\": \"b\", \"dependencies\": { \"a\": \"0.0.4\" } }",
+      "src/noldova.a/module.json": "{ \"id\": \"a\" }",
+      "src/noldova.a/tests/fixtures/module.json": "{ \"id\": \"fixture\" }"
+    });
+
+    const ids = await ArchiveStepTests.createStep(repository.directory).readModuleIdsAsync(commit);
+
+    Assert.areEqual("a,b", ids.join(","));
+  }
+
+  @TestMethod
+  public async readsNoModuleIdsFromACommitWithoutModulesAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+
+    const ids = await ArchiveStepTests.createStep(repository.directory).readModuleIdsAsync(commit);
+
+    Assert.areEqual(0, ids.length);
+  }
+
+  @TestMethod
+  public async rejectsAModuleManifestWithoutAnIdAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "src/noldova.a/module.json": "{ \"version\": \"0.0.4\" }" });
+
+    const exception = await Assert.throwsAsync(() => ArchiveStepTests.createStep(repository.directory).readModuleIdsAsync(commit), JsonException);
+
+    Assert.isTrue(exception.path.startsWith("src/noldova.a/module.json"), exception.path);
+  }
+
   private static createStep(directory: string, copies: string | ProcessResult = ""): ArchiveStep {
     const processRunner = new ProcessRunner();
     const listed = typeof copies === "string" ? new ProcessResult(0, `${copies}\nend of copies\n`, "") : copies;

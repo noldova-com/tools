@@ -2090,6 +2090,27 @@ export declare class ArchiveStep implements IStep {
    * ```
    */
   public readPackageManifestsAsync(commit: string): Promise<readonly JsonReader[]>;
+
+  /**
+   * Reads the ids of the modules a commit releases: the `id` of each
+   * `module.json` file under `src/`, outside `tests/` folders.
+   *
+   * @param commit The commit's full id.
+   * @returns A promise of the ids, sorted, and empty when there is none. It
+   * rejects with `JsonException` when a `module.json` is not a JSON object
+   * with an `id` text, and with {@link ProcessException} as
+   * {@link ArchiveStep.runAsync} does.
+   * @example
+   * ```ts
+   * import { ArchiveStep, Git, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
+   *
+   * const processRunner = new ProcessRunner();
+   * const step = new ArchiveStep(new Git(processRunner, process.cwd()), new Tar(processRunner), new Npm(processRunner, process.cwd()));
+   * const ids = await step.readModuleIdsAsync("225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8");
+   * ids; // ["example"]
+   * ```
+   */
+  public readModuleIdsAsync(commit: string): Promise<readonly string[]>;
 }
 
 /**
@@ -2715,7 +2736,12 @@ export declare class ReproducibleStep implements IStep {
  * which it writes into its checkout, each a tracked `package.json` or
  * `package-lock.json`, and commits, pushes and proposes them as above; any
  * other file, and a relock of a commit other than the one it checked out,
- * fails that repository.
+ * fails that repository. In a repository whose pins moved, either way, it
+ * also moves each entry of a tracked `module.json`'s `dependencies` and
+ * `optionalDependencies` that names a module the commit releases, by the id
+ * {@link ArchiveStep.readModuleIdsAsync} reads, at an older exact version,
+ * to the version, and lists each such move in the description as it lists
+ * the pins; a range and a newer or equal version stay.
  */
 export declare class DependentsStep implements IStep {
   /**
