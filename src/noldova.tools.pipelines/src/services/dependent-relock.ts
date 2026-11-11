@@ -490,12 +490,31 @@ export class DependentRelock {
     }
   }
 
+  // Moves, in a module's manifest, each entry of its dependencies and optional dependencies that names one of the
+  // targets at an older exact version, as the pins of a package's manifest move.
+  public static moveModulePins(fullPath: string, filePath: string, targets: readonly PinTarget[]): readonly string[] {
+    const moves: PinMove[] = [];
+    const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.moduleDependenciesPattern, (field: string) => DependentRelock.replacePins(field, filePath, targets, moves));
+    if (moves.length > 0)
+      fs.writeFileSync(fullPath, text);
+
+    return moves.map(t => t.line);
+  }
+
   private static movePins(fullPath: string, filePath: string, targets: readonly PinTarget[]): readonly PinMove[] {
     const moves: PinMove[] = [];
-    let text = fs.readFileSync(fullPath, Resources.textEncoding);
+    const text = DependentRelock.replacePins(fs.readFileSync(fullPath, Resources.textEncoding), filePath, targets, moves);
+    if (moves.length > 0)
+      fs.writeFileSync(fullPath, text);
+
+    return moves;
+  }
+
+  private static replacePins(text: string, filePath: string, targets: readonly PinTarget[], moves: PinMove[]): string {
+    let replaced = text;
     for (const { packageName, version, reason } of targets) {
       const target = Version.parse(version);
-      text = text.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
+      replaced = replaced.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
         if (!Resources.exactVersionPattern.test(found) || Version.parse(found).compareTo(target) >= 0)
           return pin;
 
@@ -505,10 +524,8 @@ export class DependentRelock {
         return `${prefix}${version}${suffix}`;
       });
     }
-    if (moves.length > 0)
-      fs.writeFileSync(fullPath, text);
 
-    return moves;
+    return replaced;
   }
 
   private static readFiles(directory: string, filePaths: readonly string[]): ReadonlyMap<string, string> {

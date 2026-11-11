@@ -60,6 +60,11 @@ export class DependentsStepTests {
     "src/package-lock.json": "{}\n",
     "README.md": "Read me.\n"
   };
+  private static readonly MODULES: Readonly<Record<string, string>> = {
+    "module.json": "{ \"id\": \"app\", \"version\": \"0.0.3\", \"dependencies\": { \"a\": \"0.0.3\", \"b\": \"^0.0.3\" }, \"optionalDependencies\": { \"c\": \"0.0.5\", \"fixture\": \"0.0.1\" }, \"contributes\": { \"a\": \"0.0.3\" } }\n",
+    "src/plugin/module.json": "{\n  \"id\": \"plugin\",\n  \"optionalDependencies\": {\n    \"a\": \"0.0.2\"\n  }\n}\n",
+    "src/plain/module.json": "{ \"id\": \"plain\", \"version\": \"0.0.3\", \"a\": \"0.0.3\" }\n"
+  };
 
   @TestMethod
   public namesItselfAndItsValues(): void {
@@ -861,6 +866,66 @@ export class DependentsStepTests {
       `noldova-com/pinned: The repository's relock ran at ${other}, not at ${pinned.readHead()}, the commit the step checked out and sent, so none of its files are taken.`,
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async movesTheOlderExactEntriesOfTheReleasedModulesInEachModuleManifestAsync(): Promise<void> {
+    using source = DependentsStepTests.createModuleSource();
+    using pinned = DependentsStepTests.createTarget({ ...DependentsStepTests.PINNED, ...DependentsStepTests.MODULES });
+    using unpinned = DependentsStepTests.createTarget({ "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.4\" } }\n", "module.json": DependentsStepTests.MODULES["module.json"] ?? "" });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.repositories.set("noldova-com/unpinned", unpinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 5 pins in https://example.test/noldova-com/pinned/pull/1|noldova-com/unpinned: pins none of them below 0.0.4.",
+      result.message.split("\n").slice(1).join("|"));
+    const pushed = host.pushed.get("noldova-com/pinned");
+    Assert.areEqual(
+      "{ \"id\": \"app\", \"version\": \"0.0.3\", \"dependencies\": { \"a\": \"0.0.4\", \"b\": \"^0.0.3\" }, \"optionalDependencies\": { \"c\": \"0.0.5\", \"fixture\": \"0.0.1\" }, \"contributes\": { \"a\": \"0.0.3\" } }\n",
+      pushed?.["module.json"]);
+    Assert.areEqual("{\n  \"id\": \"plugin\",\n  \"optionalDependencies\": {\n    \"a\": \"0.0.4\"\n  }\n}\n", pushed?.["src/plugin/module.json"]);
+    Assert.areEqual(DependentsStepTests.MODULES["src/plain/module.json"], pushed?.["src/plain/module.json"]);
+    Assert.isFalse(host.pushed.has("noldova-com/unpinned"));
+    const body = host.proposals[0] ?? "";
+    Assert.isTrue(body.includes([
+      "- `src/package.json`: `@noldova/a.b` from 0.0.2 to 0.0.4",
+      "- `module.json`: `a` from 0.0.3 to 0.0.4",
+      "- `src/plugin/module.json`: `a` from 0.0.2 to 0.0.4",
+      "- `package-lock.json`: "
+    ].join("\n")), body);
+  }
+
+  @TestMethod
+  public async movesTheModuleManifestsOfARepositoryThatRelockedItselfAsync(): Promise<void> {
+    using source = DependentsStepTests.createModuleSource();
+    using pinned = DependentsStepTests.createTarget({ ...DependentsStepTests.PINNED, ...DependentsStepTests.MODULES });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const files = { "package.json": "{ \"moved\": true }\n" };
+    host.relocks.set("noldova-com/pinned", RelockedFiles.format(new RelockedFiles(pinned.readHead(), ["`package.json`: `@noldova/a` from 0.0.3 to 0.0.4"], ["`package-lock.json`: relocked by the repository"], files)));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 3 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    Assert.isTrue((host.pushed.get("noldova-com/pinned")?.["module.json"] ?? "").includes("\"dependencies\": { \"a\": \"0.0.4\", \"b\": \"^0.0.3\" }"));
+    const body = host.proposals[0] ?? "";
+    Assert.isTrue(body.includes("\n- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4\n- `module.json`: `a` from 0.0.3 to 0.0.4\n- `src/plugin/module.json`: `a` from 0.0.2 to 0.0.4\n- `package-lock.json`: relocked by the repository\n"), body);
+  }
+
+  private static createModuleSource(): GitRepositoryFixture {
+    const source = DependentsStepTests.createSource();
+    source.commit({
+      "src/a/module.json": "{ \"id\": \"a\" }\n",
+      "src/b/module.json": "{ \"id\": \"b\" }\n",
+      "src/c/module.json": "{ \"id\": \"c\" }\n",
+      "src/b/tests/module.json": "{ \"id\": \"fixture\" }\n"
+    });
+
+    return source;
   }
 
   private static createSource(): GitRepositoryFixture {

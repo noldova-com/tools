@@ -77,6 +77,7 @@ export class DependentsStep implements IStep {
     if (packageNames.length === 0)
       return StepResult.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
 
+    const moduleIds = await this.archiveStep.readModuleIdsAsync(commit);
     const repositories = await this.updateHost.listRepositoriesAsync();
     if (repositories instanceof StepResult)
       return repositories;
@@ -94,7 +95,7 @@ export class DependentsStep implements IStep {
       for (const [index, repository] of repositories.entries())
         started.push(await DependentsStep.tryAsync(repository, async () => await this.startAsync(update, repository, path.join(root, String(index)))));
       for (const start of started) {
-        const result = start instanceof StepResult ? start : await DependentsStep.tryAsync(start.repository, async () => await this.finishAsync(update, start));
+        const result = start instanceof StepResult ? start : await DependentsStep.tryAsync(start.repository, async () => await this.finishAsync(update, moduleIds, start));
         isSuccessful &&= result.isSuccessful;
         if (this.output === undefined)
           lines.push(result.message);
@@ -143,11 +144,13 @@ export class DependentsStep implements IStep {
     return { repository, directory, git, head, run };
   }
 
-  private async finishAsync(update: DependentsUpdate, started: StartedUpdate): Promise<StepResult> {
+  private async finishAsync(update: DependentsUpdate, moduleIds: readonly string[], started: StartedUpdate): Promise<StepResult> {
     const { repository, directory, git } = started;
     const relocked = started.run === null ? await this.relock.relockAsync(update, repository, directory, new Map()) : await this.readRelockAsync(started, started.run);
     if (relocked instanceof StepResult)
       return relocked;
+
+    const moves = [...relocked.moves, ...await DependentsStep.moveModulePinsAsync(git, directory, moduleIds, update.version)];
 
     const title = Resources.formatUpdateTitle(update.source, update.version);
     await git.commitAllAsync(title);
@@ -162,12 +165,12 @@ export class DependentsStep implements IStep {
     if (push !== null)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
-    const body = Resources.formatUpdateBody(update.source, update.version, update.commit, relocked.moves, relocked.lockLines, update.notes);
+    const body = Resources.formatUpdateBody(update.source, update.version, update.commit, moves, relocked.lockLines, update.notes);
     const proposal = await this.updateHost.proposeAsync(repository, branch, title, body, Resources.updateIssueSummary);
     if (proposal instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, proposal.message));
 
-    return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, relocked.moves.length));
+    return StepResult.succeeded(Resources.formatRepositoryProposed(repository, proposal, moves.length));
   }
 
   // Reads what the repository's own relock wrote and, when it changed files, writes them into the checkout, each one a
@@ -194,6 +197,16 @@ export class DependentsStep implements IStep {
       fs.writeFileSync(path.join(directory, filePath), text);
 
     return relocked;
+  }
+
+  private static async moveModulePinsAsync(git: Git, directory: string, moduleIds: readonly string[], version: string): Promise<readonly string[]> {
+    if (moduleIds.length === 0)
+      return [];
+
+    const targets = moduleIds.map(t => ({ packageName: t, version, reason: null }));
+
+    return (await git.listTrackedFilesAsync()).map(t => t.filePath).filter(t => path.posix.basename(t) === Resources.moduleFileName)
+      .flatMap(t => DependentRelock.moveModulePins(path.join(directory, t), t, targets));
   }
 
   private static readPeerPins(manifests: readonly JsonReader[], packageNames: readonly string[], releasedVersion: string): readonly PinTarget[] {
