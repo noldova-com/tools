@@ -61,6 +61,11 @@ export class Version {
     return this.compareTo(other) === 0;
   }
 
+  /** The first release of the next minor version, such as 0.1.0 for 0.0.9 or 0.0.9-nightly.20261114. */
+  public nextMinor(): Version {
+    return new Version(this.major, this.minor + 1, 0);
+  }
+
   public toString(): string {
     const release = [this.major, this.minor, this.patch].join(Resources.versionPartSeparator);
 

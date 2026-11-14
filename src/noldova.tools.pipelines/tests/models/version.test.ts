@@ -26,6 +26,14 @@ export class VersionTests {
     Assert.areEqual(text, version.toString());
   }
 
+  @TestData("0.0.9", "0.1.0")
+  @TestData("1.4.1", "1.5.0")
+  @TestData("1.4.1-nightly.20261101", "1.5.0")
+  @TestMethod
+  public givesTheFirstReleaseOfTheNextMinorVersion(text: string, nextMinor: string): void {
+    Assert.areEqual(nextMinor, Version.parse(text).nextMinor().toString());
+  }
+
   @TestData("1.4.1-nightly.20261101", 1, 4, 1, "20261101")
   @TestData("0.0.0-nightly.10000101", 0, 0, 0, "10000101")
   @TestData("0.1.1-nightly.20280229", 0, 1, 1, "20280229")

@@ -147,6 +147,15 @@ export class ArchiveStep implements IStep {
           findings.push(Resources.formatDependencyDiffers(archiveName, dependency, range, version));
       }
     }
+    if (manifest.hasField(Resources.peerDependenciesField)) {
+      const peers = manifest.readObject(Resources.peerDependenciesField);
+      const expected = Resources.formatSiblingPeerRange(version, Version.parse(version).nextMinor().toString());
+      for (const peer of packageNames.filter(t => peers.hasField(t))) {
+        const range = peers.readString(peer);
+        if (range !== expected)
+          findings.push(Resources.formatPeerRangeDiffers(archiveName, peer, range, expected));
+      }
+    }
 
     findings.push(...await this.checkFilesAsync(archivePath));
 

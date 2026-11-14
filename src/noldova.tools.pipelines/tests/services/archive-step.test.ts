@@ -456,6 +456,45 @@ export class ArchiveStepTests {
   }
 
   @TestMethod
+  public async succeedsForSiblingPeersInTheirRangeAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.peerManifestB(">=0.0.4 <0.1.0"));
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+  }
+
+  @TestData(">=0.0.3 <0.1.0")
+  @TestData(">=0.0.4 <0.0.5")
+  @TestData(">=0.0.4 <1.0.0")
+  @TestData("0.0.4")
+  @TestData("^0.0.4")
+  @TestMethod
+  public async failsForASiblingPeerInAnotherRangeAsync(range: string): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.peerManifestB(range));
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`noldova-b-0.0.4.tgz: its peer @noldova/a is ${range}, not >=0.0.4 <0.1.0.`, result.message);
+  }
+
+  @TestMethod
+  public async rejectsPeerDependenciesThatAreNotAnObjectAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(ArchiveStepTests.PACKAGES);
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B.replace("\"dependencies\"", "\"peerDependencies\": [], \"dependencies\""));
+
+    const exception = await Assert.throwsAsync(() => ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]), JsonException);
+
+    Assert.isTrue(exception.path.startsWith("noldova-b-0.0.4.tgz/package/package.json"), exception.path);
+  }
+
+  @TestMethod
   public async failsForAnArchiveFromAnotherCommitAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(ArchiveStepTests.PACKAGES);
@@ -698,6 +737,18 @@ export class ArchiveStepTests {
     const listed = typeof copies === "string" ? new ProcessResult(0, `${copies}\nend of copies\n`, "") : copies;
 
     return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner), new ListingNpm(directory, listed));
+  }
+
+  /** B's archived manifest taking its sibling @noldova/a as a peer in the range given, beside a third-party peer the step leaves alone. */
+  private static peerManifestB(range: string): string {
+    return JSON.stringify({
+      name: "@noldova/b",
+      version: "0.0.4",
+      gitHead: "__COMMIT__",
+      license: "MIT",
+      private: false,
+      peerDependencies: { "@noldova/a": range, "@example/d": "^1.0.0" }
+    });
   }
 
   private static packArchives(repository: GitRepositoryFixture, manifestA: string, manifestB: string, filesA: Readonly<Record<string, string>> = {}): string {
