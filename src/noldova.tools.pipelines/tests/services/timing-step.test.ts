@@ -74,8 +74,13 @@ export class TimingStepTests {
   private static readonly TESTING_PACKAGE: Readonly<Record<string, string>> = {
     "node_modules/@noldova/context.testing/package.json": "{\"name\":\"@noldova/context.testing\",\"type\":\"module\",\"main\":\"index.js\"}",
     "node_modules/@noldova/context.testing/index.js": [
+      "export class TestingException extends Error {}",
       "export class TestTimeRecord {",
-      "  static parseAll(text) { return JSON.parse(text); }",
+      "  static parseAll(text) {",
+      "    if (text === 'fault') throw new TypeError('A fault.');",
+      "    try { return JSON.parse(text); }",
+      "    catch { throw new TestingException('The file is not JSON.'); }",
+      "  }",
       "  static formatSlowest(records, count) { return [`slowest ${count}`, ...records.map(t => `${t.file} ${t.ms}`)]; }",
       "}",
       "export class TestTimingCheck {",
@@ -142,8 +147,9 @@ export class TimingStepTests {
     Assert.areEqual("progress start: Timing run 1 of 3...|progress:  Done.|progress start: Timing run 2 of 3...|progress:  Failed.", lines.join("|"));
   }
 
-  @TestData(1, "A test file is over its time.")
-  @TestData(2, "The test times were not read: their report exited with code 2.")
+  @TestData(3, "A test file is over its time.")
+  @TestData(1, "The test times were not read: their report exited with code 1.")
+  @TestData(2,"The test times were not read: their report exited with code 2.")
   @TestData(null, "The test times were not read: their report exited with code null.")
   @TestMethod
   public async failsForAFileOverItsTimeOrTimesNotReadAsync(exitCode: number | null, message: string): Promise<void> {
@@ -236,7 +242,7 @@ export class TimingStepTests {
     Assert.areEqual("_build/test-results.json holds no test times: the test run wrote none.\n", result.errorOutput);
   }
 
-  @TestData("[{\"file\":\"a\",\"ms\":200}]", "", 1, "timing a\nsummary 1 files 2 runs\n")
+  @TestData("[{\"file\":\"a\",\"ms\":200}]", "", 3, "timing a\nsummary 1 files 2 runs\n")
   @TestData("[{\"file\":\"a\",\"ms\":100}]", "", 0, "summary 1 files 2 runs\n")
   @TestData("[{\"file\":\"a\",\"ms\":100}]", "a\n", 0, "timing a\nsummary 1 files 2 runs\n")
   @TestMethod
@@ -247,6 +253,39 @@ export class TimingStepTests {
 
     Assert.areEqual(exitCode, result.exitCode);
     Assert.areEqual(output, result.output);
+  }
+
+  @TestData("", "run-2.json holds no test times: the test run wrote none.\n")
+  @TestData("{", "run-2.json holds no test times: The file is not JSON.\n")
+  @TestMethod
+  public async failsToJudgeRunsWhoseTimesAreNotReadAsync(secondRun: string, errorOutput: string): Promise<void> {
+    using checkout = new Checkout({ ...TimingStepTests.TESTING_PACKAGE, "run-1.json": "[{\"file\":\"a\",\"ms\":100}]", ...secondRun === "" ? {} : { "run-2.json": secondRun } });
+
+    const result = await new ProcessRunner().runAsync(process.execPath, [TimingStepTests.TIMES_ENTRY_POINT_PATH, "judge", "100", "0.5", "README.md", "run-1.json", "run-2.json"], checkout.directory);
+
+    Assert.areEqual(2, result.exitCode);
+    Assert.areEqual("", result.output);
+    Assert.areEqual(errorOutput, result.errorOutput);
+  }
+
+  @TestMethod
+  public async endsAFaultReadingTheTimesWithItsStackTraceAsync(): Promise<void> {
+    using checkout = new Checkout({ ...TimingStepTests.TESTING_PACKAGE, "run-1.json": "fault" });
+
+    const result = await new ProcessRunner().runAsync(process.execPath, [TimingStepTests.TIMES_ENTRY_POINT_PATH, "judge", "100", "0.5", "README.md", "run-1.json"], checkout.directory);
+
+    Assert.areEqual(1, result.exitCode);
+    Assert.isTrue(result.errorOutput.includes("TypeError: A fault."), result.errorOutput);
+  }
+
+  @TestMethod
+  public async failsToPrintTheSlowestTestsOfATimesFileThatIsNotJsonAsync(): Promise<void> {
+    using checkout = new Checkout({ ...TimingStepTests.TESTING_PACKAGE, "_build/test-results.json": "{" });
+
+    const result = await new ProcessRunner().runAsync(process.execPath, [TimingStepTests.TIMES_ENTRY_POINT_PATH, "slowest", "_build/test-results.json", "10"], checkout.directory);
+
+    Assert.areEqual(2, result.exitCode);
+    Assert.areEqual("_build/test-results.json holds no test times: The file is not JSON.\n", result.errorOutput);
   }
 
   @TestMethod

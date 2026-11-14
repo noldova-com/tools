@@ -20,7 +20,7 @@ export class BuildConfig {
   public readonly packages: readonly BuildPackage[];
   public readonly testTimeoutMilliseconds: number | undefined;
 
-  public constructor(scope: string, packages: readonly BuildPackage[], testTimeoutMilliseconds: number | undefined = undefined) {
+  public constructor(scope: string, packages: readonly BuildPackage[], testTimeoutMilliseconds?: number) {
     this.scope = scope;
     this.packages = packages;
     this.testTimeoutMilliseconds = testTimeoutMilliseconds;
@@ -61,7 +61,7 @@ export class BuildConfig {
     if (testTimeoutMilliseconds !== undefined && testTimeoutMilliseconds <= 0)
       throw new BuildException(Resources.formatBuildConfigInvalid(Resources.formatTestTimeoutInvalid(testTimeoutMilliseconds)));
 
-    return new BuildConfig(scope, packages, testTimeoutMilliseconds);
+    return testTimeoutMilliseconds === undefined ? new BuildConfig(scope, packages) : new BuildConfig(scope, packages, testTimeoutMilliseconds);
   }
 
   private static readPackage(entry: JsonReader, scope: string): BuildPackage {

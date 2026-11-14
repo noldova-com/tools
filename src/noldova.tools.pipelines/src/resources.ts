@@ -131,7 +131,7 @@ export class Resources {
   public static readonly npmJsonValues: readonly string[] = ["--json"];
   public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmNotFoundCode: string = "E404";
-  public static readonly codeField: string = "code";
+  public static readonly codeField: "code" = "code";
   public static readonly moduleNotFoundCode: string = "MODULE_NOT_FOUND";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
   public static readonly npmProgram: string = "npm";
@@ -273,6 +273,7 @@ export class Resources {
   public static readonly slowestMode: string = "slowest";
   public static readonly judgeMode: string = "judge";
   public static readonly slowestTestCount: number = 10;
+  public static readonly timesOverExitCode: number = 3;
   public static readonly timesUnreadExitCode: number = 2;
   public static readonly timingStepName: string = "timing";
   public static readonly timingStepUsage: string = "";
@@ -1118,6 +1119,10 @@ export class Resources {
 
   public static formatTestResultsMissing(filePath: string): string {
     return `${filePath} holds no test times: the test run wrote none.`;
+  }
+
+  public static formatTestResultsInvalid(filePath: string, reason: string): string {
+    return `${filePath} holds no test times: ${reason}`;
   }
 
   public static formatTimingRun(run: number): string {

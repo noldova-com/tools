@@ -23,13 +23,15 @@ export class TestingModuleLoader {
       modulePath = createRequire(path.resolve(Resources.manifestFileName)).resolve(Resources.testingPackageName);
     }
     catch (error: unknown) {
-      if (!(error instanceof Error && Reflect.get(error, Resources.codeField) === Resources.moduleNotFoundCode))
+      if (!(error instanceof Error && Resources.codeField in error && error.code === Resources.moduleNotFoundCode))
         throw error;
 
       process.stderr.write(`${Resources.testingMissing}${Resources.lineSeparator}`);
       return null;
     }
 
-    return await import(pathToFileURL(modulePath).href) as ITestingModule;
+    // The checkout's module is found by path at run time, so no static import can name it; the interface is the shape the steps read.
+    const testing: ITestingModule = await import(pathToFileURL(modulePath).href);
+    return testing;
   }
 }

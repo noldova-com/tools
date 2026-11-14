@@ -430,6 +430,7 @@ It writes `Compiling the tests of <package>...` for each, and ends the line with
 Run it after the test step, which compiles the tests: it runs them three times without coverage, writes `Timing run <n> of 3...` for each, and judges each test file's time, the sum of its tests' durations, through the repository's `@noldova/context.testing`.
 It fails a file whose median over the runs is over 2 seconds plus a margin of 50%, since a busy machine slows every file and the median of three runs drops one slow run but not a slower machine.
 A file slower than that budget is listed in the repository's README, after the line `Test files slower than the timing check's budget:`, as a table row such as ``| `noldova.example/services/a.test.js` | 6900 ms |``; its median may exceed its own time by the same margin, and a listed file within the budget is named as stale, failing nothing.
+A file over its time fails the step with `A test file is over its time.`; a run's times file that is missing or isn't test times, as from a `@noldova/context.testing` before 0.0.8, which writes none, fails it with `The test times were not read: …`, after the report has named the file.
 
 ## License
 

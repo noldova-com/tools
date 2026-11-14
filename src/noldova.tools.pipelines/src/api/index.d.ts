@@ -606,7 +606,7 @@ export declare class BuildConfig {
    *
    * @param scope The npm scope the packages publish under.
    * @param packages The packages, in build order.
-   * @param testTimeoutMilliseconds The suite's hang limit in milliseconds, or undefined for none.
+   * @param testTimeoutMilliseconds The suite's hang limit in milliseconds, left out for none.
    * @example
    * ```ts
    * import { BuildConfig, BuildPackage } from "@noldova/tools.pipelines";
@@ -614,7 +614,7 @@ export declare class BuildConfig {
    * const config = new BuildConfig("@noldova", [new BuildPackage("noldova.tools.pipelines")]);
    * ```
    */
-  public constructor(scope: string, packages: readonly BuildPackage[], testTimeoutMilliseconds?: number | undefined);
+  public constructor(scope: string, packages: readonly BuildPackage[], testTimeoutMilliseconds?: number);
 
   /**
    * The packages' npm names, such as `@noldova/tools.pipelines`.

@@ -93,7 +93,7 @@ export class TimingStep implements IStep {
     if (judged === Resources.successExitCode)
       return StepResult.succeeded(Resources.timingPassed);
 
-    return StepResult.failed(judged === Resources.failureExitCode ? Resources.timingOver : Resources.formatTimesUnread(judged));
+    return StepResult.failed(judged === Resources.timesOverExitCode ? Resources.timingOver : Resources.formatTimesUnread(judged));
   }
 
   private resolve(filePath: string): string {
