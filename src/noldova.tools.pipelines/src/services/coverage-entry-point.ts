@@ -6,28 +6,14 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { createRequire } from "node:module";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-
-import type { ITestingModule } from "../interfaces/i-testing-module.js";
 import { Resources } from "../resources.js";
+import { TestingModuleLoader } from "./testing-module-loader.js";
 
 const values = process.argv.slice(2);
-let modulePath: string | null = null;
-try {
-  modulePath = createRequire(path.resolve(Resources.manifestFileName)).resolve(Resources.testingPackageName);
-}
-catch (error: unknown) {
-  if (!(error instanceof Error && Reflect.get(error, Resources.codeField) === Resources.moduleNotFoundCode))
-    throw error;
-
-  process.stderr.write(`${Resources.testingMissing}${Resources.lineSeparator}`);
+const testing = await TestingModuleLoader.loadAsync();
+if (testing === null)
   process.exitCode = Resources.coverageUnreadExitCode;
-}
-
-if (modulePath !== null) {
-  const testing = await import(pathToFileURL(modulePath).href) as ITestingModule;
+else {
   const projects = (JSON.parse(String(values[2])) as [name: string, packageFolder: string, sourceFolder: string][])
     .map(([name, packageFolder, sourceFolder]) => new testing.CoverageProject(name, packageFolder, sourceFolder));
   const coverage = await new testing.CoverageAnalyzer().analyzeAsync(String(values[0]), projects);

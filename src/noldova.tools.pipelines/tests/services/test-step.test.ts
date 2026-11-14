@@ -66,7 +66,7 @@ class Checkout implements Disposable {
 
   public constructor(files: Readonly<Record<string, string>> = {}) {
     this.write({
-      "build.json": "{\"packages\":[{\"name\":\"noldova.a\"},{\"name\":\"noldova.b\",\"path\":\"group/noldova.b\"}]}",
+      "build.json": "{\"testTimeoutMilliseconds\":30000,\"packages\":[{\"name\":\"noldova.a\"},{\"name\":\"noldova.b\",\"path\":\"group/noldova.b\"}]}",
       "src/noldova.a/tests/tsconfig.json": "{}",
       ...files
     });
@@ -91,6 +91,7 @@ class Checkout implements Disposable {
 @TestClass
 export class TestStepTests {
   private static readonly COVERAGE_ENTRY_POINT_PATH: string = fileURLToPath(import.meta.resolve("@noldova/tools.pipelines/services/coverage-entry-point.js"));
+  private static readonly TIMES_ENTRY_POINT_PATH: string = fileURLToPath(import.meta.resolve("@noldova/tools.pipelines/services/test-times-entry-point.js"));
 
   @TestMethod
   public namesItselfAndItsValues(): void {
@@ -120,11 +121,17 @@ export class TestStepTests {
       ["noldova.a", path.join(checkout.directory, "node_modules/@noldova/a"), path.join(checkout.directory, "src/noldova.a/src")],
       ["noldova.b", path.join(checkout.directory, "node_modules/@noldova/b"), path.join(checkout.directory, "src/group/noldova.b/src")]
     ];
+    const resultsFile = path.join(checkout.directory, "_build/test-results.json");
     Assert.areEqual(JSON.stringify([
       [process.execPath, "--enable-source-maps", "node_modules/@noldova/context.testing/services/execution/test-run-entry-point.js", "noldova.a", "_build/tests/noldova.a", checkout.directory],
+      [process.execPath, TestStepTests.TIMES_ENTRY_POINT_PATH, "slowest", resultsFile, "10", checkout.directory],
       [process.execPath, TestStepTests.COVERAGE_ENTRY_POINT_PATH, coverageFolder, "", JSON.stringify(projects), checkout.directory]
     ]), JSON.stringify(runner.calls));
-    Assert.areEqual(JSON.stringify([{ CONTEXT_TEST_FILTERS: "[]", NODE_V8_COVERAGE: coverageFolder }, {}]), JSON.stringify(runner.environments));
+    Assert.areEqual(JSON.stringify([
+      { CONTEXT_TEST_FILTERS: "[]", CONTEXT_TEST_TIMEOUT_MILLISECONDS: "30000", CONTEXT_TEST_RESULTS_FILE: resultsFile, NODE_V8_COVERAGE: coverageFolder },
+      {},
+      {}
+    ]), JSON.stringify(runner.environments));
     Assert.areEqual("progress start: Compiling the tests of noldova.a...|progress:  Done.", lines.join("|"));
   }
 
@@ -136,7 +143,7 @@ export class TestStepTests {
     await new TestStep(new FakeTypeScript(checkout.directory), runner, new RecordingOutput([])).runAsync(["--skip-test-details", "--skip-coverage-details"]);
 
     Assert.areEqual("1", runner.environments[0]?.["CONTEXT_SKIP_TEST_DETAILS"]);
-    Assert.areEqual("1", runner.calls[1]?.[3]);
+    Assert.areEqual("1", runner.calls[2]?.[3]);
   }
 
   @TestData(0, "The coverage gate is skipped for a filtered run.")
@@ -150,17 +157,23 @@ export class TestStepTests {
 
     Assert.areEqual(exitCode === 0, result.isSuccessful);
     Assert.areEqual(message, result.message);
-    Assert.areEqual(JSON.stringify([{ CONTEXT_TEST_FILTERS: "[\"ArchiveStep\",\"noldova.a\"]" }]), JSON.stringify(runner.environments));
+    const resultsFile = path.join(checkout.directory, "_build/test-results.json");
+    Assert.areEqual(
+      JSON.stringify([{ CONTEXT_TEST_FILTERS: "[\"ArchiveStep\",\"noldova.a\"]", CONTEXT_TEST_TIMEOUT_MILLISECONDS: "30000", CONTEXT_TEST_RESULTS_FILE: resultsFile }, {}]),
+      JSON.stringify(runner.environments));
+    Assert.areEqual(JSON.stringify([process.execPath, TestStepTests.TIMES_ENTRY_POINT_PATH, "slowest", resultsFile, "10", checkout.directory]), JSON.stringify(runner.calls[1]));
   }
 
-  @TestData(null, 1, "The tests failed with exit code null.\nCoverage is incomplete.")
-  @TestData(0, 2, "The coverage report exited with code 2.")
-  @TestData(0, null, "The coverage report exited with code null.")
+  @TestData(null, 0, 1, "The tests failed with exit code null.\nCoverage is incomplete.")
+  @TestData(0, 0, 2, "The coverage report exited with code 2.")
+  @TestData(0, 0, null, "The coverage report exited with code null.")
+  @TestData(1, 2, 0, "The tests failed with exit code 1.\nThe test times were not read: their report exited with code 2.")
+  @TestData(0, null, 1, "The test times were not read: their report exited with code null.\nCoverage is incomplete.")
   @TestMethod
-  public async failsForFailedTestsOrCoverageAsync(testsExitCode: number | null, coverageExitCode: number | null, message: string): Promise<void> {
+  public async failsForFailedTestsTimesOrCoverageAsync(testsExitCode: number | null, timesExitCode: number | null, coverageExitCode: number | null, message: string): Promise<void> {
     using checkout = new Checkout();
 
-    const result = await new TestStep(new FakeTypeScript(checkout.directory), new FakeRunner(testsExitCode, coverageExitCode), new RecordingOutput([])).runAsync([]);
+    const result = await new TestStep(new FakeTypeScript(checkout.directory), new FakeRunner(testsExitCode, timesExitCode, coverageExitCode), new RecordingOutput([])).runAsync([]);
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(message, result.message);
@@ -182,6 +195,31 @@ export class TestStepTests {
     const result = await new TestStep(new FakeTypeScript(checkout.directory), new FakeRunner(), new RecordingOutput([])).runAsync([]);
 
     Assert.areEqual("The checkout has no build.json, which names the packages to build.", result.message);
+  }
+
+  @TestMethod
+  public async failsWithoutTheSuitesHangLimitBeforeCompilingAsync(): Promise<void> {
+    using checkout = new Checkout({ "build.json": "{\"packages\":[{\"name\":\"noldova.a\"}]}" });
+    const typeScript = new FakeTypeScript(checkout.directory);
+    const runner = new FakeRunner();
+
+    const result = await new TestStep(typeScript, runner, new RecordingOutput([])).runAsync([]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      "build.json sets no testTimeoutMilliseconds, the suite's hang limit: at least three times its slowest test on any target, with the measurement in README's Checks.",
+      result.message);
+    Assert.areEqual(0, typeScript.calls.length);
+    Assert.areEqual(0, runner.calls.length);
+  }
+
+  @TestMethod
+  public async removesAnEarlierRunsTestTimesAsync(): Promise<void> {
+    using checkout = new Checkout({ "_build/test-results.json": "[]" });
+
+    await new TestStep(new FakeTypeScript(checkout.directory), new FakeRunner(), new RecordingOutput([])).runAsync([]);
+
+    Assert.isFalse(checkout.exists("_build/test-results.json"));
   }
 
   @TestMethod

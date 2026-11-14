@@ -23,6 +23,7 @@ import type { TypeScript } from "./type-script.js";
 
 export class TestStep implements IStep {
   private static readonly COVERAGE_ENTRY_POINT_PATH: string = fileURLToPath(new URL(Resources.coverageEntryPointPath, import.meta.url));
+  private static readonly TIMES_ENTRY_POINT_PATH: string = fileURLToPath(new URL(Resources.testTimesEntryPointPath, import.meta.url));
 
   private readonly typeScript: TypeScript;
   private readonly processRunner: ProcessRunner;
@@ -61,6 +62,9 @@ export class TestStep implements IStep {
   }
 
   private async testAsync(config: BuildConfig, options: ReadonlySet<string>, filters: readonly string[]): Promise<StepResult> {
+    if (config.testTimeoutMilliseconds === undefined)
+      return StepResult.failed(Resources.testTimeoutMissing);
+
     const projectValues: string[] = [];
     for (const buildPackage of config.packages) {
       const projectPath = Resources.formatPath(buildPackage.sourceFolder, Resources.testsProjectPath);
@@ -84,7 +88,13 @@ export class TestStep implements IStep {
       return StepResult.failed(Resources.testsMissing);
 
     const coverageFolder = this.resolve(Resources.coverageFolder);
-    const environment: Record<string, string> = { [Resources.testFiltersVariable]: JSON.stringify(filters) };
+    const resultsFile = this.resolve(Resources.testResultsFile);
+    fs.rmSync(resultsFile, { force: true });
+    const environment: Record<string, string> = {
+      [Resources.testFiltersVariable]: JSON.stringify(filters),
+      [Resources.testTimeoutVariable]: String(config.testTimeoutMilliseconds),
+      [Resources.testResultsVariable]: resultsFile
+    };
     if (options.has(Resources.skipTestDetailsOption))
       environment[Resources.skipTestDetailsVariable] = Resources.enabledValue;
     if (filters.length === 0) {
@@ -95,6 +105,10 @@ export class TestStep implements IStep {
 
     const exitCode = await this.processRunner.runVisibleAsync(process.execPath, [Resources.sourceMapsOption, Resources.testEntryPath, ...projectValues], this.typeScript.workingDirectory, environment);
     const problems = exitCode === Resources.successExitCode ? [] : [Resources.formatTestsFailed(exitCode)];
+    const timesExitCode = await this.processRunner.runVisibleAsync(process.execPath,
+      [TestStep.TIMES_ENTRY_POINT_PATH, Resources.slowestMode, resultsFile, String(Resources.slowestTestCount)], this.typeScript.workingDirectory, {});
+    if (timesExitCode !== Resources.successExitCode)
+      problems.push(Resources.formatTimesUnread(timesExitCode));
     if (filters.length > 0)
       return problems.length === 0 ? StepResult.succeeded(Resources.filteredCoverageSkipped) : StepResult.failed([...problems, Resources.filteredCoverageSkipped].join(Resources.lineSeparator));
 

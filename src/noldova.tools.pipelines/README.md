@@ -357,12 +357,13 @@ The declaration file `api/index.d.ts` documents every member with its contract a
 
 ### Building and testing a repository
 
-The `installed`, `build` and `test` steps build, pack and test the packages of a repository, so every repository runs the same build.
+The `installed`, `build`, `test` and `timing` steps build, pack, test and time the packages of a repository, so every repository runs the same build.
 A repository lists its packages, in the order they build, in `build.json` at its root:
 
 ```json
 {
   "scope": "@noldova",
+  "testTimeoutMilliseconds": 30000,
   "packages": [
     { "name": "noldova.example" },
     { "name": "noldova.example.parsers", "path": "parsers/noldova.example.parsers", "pre": "src/parsers/noldova.example.parsers/scripts/verify.ts" }
@@ -371,6 +372,7 @@ A repository lists its packages, in the order they build, in `build.json` at its
 ```
 
 - `scope` is the npm scope the packages publish under, `@noldova` when omitted.
+- `testTimeoutMilliseconds` is the suite's hang limit, a positive whole number of milliseconds, which the `test` and `timing` steps require: at least three times the slowest test on any target, as the test step's slowest tests show it in the repository's runs, with that measurement in its README's Checks. A test that reaches it fails, named with what it waited for.
 - `name` is the package's folder name: `noldova.` and segments of lowercase letters and digits joined by dots, with no hyphen, so a several-word segment joins its words with nothing between them, such as `noldova.example.filewatcher`; the package's npm name is the scope, `/` and the name after `noldova.`, such as `@noldova/example`.
 - `path` is the package's folder under `src/`, whose last segment is the name; it is the name when omitted.
 - `pre`, `compile` and `post` are optional scripts, paths inside the checkout that Node.js runs with the package's source folder and build folder as its values: `pre` before the compile, `compile` instead of the TypeScript compile, and `post` after it.
@@ -382,7 +384,8 @@ A repository's `package.json` runs the steps through the package's `pipelines` c
 ```json
 "scripts": {
   "build": "(pipelines installed || npm ci --ignore-scripts) && pipelines build",
-  "test": "pipelines test"
+  "test": "pipelines test",
+  "test:timing": "pipelines timing"
 }
 ```
 
@@ -412,13 +415,22 @@ It backs up `package.json` and `package-lock.json` in `_build/restore/` before i
 
 #### The test step
 
-`test [--skip-test-details] [--skip-coverage-details] [<filter>...]` compiles each package's `tests/tsconfig.json`, runs the tests through the repository's `@noldova/context.testing` with V8 coverage in `_build/coverage`, and requires complete coverage of the packages' `src/` folders.
+`test [--skip-test-details] [--skip-coverage-details] [<filter>...]` compiles each package's `tests/tsconfig.json`, runs the tests through the repository's `@noldova/context.testing` under `build.json`'s `testTimeoutMilliseconds`, with V8 coverage in `_build/coverage`, and requires complete coverage of the packages' `src/` folders.
+The run writes each test's time to `_build/test-results.json`, and the step then prints the 10 slowest tests with their times, with or without `--skip-test-details`, and fails when it can't read them.
 It writes `Compiling the tests of <package>...` for each, and ends the line with ` Done.`, or ` Failed.` before the compiler's errors.
 
 - Run the build first: the tests use the installed packages.
 - A filter runs the tests that match a package, file, class, `ClassName.methodName` substring or exact `category:name` identity, and skips the coverage gate.
 - `--skip-test-details` hides the passing tests' lines and `--skip-coverage-details` the fully covered files' rows; failures and totals always show.
-- The tests and the coverage report each run in a Node.js process of their own, so the repository's packages never load beside the step's.
+- The tests, their times and the coverage report each run in a Node.js process of their own, so the repository's packages never load beside the step's.
+
+#### The timing step
+
+`timing` checks the test times, apart from the test step since its pass condition is a time, so it runs on a test machine rather than in CI.
+Run it after the test step, which compiles the tests: it runs them three times without coverage, writes `Timing run <n> of 3...` for each, and judges each test file's time, the sum of its tests' durations, through the repository's `@noldova/context.testing`.
+It fails a file whose median over the runs is over 2 seconds plus a margin of 50%, since a busy machine slows every file and the median of three runs drops one slow run but not a slower machine.
+A file slower than that budget is listed in the repository's README, after the line `Test files slower than the timing check's budget:`, as a table row such as ``| `noldova.example/services/a.test.js` | 6900 ms |``; its median may exceed its own time by the same margin, and a listed file within the budget is named as stale, failing nothing.
+A file over its time fails the step with `A test file is over its time.`; a run's times file that is missing or isn't test times, as from a `@noldova/context.testing` before 0.0.8, which writes none, fails it with `The test times were not read: …`, after the report has named the file.
 
 ## License
 
