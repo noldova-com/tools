@@ -52,6 +52,27 @@ export class BuildConfigTests {
   }
 
   @TestMethod
+  public readsTheSuitesHangLimit(): void {
+    Assert.areEqual(45000, BuildConfig.parse("{\"testTimeoutMilliseconds\":45000,\"packages\":[{\"name\":\"noldova.example\"}]}").testTimeoutMilliseconds);
+    Assert.isUndefined(BuildConfig.parse("{\"packages\":[{\"name\":\"noldova.example\"}]}").testTimeoutMilliseconds);
+    Assert.areEqual(30000, new BuildConfig("@noldova", [new BuildPackage("noldova.example")], 30000).testTimeoutMilliseconds);
+  }
+
+  @TestData(0)
+  @TestData(-1)
+  @TestMethod
+  public refusesAHangLimitThatIsNotPositive(milliseconds: number): void {
+    const exception = Assert.throws(() => BuildConfig.parse(`{"testTimeoutMilliseconds":${milliseconds},"packages":[{"name":"noldova.example"}]}`), BuildException);
+
+    Assert.areEqual(`build.json is invalid: testTimeoutMilliseconds is ${milliseconds}, not a positive number of milliseconds.`, exception.message);
+  }
+
+  @TestMethod
+  public refusesAHangLimitThatIsNotAnInteger(): void {
+    Assert.throws(() => BuildConfig.parse("{\"testTimeoutMilliseconds\":1.5,\"packages\":[{\"name\":\"noldova.example\"}]}"), JsonException);
+  }
+
+  @TestMethod
   public readsTheBuildFileOfACheckout(): void {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "tools-pipelines-"));
     try {

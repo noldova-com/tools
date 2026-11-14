@@ -1,7 +1,7 @@
 # @noldova/tools.pipelines.github
 
 Runs the steps of `@noldova/tools.pipelines` on GitHub Actions.
-This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings, unchanged, reproducible, dependents, pins, installed, build and test steps, and the prune, tag, dependents and pins steps' access to GitHub.
+This version holds `pipelines`, the command line a workflow calls, with the source, archive, publish, nightly, prune, tag, toolchain, line-endings, unchanged, reproducible, dependents, pins, installed, build, test and timing steps, and the prune, tag, dependents and pins steps' access to GitHub.
 
 ## Install
 
@@ -42,6 +42,7 @@ A job installs the package at an exact version, without install scripts, and cal
 | `installed` | `[<folder>]` |
 | `build` | `[--version <version>] [<package>...]`, or `--list-copies` |
 | `test` | `[--skip-test-details] [--skip-coverage-details] [<filter>...]` |
+| `timing` | none |
 
 `@noldova/tools.pipelines`'s README says what each step checks and does.
 The reproducible, dependents and pins steps make their temporary folders in `RUNNER_TEMP`, which the runner empties after each job, cancelled ones included.
