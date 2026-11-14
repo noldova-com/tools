@@ -43,7 +43,7 @@ export class GitHubUpdates implements IUpdateHost {
 
     const repository = this.readVariable(Resources.repositoryVariable);
 
-    return repository.slice(repository.indexOf(Resources.repositorySeparator) + 1);
+    return repository.slice(repository.indexOf(Resources.repositorySeparator) + Resources.repositorySeparator.length);
   }
 
   public async listRepositoriesAsync(): Promise<readonly string[] | StepResult> {
@@ -205,7 +205,7 @@ export class GitHubUpdates implements IUpdateHost {
     if (existing !== undefined) {
       const issue = Resources.linkedIssuePattern.exec(existing.readNullableString(Resources.bodyField) ?? "")?.[1];
       if (issue !== undefined) {
-        const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { title, body: Resources.formatIssueBody(summary, branch) });
+        const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
         if (renamed instanceof StepResult)
           return renamed;
         if (renamed.status !== Resources.foundStatus)
@@ -213,7 +213,7 @@ export class GitHubUpdates implements IUpdateHost {
       }
 
       const number = String(existing.readInteger(Resources.numberField));
-      const updated = await this.requestAsync(Resources.updateMethod, Resources.formatPullResource(repository, number), { title, body: Resources.formatProposalBody(body, issue) });
+      const updated = await this.requestAsync(Resources.updateMethod, Resources.formatPullResource(repository, number), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatProposalBody(body, issue) });
       if (updated instanceof StepResult)
         return updated;
 
@@ -226,7 +226,7 @@ export class GitHubUpdates implements IUpdateHost {
     if (target.status !== Resources.foundStatus)
       return target.toFailure();
 
-    const issue = await this.requestAsync(Resources.createMethod, Resources.formatIssuesResource(repository), { title, body: Resources.formatIssueBody(summary, branch) });
+    const issue = await this.requestAsync(Resources.createMethod, Resources.formatIssuesResource(repository), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
     if (issue instanceof StepResult)
       return issue;
     if (issue.status !== Resources.createdStatus)
@@ -234,7 +234,7 @@ export class GitHubUpdates implements IUpdateHost {
 
     const number = String(issue.readBody().readInteger(Resources.numberField));
     const base = target.readBody().readString(Resources.defaultBranchField);
-    const pull = await this.requestAsync(Resources.createMethod, Resources.formatPullsResource(repository), { title, head: branch, base, body: Resources.formatProposalBody(body, number) });
+    const pull = await this.requestAsync(Resources.createMethod, Resources.formatPullsResource(repository), { [Resources.titleField]: title, [Resources.headField]: branch, [Resources.baseField]: base, [Resources.bodyField]: Resources.formatProposalBody(body, number) });
     if (pull instanceof StepResult)
       return pull;
 

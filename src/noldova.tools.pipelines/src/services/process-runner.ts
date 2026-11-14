@@ -18,7 +18,7 @@ export class ProcessRunner {
   public async runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number): Promise<ProcessResult> {
     return await new Promise((resolve, reject) => {
       const env = environment === undefined ? undefined : Object.fromEntries(Object.entries({ ...process.env, ...environment }).filter(([, value]) => value !== undefined));
-      const child = spawn(program, values, { cwd: workingDirectory, shell: false, stdio: ["ignore", "pipe", "pipe"], ...(env === undefined ? {} : { env }) });
+      const child = spawn(program, values, { cwd: workingDirectory, shell: false, stdio: Resources.pipedProcessStreams, ...(env === undefined ? {} : { env }) });
       const output: Buffer[] = [];
       const errorOutput: Buffer[] = [];
       let startError: Error | undefined;

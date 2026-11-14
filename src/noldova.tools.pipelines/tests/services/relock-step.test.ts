@@ -187,6 +187,19 @@ export class RelockStepTests {
   }
 
   @TestMethod
+  public async rejectsWithABugAsync(): Promise<void> {
+    using target = RelockStepTests.createTarget();
+    const npm = new ScriptNpm(target.directory);
+    const bug = new TypeError("bug");
+    npm.thrown = bug;
+
+    const rejection = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createRequest("@noldova/a"), "relock.json"]).then(() => null, (error: unknown) => error);
+
+    Assert.areEqual(bug, rejection);
+    Assert.isFalse(fs.existsSync(path.join(target.directory, "relock.json")));
+  }
+
+  @TestMethod
   public async rejectsWhatIsThrownThatIsNoErrorAsync(): Promise<void> {
     using target = RelockStepTests.createTarget();
     const npm = new ScriptNpm(target.directory);

@@ -132,8 +132,8 @@ export class Git {
   }
 
   private static readTrackedFile(entry: string): TrackedFile {
-    const infoStart = entry.indexOf(Resources.gitEntrySeparator) + 1;
-    const pathStart = entry.indexOf(Resources.gitEntrySeparator, infoStart) + 1;
+    const infoStart = entry.indexOf(Resources.gitEntrySeparator) + Resources.gitEntrySeparator.length;
+    const pathStart = entry.indexOf(Resources.gitEntrySeparator, infoStart) + Resources.gitEntrySeparator.length;
     const [mode] = entry.slice(0, infoStart).split(Resources.gitModeSeparator);
     const [indexInfo = "", ...otherInfo] = entry.slice(infoStart, pathStart).trim().split(Resources.gitLineEndingsSeparator);
     const lineEndings = indexInfo.slice(Resources.gitLineEndingsPrefix.length);

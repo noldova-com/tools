@@ -9,6 +9,7 @@
 export class Resources {
   public static readonly acceptHeader: string = "Accept";
   public static readonly archivedField: string = "archived";
+  public static readonly baseField: string = "base";
   public static readonly blobEncoding: BufferEncoding = "base64";
   public static readonly blobType: string = "blob";
   public static readonly bodyField: string = "body";
@@ -29,6 +30,7 @@ export class Resources {
   public static readonly gitReferenceSeparatorPattern: RegExp = /\s/;
   public static readonly gitTerminalPromptOff: string = "0";
   public static readonly gitTerminalPromptVariable: string = "GIT_TERMINAL_PROMPT";
+  public static readonly headField: string = "head";
   public static readonly headingPattern: RegExp = /^#{1,6}\s/;
   public static readonly htmlUrlField: string = "html_url";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
@@ -104,6 +106,22 @@ export class Resources {
   public static readonly zipEndRecordPart: string = "end record";
   public static readonly zipEntryPart: string = "directory entry";
   public static readonly zipLocalHeaderPart: string = "local header";
+  public static readonly zipEndSignature: readonly number[] = [0x50, 0x4b, 0x05, 0x06];
+  public static readonly zipEndEntryCountOffset: number = 10;
+  public static readonly zipEndDirectoryOffset: number = 16;
+  public static readonly zipEndLength: number = 22;
+  public static readonly zipEntryMethodOffset: number = 10;
+  public static readonly zipEntryCompressedSizeOffset: number = 20;
+  public static readonly zipEntryNameLengthOffset: number = 28;
+  public static readonly zipEntryExtraLengthOffset: number = 30;
+  public static readonly zipEntryCommentLengthOffset: number = 32;
+  public static readonly zipEntryLocalOffset: number = 42;
+  public static readonly zipEntryHeaderLength: number = 46;
+  public static readonly zipLocalNameLengthOffset: number = 26;
+  public static readonly zipLocalExtraLengthOffset: number = 28;
+  public static readonly zipLocalHeaderLength: number = 30;
+  public static readonly zipStoredMethod: number = 0;
+  public static readonly zipDeflatedMethod: number = 8;
   public static readonly retryAfterMaxSeconds: number = 60;
   public static readonly retryAfterPattern: RegExp = /^[0-9]+$/;
   public static readonly actionsValue: string = "true";
@@ -116,6 +134,7 @@ export class Resources {
   public static readonly shaField: string = "sha";
   public static readonly textEncoding: BufferEncoding = "utf8";
   public static readonly timeoutErrorName: string = "TimeoutError";
+  public static readonly titleField: string = "title";
   public static readonly tokenVariable: string = "GITHUB_TOKEN";
   public static readonly totalCountField: string = "total_count";
   public static readonly treeField: string = "tree";
@@ -125,6 +144,10 @@ export class Resources {
   public static readonly unprocessableStatus: number = 422;
   public static readonly vendorFolderName: string = "node_modules";
   public static readonly versionsPageSize: number = 100;
+
+  public static formatApiUrl(apiUrl: string, resource: string): string {
+    return `${apiUrl}${Resources.pathSeparator}${resource}`;
+  }
 
   public static formatErrorAnnotation(message: string): string {
     const escaped = Resources.annotationEscapes.reduce((text, [character, escape]) => text.replaceAll(character, escape), message);

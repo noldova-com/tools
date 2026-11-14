@@ -117,6 +117,15 @@ export class GitHubPackagesTests {
     Assert.isFalse(failure.includes(GitHubPackagesTests.TOKEN));
   }
 
+  @TestMethod
+  public async keepsWhyAnAnswerIsNotJsonAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({ [GitHubPackagesTests.SOURCE]: GitHubPackagesTests.PRIVATE_SOURCE, [GitHubPackagesTests.FIRST_PAGE]: new GitHubApiAnswer(200, "not JSON") });
+
+    const exception = await Assert.throwsAsync(() => GitHubPackagesTests.createPackages(api).readVersionsAsync(GitHubPackagesTests.PACKAGE), JsonException);
+
+    Assert.isTrue(exception.cause instanceof SyntaxError);
+  }
+
   @TestData("not JSON")
   @TestData("{ \"id\": 1, \"name\": \"0.0.1\" }")
   @TestData("[1]")

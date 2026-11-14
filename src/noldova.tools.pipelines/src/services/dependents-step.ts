@@ -17,6 +17,7 @@ import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import type { IUpdateHost } from "../interfaces/i-update-host.js";
 import { DependentsUpdate, type PinTarget } from "../models/dependents-update.js";
+import { HandledFailure } from "../models/handled-failure.js";
 import { RelockedFiles } from "../models/relocked-files.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
@@ -121,7 +122,7 @@ export class DependentsStep implements IStep {
       return await action();
     }
     catch (error: unknown) {
-      if (!(error instanceof Error))
+      if (!HandledFailure.isHandled(error))
         throw error;
 
       return StepResult.failed(Resources.formatRepositoryFailed(repository, error.message));
@@ -188,7 +189,7 @@ export class DependentsStep implements IStep {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatRelockedElsewhere(relocked.commit, head)));
 
     const tracked = new Set((await git.listTrackedFilesAsync()).map(t => t.filePath)
-      .filter(t => [Resources.manifestFileName, Resources.lockFileName].includes(path.posix.basename(t))));
+      .filter(t => Resources.installFileNames.includes(path.posix.basename(t))));
     const untracked = Object.keys(relocked.files).filter(t => !tracked.has(t));
     if (untracked.length > 0)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatRelockedUntracked(untracked)));

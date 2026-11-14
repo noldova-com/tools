@@ -59,6 +59,10 @@ Every pull request into `main` must pass its checks before it merges.
 | Build and test / Linux x64 | `.github/workflows/build-and-test.yml`, the "Build and test" workflow, calls `.github`'s shared `build-and-test.yml` with the tool from this repository: one job, on the GitHub-hosted runner the shared settings name for Linux x64; `npm run build` installs the locked packages with `npm ci --ignore-scripts`, then builds, packs and installs every package; the tool is installed from the packed archives, and its steps check that the Node.js and npm versions are the ones the shared settings name, that `.gitattributes` holds `* text=auto eol=lf` and every tracked text file uses LF line endings and ends with exactly one newline; `npm test` runs every test with the coverage gate; the build and the tests leave every tracked file unchanged; a second build of the same commit, in another folder, packs byte-identical archives; and `pipelines archive` checks the archives as the release does. |
 | Build and test / All targets | Passes only when "Build and test / Versions / Versions" and "Build and test / Linux x64" pass. |
 
+The coverage gate has no exclusions: every line, branch and function of both packages' sources is covered.
+One test pauses for a fixed time: `stopsAProgramThatRunsLongerThanItsTimeAsync` in `src/noldova.tools.pipelines/tests/services/process-runner.test.ts` starts a program that would run for a minute and waits half a second for the timeout under test to stop it.
+Tests that need a checkout, a git repository or a clone of their own, such as those that use `git-repository.fixture.ts` and `git-clone.fixture.ts`, make it in a new folder under the system's temporary folder, outside `_build`, so that git never takes it for part of this checkout, and remove the folder when they end.
+
 ## Releases
 
 A maintainer releases both packages with the "Release npm packages" workflow, `.github/workflows/release-npm.yml`, started from `main` with the version, which `version.json` holds at the commit, and the full id of the commit on `main`: in the repository's Actions tab, choose "Release npm packages", then "Run workflow" on `main`, or run

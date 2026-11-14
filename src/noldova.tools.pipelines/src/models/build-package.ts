@@ -26,15 +26,15 @@ export class BuildPackage {
   }
 
   public get sourceFolder(): string {
-    return `${Resources.sourceFolder}/${this.path}`;
+    return Resources.formatPath(Resources.sourceFolder, this.path);
   }
 
   public get buildFolder(): string {
-    return `${Resources.buildFolder}/${this.name}`;
+    return Resources.formatPath(Resources.buildFolder, this.name);
   }
 
   public get testsFolder(): string {
-    return `${Resources.testsFolder}/${this.name}`;
+    return Resources.formatPath(Resources.testsFolder, this.name);
   }
 
   public archiveName(version: string): string {

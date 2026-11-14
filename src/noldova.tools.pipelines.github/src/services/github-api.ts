@@ -47,7 +47,7 @@ export class GitHubApi {
   // address the redirect names.
   public async downloadAsync(resource: string): Promise<Buffer | StepResult> {
     try {
-      const response = await fetch(`${this.apiUrl}/${resource}`, {
+      const response = await fetch(Resources.formatApiUrl(this.apiUrl, resource), {
         headers: {
           [Resources.authorizationHeader]: Resources.formatAuthorization(this.token),
           [Resources.apiVersionHeader]: Resources.apiVersion
@@ -76,7 +76,7 @@ export class GitHubApi {
 
   private async sendAsync(method: string, resource: string, body?: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
     try {
-      const response = await fetch(`${this.apiUrl}/${resource}`, {
+      const response = await fetch(Resources.formatApiUrl(this.apiUrl, resource), {
         method,
         headers: {
           [Resources.acceptHeader]: Resources.apiMediaType,

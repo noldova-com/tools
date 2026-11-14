@@ -26,8 +26,6 @@ import type { ProcessRunner } from "./process-runner.js";
 import type { TypeScript } from "./type-script.js";
 
 export class BuildStep implements IStep {
-  private static readonly INSTALL_FILE_NAMES: readonly string[] = [Resources.packageManifestFileName, Resources.lockFileName];
-
   private readonly git: Git;
   private readonly npm: Npm;
   private readonly typeScript: TypeScript;
@@ -63,7 +61,7 @@ export class BuildStep implements IStep {
       this.restoreInstallFiles();
       this.backUpInstallFiles();
       try {
-        this.listUnbuiltArchives(config, packages, version, this.readFile(Resources.packageManifestFileName));
+        this.listUnbuiltArchives(config, packages, version, this.readFile(Resources.manifestFileName));
         for (const buildPackage of packages)
           await this.buildPackageAsync(buildPackage, version, commit);
       }
@@ -92,14 +90,14 @@ export class BuildStep implements IStep {
   }
 
   private listUnbuiltArchives(config: BuildConfig, packages: readonly BuildPackage[], version: string, manifest: Buffer | null): void {
-    const archives = config.packages.filter(t => !packages.includes(t)).map(t => [t.packageName, `${Resources.packagesFolder}/${t.archiveName(version)}`] as const).filter(([, archive]) => this.isFile(archive));
+    const archives = config.packages.filter(t => !packages.includes(t)).map(t => [t.packageName, Resources.formatPath(Resources.packagesFolder, t.archiveName(version))] as const).filter(([, archive]) => this.isFile(archive));
     if (archives.length === 0)
       return;
 
-    const reader = JsonReader.parse(manifest === null ? Resources.emptyJsonObject : manifest.toString(Resources.textEncoding), Resources.packageManifestFileName);
+    const reader = JsonReader.parse(manifest === null ? Resources.emptyJsonObject : manifest.toString(Resources.textEncoding), Resources.manifestFileName);
     const listed = reader.hasField(Resources.dependenciesField) ? reader.readObject(Resources.dependenciesField).toJson() : {};
     const dependencies = { ...listed, ...Object.fromEntries(archives.map(([name, archive]) => [name, `${Resources.archiveSpecifierPrefix}${archive}`])) };
-    fs.writeFileSync(this.resolve(Resources.packageManifestFileName), `${JSON.stringify({ ...reader.toJson(), [Resources.dependenciesField]: dependencies }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
+    fs.writeFileSync(this.resolve(Resources.manifestFileName), `${JSON.stringify({ ...reader.toJson(), [Resources.dependenciesField]: dependencies }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
   }
 
   private async buildPackageAsync(buildPackage: BuildPackage, version: string, commit: string): Promise<void> {
@@ -143,23 +141,23 @@ export class BuildStep implements IStep {
     if (!packed.isSuccessful)
       throw new BuildException(Resources.formatPackFailed(buildPackage.packageName, packed.exitCode, `${packed.output}${packed.errorOutput}`));
 
-    const installed = await this.npm.installArchivesAsync([`${Resources.currentFolderPrefix}${Resources.packagesFolder}/${buildPackage.archiveName(version)}`]);
+    const installed = await this.npm.installArchivesAsync([`${Resources.currentFolderPrefix}${Resources.formatPath(Resources.packagesFolder, buildPackage.archiveName(version))}`]);
     if (!installed.isSuccessful)
       throw new BuildException(Resources.formatArchivesNotInstalled(installed.exitCode, `${installed.output}${installed.errorOutput}`));
   }
 
   private writeManifest(buildPackage: BuildPackage, version: string, commit: string): void {
-    const manifestPath = `${buildPackage.sourceFolder}/${Resources.packageManifestFileName}`;
+    const manifestPath = Resources.formatPath(buildPackage.sourceFolder, Resources.manifestFileName);
     if (!this.isFile(manifestPath))
       throw new BuildException(Resources.formatBuildFileMissing(buildPackage.packageName, manifestPath));
 
     const text = fs.readFileSync(this.resolve(manifestPath), Resources.textEncoding).replaceAll(Resources.versionPlaceholder, version);
     const manifest = { ...JsonReader.parse(text, manifestPath).toJson(), [Resources.gitHeadField]: commit };
-    fs.writeFileSync(path.join(this.resolve(buildPackage.buildFolder), Resources.packageManifestFileName), `${JSON.stringify(manifest, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
+    fs.writeFileSync(path.join(this.resolve(buildPackage.buildFolder), Resources.manifestFileName), `${JSON.stringify(manifest, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
   }
 
   private async compileAsync(buildPackage: BuildPackage): Promise<void> {
-    const projectPath = `${buildPackage.sourceFolder}/${Resources.sourceProjectPath}`;
+    const projectPath = Resources.formatPath(buildPackage.sourceFolder, Resources.sourceProjectPath);
     const compiled = await this.typeScript.compileAsync(projectPath);
     if (!compiled.isSuccessful)
       throw new BuildException(Resources.formatCompileFailed(projectPath, compiled.exitCode, `${compiled.output}${compiled.errorOutput}`));
@@ -189,7 +187,7 @@ export class BuildStep implements IStep {
     const staging = this.resolve(Resources.restoreStagingFolder);
     fs.rmSync(staging, { recursive: true, force: true });
     fs.mkdirSync(staging, { recursive: true });
-    for (const fileName of BuildStep.INSTALL_FILE_NAMES) {
+    for (const fileName of Resources.installFileNames) {
       const content = this.readFile(fileName);
       if (content !== null)
         fs.writeFileSync(path.join(staging, fileName), content);
@@ -203,7 +201,7 @@ export class BuildStep implements IStep {
     if (!fs.existsSync(backup))
       return;
 
-    for (const fileName of BuildStep.INSTALL_FILE_NAMES) {
+    for (const fileName of Resources.installFileNames) {
       const copy = path.join(backup, fileName);
       if (fs.existsSync(copy))
         fs.copyFileSync(copy, this.resolve(fileName));
@@ -228,9 +226,9 @@ export class BuildStep implements IStep {
   private static listPackageCopies(buildPackage: BuildPackage): readonly (readonly [source: string, filePath: string, isRequired: boolean])[] {
     return [
       [Resources.licenseFileName, Resources.licenseFileName, true],
-      [`${buildPackage.sourceFolder}/${Resources.declarationFilePath}`, Resources.packageDeclarationFilePath, false],
-      [`${buildPackage.sourceFolder}/${Resources.readmeFileName}`, Resources.readmeFileName, true],
-      [`${buildPackage.sourceFolder}/${Resources.noticesFileName}`, Resources.noticesFileName, false]
+      [Resources.formatPath(buildPackage.sourceFolder, Resources.declarationFilePath), Resources.packageDeclarationFilePath, false],
+      [Resources.formatPath(buildPackage.sourceFolder, Resources.readmeFileName), Resources.readmeFileName, true],
+      [Resources.formatPath(buildPackage.sourceFolder, Resources.noticesFileName), Resources.noticesFileName, false]
     ];
   }
 

@@ -6,7 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type { StdioOptions } from "node:child_process";
+import type { StdioNull, StdioOptions, StdioPipe } from "node:child_process";
 import type { BinaryToTextEncoding } from "node:crypto";
 
 export class Resources {
@@ -29,6 +29,7 @@ export class Resources {
   public static readonly credentialFilePattern: RegExp = /(?:^|\/)(?:\.npmrc|\.netrc|\.env(?:\.[^/]+)?|id_rsa|id_dsa|id_ecdsa|id_ed25519|[^/]*\.(?:pem|key|p12|pfx))$/i;
   public static readonly crlfLineEndings: string = "crlf";
   public static readonly dependenciesField: string = "dependencies";
+  public static readonly optionalDependenciesField: string = "optionalDependencies";
   public static readonly dependentsFolderPrefix: string = "pipelines-dependents-";
   public static readonly dependentsStepName: string = "dependents";
   public static readonly dependentsStepUsage: string = "<version> <commit>";
@@ -102,6 +103,7 @@ export class Resources {
   public static readonly majorPartName: string = "major";
   public static readonly millisecondsPerSecond: number = 1000;
   public static readonly manifestFileName: string = "package.json";
+  public static readonly installFileNames: readonly string[] = [Resources.manifestFileName, Resources.lockFileName];
   public static readonly messagePartSeparator: string = "; ";
   public static readonly failedScriptOutputLines: number = 10;
   public static readonly minorPartName: string = "minor";
@@ -123,10 +125,14 @@ export class Resources {
   public static readonly npmIntegrityField: string = "dist.integrity";
   public static readonly lockPackagesField: string = "packages";
   public static readonly nodeModulesSegment: string = "node_modules/";
+  public static readonly nestedNodeModulesSegment: string = "/node_modules/";
+  public static readonly trailingSlashPattern: RegExp = /\/$/;
   public static readonly npmLockTimeoutMilliseconds: number = 300_000;
   public static readonly npmJsonValues: readonly string[] = ["--json"];
   public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmNotFoundCode: string = "E404";
+  public static readonly codeField: string = "code";
+  public static readonly moduleNotFoundCode: string = "MODULE_NOT_FOUND";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
   public static readonly npmProgram: string = "npm";
   public static readonly npmPublishValues: readonly string[] = ["publish"];
@@ -174,11 +180,10 @@ export class Resources {
   public static readonly updateIssueSummary: string = "A release moved packages this repository pins exactly";
   public static readonly textEncoding: BufferEncoding = "utf8";
   public static readonly lockedDependencyFields: readonly string[] = ["dependencies", "devDependencies", "optionalDependencies"];
-  public static readonly standInArchiveExtension: string = ".tgz";
-  public static readonly standInEntryName: string = "package/package.json";
   public static readonly standInFolderSuffix: string = "-own";
   public static readonly standInVersion: string = "0.0.0";
   public static readonly tarBlockSize: number = 512;
+  public static readonly tarEndBlockCount: number = 2;
   public static readonly tarChecksumOffset: number = 148;
   public static readonly tarHeaderEncoding: BufferEncoding = "ascii";
   public static readonly usesPattern: RegExp = /^([ \t]*(?:-[ \t]+)?uses:[ \t]*)([^@\s#]+)@([0-9a-f]{40})(?:[ \t]+#[ \t]*(\S+))?/gm;
@@ -219,10 +224,8 @@ export class Resources {
   public static readonly installedStepUsage: string = "[<folder>]";
   public static readonly licenseFileName: string = "LICENSE";
   public static readonly listCopiesOption: string = "--list-copies";
-  public static readonly lockFilePath: string = "package-lock.json";
   public static readonly manifestIndentation: number = 2;
   public static readonly nodeModulesFolder: string = "node_modules";
-  public static readonly nodeModulesPathPrefix: string = "node_modules/";
   public static readonly noticesFileName: string = "THIRD-PARTY-NOTICES.txt";
   public static readonly npmCommandLineMissing: string = "npm_execpath is not set; run the step through an npm script, such as npm run build.";
   public static readonly npmCommandLineVariable: string = "npm_execpath";
@@ -233,7 +236,6 @@ export class Resources {
   public static readonly optionPrefix: string = "--";
   public static readonly optionalField: string = "optional";
   public static readonly packageDeclarationFilePath: string = "api/index.d.ts";
-  public static readonly packageManifestFileName: string = "package.json";
   public static readonly packageNamePrefix: string = "noldova.";
   public static readonly defaultPackageScope: string = "@noldova";
   public static readonly packageScopePattern: RegExp = /^@[a-z0-9][a-z0-9._-]*$/;
@@ -270,6 +272,7 @@ export class Resources {
   public static readonly versionOption: string = "--version";
   public static readonly versionPlaceholder: string = "__VERSION__";
   public static readonly visibleProcessStreams: StdioOptions = "inherit";
+  public static readonly pipedProcessStreams: [StdioNull, StdioPipe, StdioPipe] = ["ignore", "pipe", "pipe"];
   public static readonly versionInvalid: string = "The text is not a version.";
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
@@ -447,7 +450,23 @@ export class Resources {
   }
 
   public static formatArchiveName(packageName: string, version: string): string {
-    return `${packageName.replace(/^@/, "").replace("/", "-")}-${version}.tgz`;
+    return `${packageName.replace(/^@/, "").replace("/", "-")}-${version}${Resources.archiveFileExtension}`;
+  }
+
+  public static formatPath(folder: string, filePath: string): string {
+    return `${folder}${Resources.pathSeparator}${filePath}`;
+  }
+
+  public static formatFolderPrefix(folder: string): string {
+    return `${folder}${Resources.pathSeparator}`;
+  }
+
+  public static formatNestedLockKey(base: string, name: string): string {
+    return `${base}${Resources.nestedNodeModulesSegment}${name}`;
+  }
+
+  public static formatActionPin(prefix: string, action: string, commit: string, tag: string): string {
+    return `${prefix}${action}@${commit} # ${tag}`;
   }
 
   public static formatArchiveFilePath(archiveName: string, filePath: string): string {
@@ -603,7 +622,7 @@ export class Resources {
   }
 
   public static formatNotServed(specifier: string, waitMilliseconds: number): string {
-    return `${specifier} was published, but the registry did not serve it within ${waitMilliseconds / 1_000} seconds.`;
+    return `${specifier} was published, but the registry did not serve it within ${waitMilliseconds / Resources.millisecondsPerSecond} seconds.`;
   }
 
   public static formatPublished(specifier: string): string {
@@ -706,8 +725,16 @@ export class Resources {
     return `The lock scripts name lock files the repository doesn't track: ${lockFilePaths.join(", ")}.`;
   }
 
+  public static formatLockManifestsUntracked(lockFilePaths: readonly string[]): string {
+    return `The repository tracks no ${Resources.manifestFileName} beside these lock files: ${lockFilePaths.join(", ")}.`;
+  }
+
+  public static formatManifestsNotObjects(manifestPaths: readonly string[]): string {
+    return `These manifests don't hold a JSON object: ${manifestPaths.join(", ")}.`;
+  }
+
   public static keepLastOutputLines(output: string): string {
-    return output.split(Resources.lineBreakPattern).filter(t => t.trim().length > 0).slice(-Resources.failedScriptOutputLines).join("\n");
+    return output.split(Resources.lineBreakPattern).filter(t => t.trim().length > 0).slice(-Resources.failedScriptOutputLines).join(Resources.lineSeparator);
   }
 
   public static formatLockScriptFailed(lockFilePath: string, script: string, exitCode: number | null, errorOutput: string): string {

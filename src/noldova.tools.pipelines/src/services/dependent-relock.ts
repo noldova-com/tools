@@ -97,6 +97,14 @@ export class DependentRelock {
     if (moves.length === 0)
       return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
 
+    const notObjects = manifestPaths.filter(t => !DependentRelock.isObject(JSON.parse(fs.readFileSync(path.join(directory, t), Resources.textEncoding))));
+    if (notObjects.length > 0)
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatManifestsNotObjects(notObjects)));
+
+    const unmanifested = lockFilePaths.filter(t => !lockScripts.has(t) && !manifestPaths.includes(path.posix.join(path.posix.dirname(t), Resources.manifestFileName)));
+    if (unmanifested.length > 0)
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockManifestsUntracked(unmanifested)));
+
     const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
@@ -166,7 +174,7 @@ export class DependentRelock {
     const text = fs.readFileSync(manifestPath, Resources.textEncoding);
     const manifest: Record<string, unknown> = JSON.parse(text);
     for (const [index, [packageName, pin]] of [...ownLock.pins].entries()) {
-      const archive = path.join(standIns, `${index}${Resources.standInArchiveExtension}`);
+      const archive = path.join(standIns, `${index}${Resources.archiveFileExtension}`);
       DependentRelock.writeStandIn(archive, DependentRelock.createStandIn(packageName, pin.manifestPaths.map(t => DependentRelock.readManifest(directory, t)), owners));
       for (const name of Resources.lockedDependencyFields) {
         const specifiers = DependentRelock.readField(manifest, name);
@@ -270,7 +278,7 @@ export class DependentRelock {
   }
 
   private async readPeersAsync(directory: string, packageName: string, version: string, peers: Map<string, ReadonlyMap<string, string>>): Promise<ReadonlyMap<string, string>> {
-    const specifier = `${packageName}@${version}`;
+    const specifier = Resources.formatSpecifier(packageName, version);
     const known = peers.get(specifier);
     if (known !== undefined)
       return known;
@@ -315,7 +323,7 @@ export class DependentRelock {
       const manifest = DependentRelock.readManifest(directory, manifestPath);
       for (const [packageName, version] of [...Object.entries(manifest.dependencies ?? {}), ...Object.entries(manifest.devDependencies ?? {})])
         if (Resources.exactVersionPattern.test(version))
-          pins.set(`${packageName}@${version}`, [packageName, version]);
+          pins.set(Resources.formatSpecifier(packageName, version), [packageName, version]);
     }
 
     return [...pins.values()];
@@ -384,10 +392,10 @@ export class DependentRelock {
       Object.fromEntries(entries.flatMap(t => Object.entries(t ?? {})).filter(([t]) => !owners.has(t)));
 
     return {
-      name: packageName,
-      version: Resources.standInVersion,
-      dependencies: external(manifests.map(t => t.dependencies)),
-      optionalDependencies: external(manifests.map(t => t.optionalDependencies))
+      [Resources.nameField]: packageName,
+      [Resources.versionField]: Resources.standInVersion,
+      [Resources.dependenciesField]: external(manifests.map(t => t.dependencies)),
+      [Resources.optionalDependenciesField]: external(manifests.map(t => t.optionalDependencies))
     };
   }
 
@@ -396,21 +404,21 @@ export class DependentRelock {
     const content = Buffer.from(JSON.stringify(manifest), Resources.textEncoding);
     const block = Resources.tarBlockSize;
     const header = Buffer.alloc(block);
-    for (const [offset, value] of Resources.formatTarHeaderFields(Resources.standInEntryName, content.length))
+    for (const [offset, value] of Resources.formatTarHeaderFields(Resources.archiveManifestPath, content.length))
       header.write(value, offset, Resources.tarHeaderEncoding);
     header.write(Resources.formatTarChecksum(header.reduce((sum, t) => sum + t, 0)), Resources.tarChecksumOffset, Resources.tarHeaderEncoding);
     const body = Buffer.alloc(Math.ceil(content.length / block) * block);
     content.copy(body);
-    fs.writeFileSync(archivePath, zlib.gzipSync(Buffer.concat([header, body, Buffer.alloc(block * 2)])));
+    fs.writeFileSync(archivePath, zlib.gzipSync(Buffer.concat([header, body, Buffer.alloc(block * Resources.tarEndBlockCount)])));
   }
 
   private static leaveOutOwn(lockPath: string, ownNames: ReadonlySet<string>, manifest: Readonly<Record<string, unknown>>): void {
     const lock: LockedPackages = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
-    const isOwn = (key: string): boolean => key.split(Resources.nodeModulesSegment).slice(1).some(t => ownNames.has(t.replace(/\/$/, "")));
+    const isOwn = (key: string): boolean => key.split(Resources.nodeModulesSegment).slice(1).some(t => ownNames.has(t.replace(Resources.trailingSlashPattern, "")));
     const entries = Object.entries(lock.packages)
       .filter(([key]) => !isOwn(key))
       .map(([key, entry]): [string, unknown] => [key, key.length === 0 ? DependentRelock.restoreRoot(entry, manifest) : entry]);
-    fs.writeFileSync(lockPath, `${JSON.stringify({ ...lock, packages: Object.fromEntries(entries) }, null, 2)}\n`);
+    fs.writeFileSync(lockPath, `${JSON.stringify({ ...lock, [Resources.lockPackagesField]: Object.fromEntries(entries) }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
   }
 
   private static restoreRoot(entry: LockedPackage, manifest: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
@@ -426,10 +434,14 @@ export class DependentRelock {
     return restored;
   }
 
+  private static isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
   private static readField(manifest: Readonly<Record<string, unknown>>, field: string): Record<string, string> {
     const value = manifest[field];
 
-    return typeof value === "object" && value !== null && !Array.isArray(value)
+    return DependentRelock.isObject(value)
       ? Object.fromEntries(Object.entries(value).filter((t: [string, unknown]): t is [string, string] => typeof t[1] === "string"))
       : {};
   }
@@ -465,8 +477,8 @@ export class DependentRelock {
 
     const entries = Object.entries(lock.packages);
     const unlocked = entries.filter(([key, entry]) => DependentRelock.isMovedOrDependent(key, entry, packageNames)).map(([key]) => key);
-    const kept = entries.filter(([key]) => !unlocked.some(t => key === t || key.startsWith(`${t}/`)));
-    fs.writeFileSync(fullPath, `${JSON.stringify({ ...lock, packages: Object.fromEntries(kept) }, null, 2)}\n`);
+    const kept = entries.filter(([key]) => !unlocked.some(t => key === t || key.startsWith(Resources.formatFolderPrefix(t))));
+    fs.writeFileSync(fullPath, `${JSON.stringify({ ...lock, [Resources.lockPackagesField]: Object.fromEntries(kept) }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
   }
 
   private static isMovedOrDependent(key: string, entry: LockedPackage, packageNames: ReadonlySet<string>): boolean {
@@ -481,8 +493,8 @@ export class DependentRelock {
   private static findLocked(packages: Readonly<Record<string, LockedPackage>>, key: string, name: string): LockedPackage | undefined {
     let base = key;
     for (;;) {
-      const found = packages[`${base}/${Resources.nodeModulesSegment}${name}`];
-      const index = base.lastIndexOf(`/${Resources.nodeModulesSegment}`);
+      const found = packages[Resources.formatNestedLockKey(base, name)];
+      const index = base.lastIndexOf(Resources.nestedNodeModulesSegment);
       if (found !== undefined || index < 0)
         return found ?? packages[`${Resources.nodeModulesSegment}${name}`];
 

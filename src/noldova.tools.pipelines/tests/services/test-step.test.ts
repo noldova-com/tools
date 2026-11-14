@@ -248,6 +248,16 @@ export class TestStepTests {
   }
 
   @TestMethod
+  public async endsWithAFailureToFindTheTestingPackageThatIsNotAMissingPackageAsync(): Promise<void> {
+    using checkout = new Checkout({ "node_modules/@noldova/context.testing/package.json": "{\"name\":\"@noldova/context.testing\",\"exports\":{\"./other\":\"./other.js\"}}" });
+
+    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "", "[]"], checkout.directory);
+
+    Assert.areEqual(1, result.exitCode);
+    Assert.isTrue(result.errorOutput.includes("ERR_PACKAGE_PATH_NOT_EXPORTED"), result.errorOutput);
+  }
+
+  @TestMethod
   public async failsToReportWithoutTheTestingPackageAsync(): Promise<void> {
     using checkout = new Checkout();
 
