@@ -97,6 +97,14 @@ export class DependentRelock {
     if (moves.length === 0)
       return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
 
+    const notObjects = manifestPaths.filter(t => !DependentRelock.isObject(JSON.parse(fs.readFileSync(path.join(directory, t), Resources.textEncoding))));
+    if (notObjects.length > 0)
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatManifestsNotObjects(notObjects)));
+
+    const unmanifested = lockFilePaths.filter(t => !lockScripts.has(t) && !manifestPaths.includes(path.posix.join(path.posix.dirname(t), Resources.manifestFileName)));
+    if (unmanifested.length > 0)
+      return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockManifestsUntracked(unmanifested)));
+
     const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
@@ -426,10 +434,14 @@ export class DependentRelock {
     return restored;
   }
 
+  private static isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
   private static readField(manifest: Readonly<Record<string, unknown>>, field: string): Record<string, string> {
     const value = manifest[field];
 
-    return typeof value === "object" && value !== null && !Array.isArray(value)
+    return DependentRelock.isObject(value)
       ? Object.fromEntries(Object.entries(value).filter((t: [string, unknown]): t is [string, string] => typeof t[1] === "string"))
       : {};
   }

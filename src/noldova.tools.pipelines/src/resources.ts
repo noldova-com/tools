@@ -725,6 +725,14 @@ export class Resources {
     return `The lock scripts name lock files the repository doesn't track: ${lockFilePaths.join(", ")}.`;
   }
 
+  public static formatLockManifestsUntracked(lockFilePaths: readonly string[]): string {
+    return `The repository tracks no ${Resources.manifestFileName} beside these lock files: ${lockFilePaths.join(", ")}.`;
+  }
+
+  public static formatManifestsNotObjects(manifestPaths: readonly string[]): string {
+    return `These manifests don't hold a JSON object: ${manifestPaths.join(", ")}.`;
+  }
+
   public static keepLastOutputLines(output: string): string {
     return output.split(Resources.lineBreakPattern).filter(t => t.trim().length > 0).slice(-Resources.failedScriptOutputLines).join(Resources.lineSeparator);
   }

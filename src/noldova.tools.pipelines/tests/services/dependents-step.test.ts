@@ -585,6 +585,26 @@ export class DependentsStepTests {
       result.message.split("\n").slice(1).join("\n"));
   }
 
+  @TestData("tools/package-lock.json", "{}\n", "The repository tracks no package.json beside these lock files: tools/package-lock.json.")
+  @TestData("tools/package.json", "null\n", "These manifests don't hold a JSON object: tools/package.json.")
+  @TestData("tools/package.json", "[]\n", "These manifests don't hold a JSON object: tools/package.json.")
+  @TestMethod
+  public async failsARepositoryWhoseManifestsItCannotReadAndGoesOnAsync(filePath: string, content: string, message: string): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using broken = DependentsStepTests.createTarget({ ...DependentsStepTests.PINNED, [filePath]: content });
+    using works = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/broken", broken);
+    host.repositories.set("noldova-com/works", works);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      [`noldova-com/broken: ${message}`, "noldova-com/works: moved 3 pins in https://example.test/noldova-com/works/pull/1"].join("\n"),
+      result.message.split("\n").slice(1).join("\n"));
+  }
+
   @TestMethod
   public async rejectsWithABugInOneRepositoryAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
