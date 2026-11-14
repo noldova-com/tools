@@ -47,6 +47,23 @@ export class TypeScriptTests {
       const exception = await Assert.throwsAsync(() => new TypeScript(new RecordingRunner(), directory).compileAsync("tsconfig.json"), BuildException);
 
       Assert.areEqual("typescript is not installed; the repository's devDependencies name it.", exception.message);
+      Assert.areEqual("MODULE_NOT_FOUND", exception.cause instanceof Error ? Reflect.get(exception.cause, "code") : null);
+    }
+    finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  @TestMethod
+  public async passesOnAFailureToFindTypeScriptThatIsNotAMissingPackageAsync(): Promise<void> {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "tools-pipelines-"));
+    try {
+      fs.mkdirSync(path.join(directory, "node_modules", "typescript"), { recursive: true });
+      fs.writeFileSync(path.join(directory, "node_modules", "typescript", "package.json"), "{\"name\":\"typescript\",\"exports\":{\".\":\"./index.js\"}}");
+
+      const rejection = await new TypeScript(new RecordingRunner(), directory).compileAsync("tsconfig.json").then(() => null, (error: unknown) => error);
+
+      Assert.areEqual("ERR_PACKAGE_PATH_NOT_EXPORTED", rejection instanceof Error ? Reflect.get(rejection, "code") : null);
     }
     finally {
       fs.rmSync(directory, { recursive: true, force: true });

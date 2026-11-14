@@ -63,7 +63,7 @@ export class TestStep implements IStep {
   private async testAsync(config: BuildConfig, options: ReadonlySet<string>, filters: readonly string[]): Promise<StepResult> {
     const projectValues: string[] = [];
     for (const buildPackage of config.packages) {
-      const projectPath = `${buildPackage.sourceFolder}/${Resources.testsProjectPath}`;
+      const projectPath = Resources.formatPath(buildPackage.sourceFolder, Resources.testsProjectPath);
       if (fs.statSync(this.resolve(projectPath), { throwIfNoEntry: false })?.isFile() !== true)
         continue;
 
@@ -98,7 +98,7 @@ export class TestStep implements IStep {
     if (filters.length > 0)
       return problems.length === 0 ? StepResult.succeeded(Resources.filteredCoverageSkipped) : StepResult.failed([...problems, Resources.filteredCoverageSkipped].join(Resources.lineSeparator));
 
-    const projects = config.packages.map(t => [t.name, this.resolve(`${Resources.nodeModulesFolder}/${t.packageName}`), this.resolve(`${t.sourceFolder}/${Resources.sourceFolder}`)]);
+    const projects = config.packages.map(t => [t.name, this.resolve(Resources.formatPath(Resources.nodeModulesFolder, t.packageName)), this.resolve(Resources.formatPath(t.sourceFolder, Resources.sourceFolder))]);
     const skipDetails = options.has(Resources.skipCoverageDetailsOption) ? Resources.enabledValue : "";
     const coverageExitCode = await this.processRunner.runVisibleAsync(process.execPath, [TestStep.COVERAGE_ENTRY_POINT_PATH, coverageFolder, skipDetails, JSON.stringify(projects)], this.typeScript.workingDirectory, {});
     if (coverageExitCode === Resources.failureExitCode)

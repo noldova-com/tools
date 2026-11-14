@@ -64,7 +64,7 @@ export class GitHubTags implements ITagHost {
     if (connection instanceof StepResult)
       return connection;
 
-    const answer = await this.requestAsync(connection, Resources.createMethod, Resources.referencesPath, { ref: Resources.formatTagReference(tag), sha: commit });
+    const answer = await this.requestAsync(connection, Resources.createMethod, Resources.referencesPath, { [Resources.refField]: Resources.formatTagReference(tag), [Resources.shaField]: commit });
     if (answer instanceof StepResult)
       return answer;
     if (answer.status === Resources.createdStatus)

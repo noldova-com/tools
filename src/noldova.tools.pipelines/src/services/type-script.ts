@@ -9,6 +9,8 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 
+import { ExceptionOptions } from "@noldova/context.exceptions";
+
 import { BuildException } from "../exceptions/build.exception.js";
 import type { ProcessResult } from "../models/process-result.js";
 import { Resources } from "../resources.js";
@@ -30,10 +32,13 @@ export class TypeScript {
   private findCompiler(): string {
     let manifestPath: string;
     try {
-      manifestPath = createRequire(path.resolve(this.workingDirectory, Resources.packageManifestFileName)).resolve(Resources.typeScriptManifestPath);
+      manifestPath = createRequire(path.resolve(this.workingDirectory, Resources.manifestFileName)).resolve(Resources.typeScriptManifestPath);
     }
-    catch {
-      throw new BuildException(Resources.typeScriptMissing);
+    catch (error: unknown) {
+      if (!(error instanceof Error && Reflect.get(error, Resources.codeField) === Resources.moduleNotFoundCode))
+        throw error;
+
+      throw new BuildException(Resources.typeScriptMissing, new ExceptionOptions(error));
     }
 
     return path.join(path.dirname(manifestPath), Resources.typeScriptCompilerPath);

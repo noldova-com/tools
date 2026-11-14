@@ -8,6 +8,7 @@
 
 import type { IRegistryHost } from "../interfaces/i-registry-host.js";
 import type { IStep } from "../interfaces/i-step.js";
+import { HandledFailure } from "../models/handled-failure.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -122,7 +123,7 @@ export class PruneStep implements IStep {
       return await this.registryHost.deleteVersionAsync(packageName, version);
     }
     catch (error: unknown) {
-      if (!(error instanceof Error))
+      if (!HandledFailure.isHandled(error))
         throw error;
 
       return StepResult.failed(Resources.formatPruneDeleteRejected(Resources.formatSpecifier(packageName, version), error.message));
