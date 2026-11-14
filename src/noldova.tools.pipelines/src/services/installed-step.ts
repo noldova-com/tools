@@ -38,8 +38,8 @@ export class InstalledStep implements IStep {
     try {
       const directory = path.resolve(this.workingDirectory, folder);
       const ownNames = new Set(InstalledStep.hasFile(path.join(directory, Resources.buildConfigFilePath)) ? BuildConfig.read(directory).packageNames : []);
-      const lockFilePath = path.posix.join(folder, Resources.lockFilePath);
-      const locked = InstalledStep.readPackages(directory, Resources.lockFilePath);
+      const lockFilePath = path.posix.join(folder, Resources.lockFileName);
+      const locked = InstalledStep.readPackages(directory, Resources.lockFileName);
       if (locked === null)
         return StepResult.failed(Resources.formatLockFileMissing(lockFilePath));
 
@@ -101,9 +101,9 @@ export class InstalledStep implements IStep {
   }
 
   private static readPackageName(entryPath: string): string {
-    const index = entryPath.lastIndexOf(Resources.nodeModulesPathPrefix);
+    const index = entryPath.lastIndexOf(Resources.nodeModulesSegment);
 
-    return index < 0 ? entryPath : entryPath.slice(index + Resources.nodeModulesPathPrefix.length);
+    return index < 0 ? entryPath : entryPath.slice(index + Resources.nodeModulesSegment.length);
   }
 
   private static readField(entry: JsonValue, field: string): JsonValue | undefined {

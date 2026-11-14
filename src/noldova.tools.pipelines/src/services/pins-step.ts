@@ -13,6 +13,7 @@ import path from "node:path";
 import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import type { IUpdateHost } from "../interfaces/i-update-host.js";
+import { HandledFailure } from "../models/handled-failure.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -134,7 +135,7 @@ export class PinsStep implements IStep {
       return await this.updateAsync(update, repository, directory);
     }
     catch (error: unknown) {
-      if (!(error instanceof Error))
+      if (!HandledFailure.isHandled(error))
         throw error;
 
       return StepResult.failed(Resources.formatRepositoryFailed(repository, error.message));
@@ -150,7 +151,7 @@ export class PinsStep implements IStep {
     const filePaths = (await git.listTrackedFilesAsync()).map(t => t.filePath);
     const actions = filePaths.some(t => Resources.dependabotFilePaths.includes(t)) ? new Map<string, ActionPin>() : update.actions;
     const owner = repository.slice(0, repository.indexOf(Resources.repositorySeparator));
-    const workflowPaths = filePaths.filter(t => t.startsWith(`${Resources.workflowsFolderPath}/`) && PinsStep.isWorkflow(t));
+    const workflowPaths = filePaths.filter(t => t.startsWith(Resources.formatFolderPrefix(Resources.workflowsFolderPath)) && PinsStep.isWorkflow(t));
     const ancestors = await this.readAncestorsAsync(workflowPaths.map(t => path.join(directory, t)), update, owner);
     const changes = workflowPaths.map(t => PinsStep.movePins(path.join(directory, t), t, update, actions, ancestors, owner));
     const moves = changes.flatMap(t => t.moves);
@@ -213,7 +214,7 @@ export class PinsStep implements IStep {
         }
 
         moves.push(Resources.formatWorkflowPinMoved(filePath, action, tag ?? found, update.tag));
-        return `${prefix}${action}@${update.commit} # ${update.tag}`;
+        return Resources.formatActionPin(prefix, action, update.commit, update.tag);
       }
 
       const target = actions.get(action);
@@ -221,7 +222,7 @@ export class PinsStep implements IStep {
         return pin;
 
       (target.version.major === version.major ? moves : majors).push(Resources.formatWorkflowPinMoved(filePath, action, tag as string, target.tag));
-      return `${prefix}${action}@${target.commit} # ${target.tag}`;
+      return Resources.formatActionPin(prefix, action, target.commit, target.tag);
     });
     if (moves.length + majors.length > 0)
       fs.writeFileSync(fullPath, text);

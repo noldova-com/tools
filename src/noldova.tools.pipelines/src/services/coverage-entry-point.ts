@@ -16,9 +16,12 @@ import { Resources } from "../resources.js";
 const values = process.argv.slice(2);
 let modulePath: string | null = null;
 try {
-  modulePath = createRequire(path.resolve(Resources.packageManifestFileName)).resolve(Resources.testingPackageName);
+  modulePath = createRequire(path.resolve(Resources.manifestFileName)).resolve(Resources.testingPackageName);
 }
-catch {
+catch (error: unknown) {
+  if (!(error instanceof Error && Reflect.get(error, Resources.codeField) === Resources.moduleNotFoundCode))
+    throw error;
+
   process.stderr.write(`${Resources.testingMissing}${Resources.lineSeparator}`);
   process.exitCode = Resources.coverageUnreadExitCode;
 }

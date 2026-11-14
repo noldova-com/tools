@@ -12,6 +12,7 @@ import path from "node:path";
 
 import type { IStep } from "../interfaces/i-step.js";
 import { DependentsUpdate } from "../models/dependents-update.js";
+import { HandledFailure } from "../models/handled-failure.js";
 import { RelockedFiles } from "../models/relocked-files.js";
 import { StepResult } from "../models/step-result.js";
 import { Resources } from "../resources.js";
@@ -40,7 +41,7 @@ export class RelockStep implements IStep {
     for (const value of scriptValues) {
       const index = value.indexOf(Resources.lockScriptSeparator);
       const lockFilePath = value.slice(0, index);
-      const script = value.slice(index + 1);
+      const script = value.slice(index + Resources.lockScriptSeparator.length);
       if (index <= 0 || lockScripts.has(lockFilePath) || !Resources.lockScriptPattern.test(script))
         return StepResult.failed(Resources.formatLockScriptInvalid(value));
 
@@ -58,7 +59,7 @@ export class RelockStep implements IStep {
       return await this.relock.relockAsync(update, repository, this.workingDirectory, lockScripts);
     }
     catch (error: unknown) {
-      if (!(error instanceof Error))
+      if (!HandledFailure.isHandled(error))
         throw error;
 
       return StepResult.failed(Resources.formatRepositoryFailed(repository, error.message));

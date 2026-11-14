@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { ExceptionOptions } from "@noldova/context.exceptions";
 import { JsonException, JsonReader } from "@noldova/context.json";
 import { StepResult } from "@noldova/tools.pipelines";
 
@@ -39,8 +40,8 @@ export class GitHubAnswer {
     try {
       value = JSON.parse(this.text);
     }
-    catch {
-      throw new JsonException(Resources.answerNotJson, this.resource);
+    catch (error: unknown) {
+      throw new JsonException(Resources.answerNotJson, this.resource, new ExceptionOptions(error));
     }
 
     return JsonReader.fromValue({ [Resources.itemsField]: value }, this.resource).readObjectArray(Resources.itemsField);

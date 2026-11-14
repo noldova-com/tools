@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, DependentsStep, Git, Npm, ProcessResult, ProcessRunner, RelockedFiles, StepResult, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, DependentsStep, Git, Npm, ProcessException, ProcessResult, ProcessRunner, RelockedFiles, StepResult, Tar } from "@noldova/tools.pipelines";
 
 import { FakeUpdateHost, RecordingOutput } from "./fake-update-host.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
@@ -575,7 +575,7 @@ export class DependentsStepTests {
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/broken", broken);
     host.repositories.set("noldova-com/works", works);
-    host.thrown.set("noldova-com/broken", new Error("git broke"));
+    host.thrown.set("noldova-com/broken", new ProcessException("git", "git broke"));
 
     const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
 
@@ -583,6 +583,20 @@ export class DependentsStepTests {
     Assert.areEqual(
       ["noldova-com/broken: git broke", "noldova-com/works: moved 3 pins in https://example.test/noldova-com/works/pull/1"].join("\n"),
       result.message.split("\n").slice(1).join("\n"));
+  }
+
+  @TestMethod
+  public async rejectsWithABugInOneRepositoryAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const bug = new TypeError("bug");
+    host.thrown.set("noldova-com/pinned", bug);
+
+    const rejection = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]).then(() => null, (error: unknown) => error);
+
+    Assert.areEqual(bug, rejection);
   }
 
   @TestMethod

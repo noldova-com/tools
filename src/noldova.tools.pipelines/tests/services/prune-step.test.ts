@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { ArchiveStep, Git, type IRegistryHost, Npm, ProcessRunner, PruneStep, StepResult, Tar } from "@noldova/tools.pipelines";
 
@@ -328,15 +329,27 @@ export class PruneStepTests {
   public async keepsTheDeletedLinesWhenADeleteRejectsAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PruneStepTests.FILES);
-    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3", "0.0.2"], "@noldova/b": ["0.0.4", "0.0.3"] }, {}, { "@noldova/a@0.0.2": new TypeError("fetch failed") });
+    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3", "0.0.2"], "@noldova/b": ["0.0.4", "0.0.3"] }, {}, { "@noldova/a@0.0.2": new JsonException("is not JSON", "DELETE @noldova/a@0.0.2") });
 
     const result = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]);
 
     Assert.isFalse(result.isSuccessful);
-    Assert.areEqual("@noldova/a@0.0.3 deleted.\nDeleting @noldova/a@0.0.2 failed: fetch failed", result.message);
+    Assert.areEqual("@noldova/a@0.0.3 deleted.\nDeleting @noldova/a@0.0.2 failed: DELETE @noldova/a@0.0.2: is not JSON", result.message);
     Assert.areEqual(
       ["read @noldova/a", "read @noldova/b", "read lock files", "delete @noldova/a@0.0.3", "delete @noldova/a@0.0.2"].join("\n"),
       host.calls.join("\n"));
+  }
+
+  @TestMethod
+  public async passesOnABugInADeleteAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PruneStepTests.FILES);
+    const bug = new TypeError("bug");
+    const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3"], "@noldova/b": ["0.0.4"] }, {}, { "@noldova/a@0.0.3": bug });
+
+    const rejection = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]).then(() => null, (error: unknown) => error);
+
+    Assert.areEqual(bug, rejection);
   }
 
   @TestMethod

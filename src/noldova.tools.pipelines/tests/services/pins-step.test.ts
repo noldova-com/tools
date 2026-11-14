@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { Git, PinsStep, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
+import { Git, PinsStep, ProcessException, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
 
 import { FakeUpdateHost, RecordingOutput } from "./fake-update-host.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
@@ -325,7 +325,7 @@ export class PinsStepTests {
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/broken", broken);
     host.repositories.set("noldova-com/works", works);
-    host.thrown.set("noldova-com/broken", new Error("git broke"));
+    host.thrown.set("noldova-com/broken", new ProcessException("git", "git broke"));
 
     const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]);
 
@@ -333,6 +333,20 @@ export class PinsStepTests {
     Assert.areEqual(
       ["noldova-com/broken: git broke", "noldova-com/works: moved 1 pins in https://example.test/noldova-com/works/pull/1"].join("\n"),
       result.message.split("\n").slice(1).join("\n"));
+  }
+
+  @TestMethod
+  public async rejectsWithABugInOneRepositoryAsync(): Promise<void> {
+    using source = PinsStepTests.createSource();
+    using pinned = PinsStepTests.createTarget(PinsStepTests.createPinned());
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const bug = new TypeError("bug");
+    host.thrown.set("noldova-com/pinned", bug);
+
+    const rejection = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]).then(() => null, (error: unknown) => error);
+
+    Assert.areEqual(bug, rejection);
   }
 
   @TestMethod

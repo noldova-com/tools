@@ -67,7 +67,7 @@ export class LineEndingsStep implements IStep {
       return Resources.formatCheckoutFileMissing(file.filePath);
     if (end.at(-1) !== Resources.newlineByte)
       return Resources.formatFinalNewlineMissing(file.filePath);
-    if (end.length === Resources.fileEndByteCount && end.at(-2) === Resources.newlineByte)
+    if (end.length === Resources.fileEndByteCount && end.at(-Resources.fileEndByteCount) === Resources.newlineByte)
       return Resources.formatFinalBlankLine(file.filePath);
 
     return null;
