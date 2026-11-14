@@ -595,10 +595,18 @@ export declare class BuildConfig {
   public readonly packages: readonly BuildPackage[];
 
   /**
+   * The suite's hang limit in milliseconds, `build.json`'s
+   * `testTimeoutMilliseconds`, which {@link TestStep} and
+   * {@link TimingStep} require; undefined when the file sets none.
+   */
+  public readonly testTimeoutMilliseconds: number | undefined;
+
+  /**
    * Creates the configuration.
    *
    * @param scope The npm scope the packages publish under.
    * @param packages The packages, in build order.
+   * @param testTimeoutMilliseconds The suite's hang limit in milliseconds, left out for none.
    * @example
    * ```ts
    * import { BuildConfig, BuildPackage } from "@noldova/tools.pipelines";
@@ -606,7 +614,7 @@ export declare class BuildConfig {
    * const config = new BuildConfig("@noldova", [new BuildPackage("noldova.tools.pipelines")]);
    * ```
    */
-  public constructor(scope: string, packages: readonly BuildPackage[]);
+  public constructor(scope: string, packages: readonly BuildPackage[], testTimeoutMilliseconds?: number);
 
   /**
    * The packages' npm names, such as `@noldova/tools.pipelines`.
@@ -619,9 +627,9 @@ export declare class BuildConfig {
    * @param directory The checkout's root.
    * @returns The configuration.
    * @throws {@link BuildException} when the file is missing or names a scope
-   * that is not an npm scope, no package, a package twice, a name that is not a package folder name, or a
-   * path or a script outside the checkout; `JsonException` from
-   * `@noldova/context.json` when it is not JSON or lacks a field.
+   * that is not an npm scope, no package, a package twice, a name that is not a package folder name, a
+   * path or a script outside the checkout, or a `testTimeoutMilliseconds` that is not positive; `JsonException` from
+   * `@noldova/context.json` when it is not JSON, lacks a field, or has a `testTimeoutMilliseconds` that is not an integer.
    * @example
    * ```ts
    * import { BuildConfig } from "@noldova/tools.pipelines";
@@ -637,9 +645,9 @@ export declare class BuildConfig {
    * @param text The file's text.
    * @returns The configuration.
    * @throws {@link BuildException} when the text names a scope that is not
-   * an npm scope, no package, a package twice, a name that is not a package folder name, or a path or a
-   * script outside the checkout; `JsonException` from
-   * `@noldova/context.json` when it is not JSON or lacks a field.
+   * an npm scope, no package, a package twice, a name that is not a package folder name, a path or a
+   * script outside the checkout, or a `testTimeoutMilliseconds` that is not positive; `JsonException` from
+   * `@noldova/context.json` when it is not JSON, lacks a field, or has a `testTimeoutMilliseconds` that is not an integer.
    * @example
    * ```ts
    * import { BuildConfig } from "@noldova/tools.pipelines";
@@ -3171,11 +3179,14 @@ export declare class BuildStep implements IStep {
  * `test [--skip-test-details] [--skip-coverage-details] [<filter>...]`. It
  * compiles each package's `tests/tsconfig.json` into `_build/tests/<name>`,
  * runs them through the checkout's `@noldova/context.testing` with V8
- * coverage, and requires complete coverage of the packages' source; a run
- * with filters skips the coverage gate. The tests and the coverage report
- * each run in a Node.js process of their own, so the checkout's packages
- * never load beside the step's. Run the build first: the tests use the
- * installed packages.
+ * coverage, under the hang limit `build.json`'s `testTimeoutMilliseconds`
+ * sets, and requires complete coverage of the packages' source; a run with
+ * filters skips the coverage gate. The run writes each test's time to
+ * `_build/test-results.json`, and the step prints the 10 slowest, even with
+ * `--skip-test-details`. The tests, their times and the coverage report each
+ * run in a Node.js process of their own, so the checkout's packages never
+ * load beside the step's. Run the build first: the tests use the installed
+ * packages.
  */
 export declare class TestStep implements IStep {
   /**
@@ -3216,14 +3227,75 @@ export declare class TestStep implements IStep {
    * `ClassName.methodName` substring or exact `category:name` identity.
    * @returns A promise of the result: succeeded, such as
    * `The tests passed, and coverage is complete.`, or failed for an unknown
-   * option, a `build.json` that is not valid, no package with tests, a
-   * compile that fails, failed tests, incomplete coverage, or a coverage
-   * report that cannot run, such as without `@noldova/context.testing`
+   * option, a `build.json` that is not valid or sets no
+   * `testTimeoutMilliseconds`, no package with tests, a compile that fails,
+   * failed tests, test times that cannot be read, incomplete coverage, or a
+   * coverage report that cannot run, such as without
+   * `@noldova/context.testing` installed. It rejects with
+   * {@link ProcessException} if a program cannot start.
+   * @example
+   * ```ts
+   * (await step.runAsync(["--skip-test-details"])).message; // "The tests passed, and coverage is complete."
+   * ```
+   */
+  public runAsync(values: readonly string[]): Promise<StepResult>;
+}
+
+/**
+ * The step that checks a checkout's test times: `timing`, run after the
+ * test step, which compiles the tests. It runs the compiled tests three
+ * times without coverage, under `build.json`'s `testTimeoutMilliseconds`,
+ * and through the checkout's `@noldova/context.testing` judges each test
+ * file's time, the sum of its tests' durations: it fails a file whose median
+ * over the runs exceeds 2 seconds plus a margin of 50%, unless the
+ * checkout's README lists the file with a time of its own, after the line
+ * `Test files slower than the timing check's budget:`, which the file's
+ * median may exceed by the same margin. It names a listed file within the
+ * budget as stale, failing nothing. Its pass condition is a time, so it
+ * runs apart from the test step, on a test machine.
+ */
+export declare class TimingStep implements IStep {
+  /**
+   * The step's name, `"timing"`.
+   */
+  public readonly name: string;
+
+  /**
+   * The values the step takes: `""`, none.
+   */
+  public readonly usage: string;
+
+  /**
+   * Creates the step.
+   *
+   * @param workingDirectory The checkout's root.
+   * @param processRunner What runs the tests and judges their times.
+   * @param output Where the step writes its progress.
+   * @example
+   * ```ts
+   * import { ProcessRunner, TimingStep, type IStepOutput } from "@noldova/tools.pipelines";
+   *
+   * declare const output: IStepOutput;
+   * const step = new TimingStep(process.cwd(), new ProcessRunner(), output);
+   * step.name; // "timing"
+   * ```
+   */
+  public constructor(workingDirectory: string, processRunner: ProcessRunner, output: IStepOutput);
+
+  /**
+   * Runs the tests three times and judges their times.
+   *
+   * @param values None.
+   * @returns A promise of the result: succeeded, `Every test file is within
+   * its time.`, or failed for a value given, a `build.json` that is not
+   * valid or sets no `testTimeoutMilliseconds`, no package with tests, tests
+   * not compiled, a run that fails, a test file over its time, or test times
+   * that cannot be read, such as without `@noldova/context.testing`
    * installed. It rejects with {@link ProcessException} if a program cannot
    * start.
    * @example
    * ```ts
-   * (await step.runAsync(["--skip-test-details"])).message; // "The tests passed, and coverage is complete."
+   * (await step.runAsync([])).message; // "Every test file is within its time."
    * ```
    */
   public runAsync(values: readonly string[]): Promise<StepResult>;

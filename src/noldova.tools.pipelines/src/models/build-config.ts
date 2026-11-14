@@ -18,10 +18,12 @@ import { BuildPackage } from "./build-package.js";
 export class BuildConfig {
   public readonly scope: string;
   public readonly packages: readonly BuildPackage[];
+  public readonly testTimeoutMilliseconds: number | undefined;
 
-  public constructor(scope: string, packages: readonly BuildPackage[]) {
+  public constructor(scope: string, packages: readonly BuildPackage[], testTimeoutMilliseconds?: number) {
     this.scope = scope;
     this.packages = packages;
+    this.testTimeoutMilliseconds = testTimeoutMilliseconds;
   }
 
   public get packageNames(): readonly string[] {
@@ -55,7 +57,11 @@ export class BuildConfig {
       packages.push(buildPackage);
     }
 
-    return new BuildConfig(scope, packages);
+    const testTimeoutMilliseconds = reader.hasField(Resources.testTimeoutField) ? reader.readInteger(Resources.testTimeoutField) : undefined;
+    if (testTimeoutMilliseconds !== undefined && testTimeoutMilliseconds <= 0)
+      throw new BuildException(Resources.formatBuildConfigInvalid(Resources.formatTestTimeoutInvalid(testTimeoutMilliseconds)));
+
+    return testTimeoutMilliseconds === undefined ? new BuildConfig(scope, packages) : new BuildConfig(scope, packages, testTimeoutMilliseconds);
   }
 
   private static readPackage(entry: JsonReader, scope: string): BuildPackage {

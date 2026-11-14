@@ -131,7 +131,7 @@ export class Resources {
   public static readonly npmJsonValues: readonly string[] = ["--json"];
   public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmNotFoundCode: string = "E404";
-  public static readonly codeField: string = "code";
+  public static readonly codeField: "code" = "code";
   public static readonly moduleNotFoundCode: string = "MODULE_NOT_FOUND";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
   public static readonly npmProgram: string = "npm";
@@ -257,12 +257,35 @@ export class Resources {
   public static readonly testFiltersVariable: string = "CONTEXT_TEST_FILTERS";
   public static readonly testOptions: readonly string[] = ["--skip-test-details", "--skip-coverage-details"];
   public static readonly testStepName: string = "test";
+  public static readonly testTimeoutField: string = "testTimeoutMilliseconds";
+  public static readonly testTimeoutMissing: string =
+    "build.json sets no testTimeoutMilliseconds, the suite's hang limit: at least three times its slowest test on any target, with the measurement in README's Checks.";
+  public static readonly testTimeoutVariable: string = "CONTEXT_TEST_TIMEOUT_MILLISECONDS";
   public static readonly testStepUsage: string = "[--skip-test-details] [--skip-coverage-details] [<filter>...]";
   public static readonly testingMissing: string = "@noldova/context.testing is not installed; the repository's devDependencies name it.";
   public static readonly testingPackageName: string = "@noldova/context.testing";
   public static readonly testsFolder: string = "_build/tests";
   public static readonly testsMissing: string = "No package has tests.";
   public static readonly testsPassed: string = "The tests passed, and coverage is complete.";
+  public static readonly testResultsFile: string = "_build/test-results.json";
+  public static readonly testResultsVariable: string = "CONTEXT_TEST_RESULTS_FILE";
+  public static readonly testTimesEntryPointPath: string = "./test-times-entry-point.js";
+  public static readonly slowestMode: string = "slowest";
+  public static readonly judgeMode: string = "judge";
+  public static readonly slowestTestCount: number = 10;
+  public static readonly timesOverExitCode: number = 3;
+  public static readonly timesUnreadExitCode: number = 2;
+  public static readonly timingStepName: string = "timing";
+  public static readonly timingStepUsage: string = "";
+  public static readonly timingFolder: string = "_build/timing";
+  public static readonly timingRuns: number = 3;
+  // A test file's time is the sum of its tests' durations; the margin is wide since a busy machine slows every file, and the median of three
+  // runs drops one slow run but not a slower machine.
+  public static readonly timingBudgetMilliseconds: number = 2_000;
+  public static readonly timingMargin: number = 0.5;
+  public static readonly timingNotBuilt: string = "The tests are not compiled; run the test step first.";
+  public static readonly timingPassed: string = "Every test file is within its time.";
+  public static readonly timingOver: string = "A test file is over its time.";
   public static readonly testsProjectPath: string = "tests/tsconfig.json";
   public static readonly typeScriptCompileValues: readonly string[] = ["--pretty", "--project"];
   public static readonly typeScriptCompilerPath: string = "bin/tsc";
@@ -991,6 +1014,10 @@ export class Resources {
     return `build.json is invalid: ${problem}.`;
   }
 
+  public static formatTestTimeoutInvalid(milliseconds: number): string {
+    return `testTimeoutMilliseconds is ${milliseconds}, not a positive number of milliseconds`;
+  }
+
   public static formatBuildPackageDuplicated(name: string): string {
     return `it names ${name} more than once`;
   }
@@ -1084,6 +1111,26 @@ export class Resources {
 
   public static formatCompilingTests(name: string): string {
     return `Compiling the tests of ${name}...`;
+  }
+
+  public static formatTimesUnread(exitCode: number | null): string {
+    return `The test times were not read: their report exited with code ${exitCode}.`;
+  }
+
+  public static formatTestResultsMissing(filePath: string): string {
+    return `${filePath} holds no test times: the test run wrote none.`;
+  }
+
+  public static formatTestResultsInvalid(filePath: string, reason: string): string {
+    return `${filePath} holds no test times: ${reason}`;
+  }
+
+  public static formatTimingRun(run: number): string {
+    return `Timing run ${run} of ${Resources.timingRuns}...`;
+  }
+
+  public static formatTimingRunFailed(run: number, exitCode: number | null): string {
+    return `Timing run ${run} failed with exit code ${exitCode}; the timing check judges only a passing suite.`;
   }
 
   public static formatCoverageUnread(exitCode: number | null): string {

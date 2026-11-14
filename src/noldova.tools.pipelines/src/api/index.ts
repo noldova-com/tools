@@ -43,6 +43,7 @@ export { SourceStep } from "../services/source-step.js";
 export { TagStep } from "../services/tag-step.js";
 export { Tar } from "../services/tar.js";
 export { TestStep } from "../services/test-step.js";
+export { TimingStep } from "../services/timing-step.js";
 export { ToolchainStep } from "../services/toolchain-step.js";
 export { TypeScript } from "../services/type-script.js";
 export { UnchangedStep } from "../services/unchanged-step.js";
