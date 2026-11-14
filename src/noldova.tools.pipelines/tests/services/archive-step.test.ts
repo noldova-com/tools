@@ -739,7 +739,6 @@ export class ArchiveStepTests {
     return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner), new ListingNpm(directory, listed));
   }
 
-  /** B's archived manifest taking its sibling @noldova/a as a peer in the range given, beside a third-party peer the step leaves alone. */
   private static peerManifestB(range: string): string {
     return JSON.stringify({
       name: "@noldova/b",
