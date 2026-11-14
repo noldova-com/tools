@@ -6,7 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type { StdioOptions } from "node:child_process";
+import type { StdioNull, StdioOptions, StdioPipe } from "node:child_process";
 import type { BinaryToTextEncoding } from "node:crypto";
 
 export class Resources {
@@ -272,7 +272,7 @@ export class Resources {
   public static readonly versionOption: string = "--version";
   public static readonly versionPlaceholder: string = "__VERSION__";
   public static readonly visibleProcessStreams: StdioOptions = "inherit";
-  public static readonly pipedProcessStreams: StdioOptions = ["ignore", "pipe", "pipe"];
+  public static readonly pipedProcessStreams: [StdioNull, StdioPipe, StdioPipe] = ["ignore", "pipe", "pipe"];
   public static readonly versionInvalid: string = "The text is not a version.";
   public static readonly versionPartSeparator: string = ".";
   public static readonly versionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-nightly\.([0-9]{8}))?$/;
