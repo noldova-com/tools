@@ -263,6 +263,22 @@ export declare class Version {
   public equals(other: Version): boolean;
 
   /**
+   * Gives the first release of the next minor version, the upper bound of a
+   * sibling package's peer range.
+   *
+   * @returns The version with the minor part one higher, the patch part 0
+   * and no nightly date.
+   * @example
+   * ```ts
+   * import { Version } from "@noldova/tools.pipelines";
+   *
+   * Version.parse("0.0.9").nextMinor().toString(); // "0.1.0"
+   * Version.parse("1.4.1-nightly.20261101").nextMinor().toString(); // "1.5.0"
+   * ```
+   */
+  public nextMinor(): Version;
+
+  /**
    * Writes the version as its text.
    *
    * @returns The three parts joined by dots, such as `1.4.0`, followed for a
@@ -1943,8 +1959,10 @@ export declare class SourceStep implements IStep {
  * the commit, and the folder holds exactly one archive for each package at
  * the version, named as `npm pack` names it, whose `package/package.json`
  * has the package's name, inside the scope, the version, and the commit as
- * its `gitHead`, is not `"private": true`, has a `license`, and lists any expected package under `dependencies` at
- * exactly the version. Each archive must also hold `package/LICENSE`, and no
+ * its `gitHead`, is not `"private": true`, has a `license`, lists any
+ * expected package under `dependencies` at exactly the version, and lists any
+ * under `peerDependencies` in the range from the version to the next minor
+ * one, such as `>=0.0.9 <0.1.0`. Each archive must also hold `package/LICENSE`, and no
  * file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or
  * `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name
  * ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any
@@ -2002,8 +2020,9 @@ export declare class ArchiveStep implements IStep {
    * `tar` cannot read the manifest of, with `tar`'s exit code and message,
    * and a manifest with another name, a name outside the scope, another
    * version, no `gitHead` or another one, `"private": true`, no `license`
-   * or an empty one, or an expected package under `dependencies`
-   * at anything but exactly the version, an archive `tar` cannot list the
+   * or an empty one, an expected package under `dependencies`
+   * at anything but exactly the version, or one under `peerDependencies` in
+   * any range but `>=<version> <next minor>`, an archive `tar` cannot list the
    * files of, with `tar`'s exit code and message, a file of a kind that holds
    * credentials, and no `package/LICENSE`. When the archives pass, it asks
    * the build for its copies and adds a line, such as

@@ -75,7 +75,7 @@ It succeeds only when:
 - the version is a version, the commit is its full id, and the scope is `@` and a lowercase name, such as `@noldova`;
 - the checkout is at the commit;
 - the folder holds one archive for each package at the version, named as `npm pack` names it, such as `noldova-tools.pipelines-0.0.4.tgz`, and nothing else;
-- each archive's `package/package.json` has the package's name, inside the scope, the version, and the commit as its `gitHead`, isn't `"private": true`, has a `license`, and lists any other expected package under `dependencies` at exactly the version;
+- each archive's `package/package.json` has the package's name, inside the scope, the version, and the commit as its `gitHead`, isn't `"private": true`, has a `license`, lists any other expected package under `dependencies` at exactly the version, and lists any under `peerDependencies` in the range from the version to the next minor one, such as `>=0.0.9 <0.1.0`, as a package that takes its siblings as peers names them;
 - each archive holds `package/LICENSE`, and no file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any folder and whatever its case;
 - each archive holds every file the build copies into its package, as a file with the same bytes as its source, and neither the copy nor its source is a symbolic link or under one.
 
@@ -102,7 +102,7 @@ A wrong value, a checkout at another commit or a missing folder fails with that 
 Otherwise the step fails with one line for each problem it finds with the archives, such as `archives has no noldova-tools.pipelines-0.0.4.tgz.` or `noldova-tools.pipelines-0.0.4.tgz: its version is 0.0.3, not 0.0.4.`
 It reads each manifest and lists each archive's files with the `tar` program, which must be on the `PATH`; an archive `tar` can't read or list is one of those lines, with `tar`'s exit code and message.
 When the archives pass, the step checks the copies, extracting each archive with `tar` into a new temporary folder that it removes after, and adds one line, such as `Each of the 2 files the build copies in matches its source.`; it fails with npm's exit code and message when the build can't list its copies, and when its output doesn't end with `end of copies`; otherwise with one line for each copy the build lists that isn't three fields, has a path that isn't inside its folder or a package without an archive, a source that is a symbolic link or under one or isn't a file, an archive `tar` can't extract, and a copy an archive lacks, holds as a symbolic link, under one or as a folder, or holds with other bytes.
-A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, has a `gitHead` or a `license` that isn't a text, or has a `private` that isn't `true` or `false` or `dependencies` that aren't an object of texts.
+A `package.json`, in an archive or under `src/`, makes the step throw `JsonException` if it isn't a JSON object, lacks a `name` or `version` text where the step needs one, has a `gitHead` or a `license` that isn't a text, or has a `private` that isn't `true` or `false` or `dependencies` or `peerDependencies` that aren't an object of texts.
 
 ### The publish step
 
