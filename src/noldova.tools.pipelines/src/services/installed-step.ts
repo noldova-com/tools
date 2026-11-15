@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { JsonReader, type JsonObject, type JsonValue } from "@noldova/context.json";
+import { JsonReader, type JsonValue } from "@noldova/context.json";
 
 import { PipelineException } from "../exceptions/pipeline.exception.js";
 import type { IStep } from "../interfaces/i-step.js";
@@ -69,21 +69,23 @@ export class InstalledStep implements IStep {
     return fs.statSync(fullPath, { throwIfNoEntry: false })?.isFile() === true;
   }
 
-  private static readPackages(directory: string, filePath: string): JsonObject | null {
+  private static readPackages(directory: string, filePath: string): ReadonlyMap<string, JsonReader> | null {
     const fullPath = path.join(directory, filePath);
     if (!InstalledStep.hasFile(fullPath))
       return null;
 
-    return JsonReader.parse(fs.readFileSync(fullPath, Resources.textEncoding), filePath).readObject(Resources.packagesField).toJson();
+    const packages = JsonReader.parse(fs.readFileSync(fullPath, Resources.textEncoding), filePath).readObject(Resources.packagesField);
+
+    return new Map(Object.keys(packages.toJson()).map(t => [t, packages.readObject(t)]));
   }
 
-  private static compare(locked: JsonObject, installed: JsonObject, ownNames: ReadonlySet<string>): readonly string[] {
+  private static compare(locked: ReadonlyMap<string, JsonReader>, installed: ReadonlyMap<string, JsonReader>, ownNames: ReadonlySet<string>): readonly string[] {
     const differences: string[] = [];
-    for (const [entryPath, entry] of Object.entries(locked)) {
+    for (const [entryPath, entry] of locked) {
       if (entryPath.length === 0 || ownNames.has(InstalledStep.readPackageName(entryPath)))
         continue;
 
-      const found = installed[entryPath];
+      const found = installed.get(entryPath);
       if (found === undefined) {
         if (InstalledStep.readField(entry, Resources.optionalField) !== true)
           differences.push(entryPath);
@@ -92,8 +94,8 @@ export class InstalledStep implements IStep {
         differences.push(entryPath);
     }
 
-    for (const entryPath of Object.keys(installed)) {
-      if (!(entryPath in locked) && !ownNames.has(InstalledStep.readPackageName(entryPath)))
+    for (const entryPath of installed.keys()) {
+      if (!locked.has(entryPath) && !ownNames.has(InstalledStep.readPackageName(entryPath)))
         differences.push(entryPath);
     }
 
@@ -106,7 +108,7 @@ export class InstalledStep implements IStep {
     return index < 0 ? entryPath : entryPath.slice(index + Resources.nodeModulesSegment.length);
   }
 
-  private static readField(entry: JsonValue, field: string): JsonValue | undefined {
-    return entry !== null && typeof entry === "object" && !Array.isArray(entry) ? (entry as JsonObject)[field] : undefined;
+  private static readField(entry: JsonReader, field: string): JsonValue | undefined {
+    return entry.hasField(field) ? entry.readValue(field) : undefined;
   }
 }

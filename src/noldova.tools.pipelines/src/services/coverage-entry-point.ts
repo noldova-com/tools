@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import { JsonReader } from "@noldova/context.json";
+
 import { Resources } from "../resources.js";
 import { TestingModuleLoader } from "./testing-module-loader.js";
 
@@ -14,8 +16,8 @@ const testing = await TestingModuleLoader.loadAsync();
 if (testing === null)
   process.exitCode = Resources.coverageUnreadExitCode;
 else {
-  const projects = (JSON.parse(String(values[2])) as [name: string, packageFolder: string, sourceFolder: string][])
-    .map(([name, packageFolder, sourceFolder]) => new testing.CoverageProject(name, packageFolder, sourceFolder));
+  const projects = JsonReader.parse(String(values[2])).readObjectArray(Resources.coverageProjectsField)
+    .map(t => new testing.CoverageProject(t.readString(Resources.coverageNameField), t.readString(Resources.coveragePackageFolderField), t.readString(Resources.coverageSourceFolderField)));
   const coverage = await new testing.CoverageAnalyzer().analyzeAsync(String(values[0]), projects);
   for (const line of new testing.CoverageReportWriter().formatLines(coverage, values[1] === Resources.enabledValue))
     process.stdout.write(`${line}${Resources.lineSeparator}`);

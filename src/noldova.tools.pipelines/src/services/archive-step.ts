@@ -207,22 +207,23 @@ export class ArchiveStep implements IStep {
 
   private async compareCopiesAsync(copies: readonly (readonly [archive: PackageArchive, source: string, filePath: string])[], directory: string): Promise<readonly string[]> {
     const findings: string[] = [];
-    const targets = new Map<PackageArchive, string | null>();
-    for (const archive of new Set(copies.map(([t]) => t))) {
-      const target = path.join(directory, String(targets.size));
+    const targets = new Map<PackageArchive, string>();
+    for (const [index, archive] of [...new Set(copies.map(([t]) => t))].entries()) {
+      const target = path.join(directory, String(index));
       const archivePath = path.join(target, path.basename(archive.filePath));
       fs.mkdirSync(target);
       fs.copyFileSync(archive.filePath, archivePath);
       const result = await this.tar.extractAsync(archivePath);
-      if (!result.isSuccessful)
+      if (result.isSuccessful)
+        targets.set(archive, target);
+      else
         findings.push(Resources.formatArchiveUnextracted(path.basename(archive.filePath), result.exitCode, result.errorOutput));
-      targets.set(archive, result.isSuccessful ? target : null);
     }
 
     for (const [archive, source, filePath] of copies) {
       const archiveName = path.basename(archive.filePath);
       const sourceStats = fs.lstatSync(path.join(this.npm.workingDirectory, source), { throwIfNoEntry: false });
-      const target = targets.get(archive) as string | null;
+      const target = targets.get(archive);
       if (sourceStats !== undefined && ArchiveStep.isLinked(this.npm.workingDirectory, source, sourceStats)) {
         findings.push(Resources.formatCopySourceLinked(source));
         continue;
@@ -231,7 +232,7 @@ export class ArchiveStep implements IStep {
         findings.push(Resources.formatCopySourceMissing(source));
         continue;
       }
-      if (target === null)
+      if (target === undefined)
         continue;
 
       const packagePath = path.join(target, Resources.archivePackageFolder);

@@ -207,6 +207,10 @@ export class Resources {
   public static readonly buildStepUsage: string = "[--version <version>] [<package>...], or --list-copies";
   public static readonly coverageFolder: string = "_build/coverage";
   public static readonly coverageEntryPointPath: string = "./coverage-entry-point.js";
+  public static readonly coverageProjectsField: string = "projects";
+  public static readonly coverageNameField: string = "name";
+  public static readonly coveragePackageFolderField: string = "packageFolder";
+  public static readonly coverageSourceFolderField: string = "sourceFolder";
   public static readonly coverageIncomplete: string = "Coverage is incomplete.";
   public static readonly coverageUnreadExitCode: number = 2;
   public static readonly coverageVariable: string = "NODE_V8_COVERAGE";
