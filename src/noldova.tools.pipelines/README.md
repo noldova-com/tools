@@ -130,7 +130,7 @@ The step:
 
 1. runs the archive step's checks, except the build's copies, and fails with their message when they fail;
 2. asks the registry about each package, and fails, publishing nothing, with one line for each version it already has from another archive and each version that isn't newer than the version a tag it must pass points to; a version it already has from the same archive is skipped;
-3. publishes the rest in turn, and stops at the first publish that fails;
+3. publishes the rest in turn, and stops at the first publish that fails, whose line leaves out npm's `npm notice` lines, the archive's file listing, so that npm's error shows within an annotation's length;
 4. waits until the registry serves each version it published with the same archive, up to 10 minutes, asking every 10 seconds, also after a failed publish, so a rerun skips the versions already published.
 
 It succeeds with one line for each package, such as `@noldova/tools.pipelines@0.0.4 published.`, and otherwise fails with one line for each problem.

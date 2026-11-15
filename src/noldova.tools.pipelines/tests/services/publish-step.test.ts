@@ -253,6 +253,23 @@ export class PublishStepTests {
   }
 
   @TestMethod
+  public async leavesNpmsFileListingOutOfAFailedPublishSoItsErrorShowsAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository);
+    const listing = Array.from({ length: 200 }, (_, index) => `npm notice 1.2kB src/services/step-${index}.js\n`).join("");
+    const npm = new FakeNpm({}, {
+      "noldova-a-0.0.4.tgz": new ProcessResult(1, "", `npm notice\nnpm notice package: @noldova/a@0.0.4\nnpm notice Tarball Contents\n${listing}npm error code E404\nnpm error 404 Not Found - PUT https://registry.example/@noldova%2fa\n`)
+    });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isTrue(listing.length > 4096);
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/a@0.0.4: npm publish exited with code 1: npm error code E404; npm error 404 Not Found - PUT https://registry.example/@noldova%2fa", result.message);
+  }
+
+  @TestMethod
   public async keepsAskingUntilTheRegistryServesTheVersionAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);

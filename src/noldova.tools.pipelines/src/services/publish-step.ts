@@ -77,7 +77,7 @@ export class PublishStep implements IStep {
     for (const archive of pending) {
       const result = await this.npm.publishAsync(archive.filePath, tag, access, registry);
       if (!result.isSuccessful) {
-        findings.push(Resources.formatNpmFailed(Resources.formatSpecifier(archive.packageName, version), Resources.npmPublishValues, result.exitCode, result.errorOutput));
+        findings.push(Resources.formatPublishFailed(Resources.formatSpecifier(archive.packageName, version), result.exitCode, result.errorOutput));
         break;
       }
 
