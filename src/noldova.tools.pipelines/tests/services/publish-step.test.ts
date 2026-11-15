@@ -253,6 +253,70 @@ export class PublishStepTests {
   }
 
   @TestMethod
+  public async leavesNpmsFileListingOutOfAFailedPublishSoItsErrorShowsAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository);
+    const files = Array.from({ length: 200 }, (_, index) => `npm notice 1.2kB src/services/step-${index}.js\n`).join("");
+    const details = "npm notice Tarball Details\nnpm notice name: @noldova/a\nnpm notice version: 0.0.4\nnpm notice filename: noldova-a-0.0.4.tgz\nnpm notice package size: 98.1 kB\n" +
+      "npm notice unpacked size: 240.3 kB\nnpm notice shasum: 0123456789abcdef0123456789abcdef01234567\nnpm notice integrity: sha512-0123456789abc[...]defABC==\nnpm notice total files: 200\nnpm notice\n";
+    const npm = new FakeNpm({}, {
+      "noldova-a-0.0.4.tgz": new ProcessResult(1, "", `npm notice\nnpm notice package: @noldova/a@0.0.4\nnpm notice Tarball Contents\n${files}${details}` +
+        "npm notice Publishing to https://registry.example/ with tag latest and public access\nnpm notice Access token expired or revoked.\nnpm error code E404\nnpm error 404 Not Found - PUT https://registry.example/@noldova%2fa\n")
+    });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isTrue(files.length > 4096);
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(
+      "@noldova/a@0.0.4: npm publish exited with code 1: npm notice package: @noldova/a@0.0.4; npm notice Publishing to https://registry.example/ with tag latest and public access; " +
+      "npm notice Access token expired or revoked.; npm error code E404; npm error 404 Not Found - PUT https://registry.example/@noldova%2fa",
+      result.message);
+  }
+
+  @TestMethod
+  public async keepsNpmsErrorAfterAListingThatEndsEarlyAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository);
+    const npm = new FakeNpm({}, { "noldova-a-0.0.4.tgz": new ProcessResult(1, "", "npm notice Tarball Contents\nnpm notice 1.1kB LICENSE\nnpm error code E403\n") });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/a@0.0.4: npm publish exited with code 1: npm error code E403", result.message);
+  }
+
+  @TestMethod
+  public async endsAFailedPublishWithOnlyItsListingAtItsExitCodeAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository);
+    const npm = new FakeNpm({}, { "noldova-a-0.0.4.tgz": new ProcessResult(1, "", "npm notice\nnpm notice Tarball Contents\nnpm notice 1.1kB LICENSE\n") });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/a@0.0.4: npm publish exited with code 1.", result.message);
+  }
+
+  @TestMethod
+  public async removesTheCredentialsQueryAndFragmentOfAUrlInAFailedPublishAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository);
+    const npm = new FakeNpm({}, {
+      "noldova-a-0.0.4.tgz": new ProcessResult(1, "", "npm error code E401\nnpm error 401 Unauthorized - PUT https://ci:token-value@registry.example/@noldova%2fa?_authToken=token-value#token-value\n")
+    });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/a@0.0.4: npm publish exited with code 1: npm error code E401; npm error 401 Unauthorized - PUT https://registry.example/@noldova%2fa", result.message);
+  }
+
+  @TestMethod
   public async keepsAskingUntilTheRegistryServesTheVersionAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);
