@@ -1,4 +1,5 @@
 {
+  "testTimeoutMilliseconds": 30000,
   "packages": [
     { "name": "noldova.tools.pipelines" },
     { "name": "noldova.tools.pipelines.github" }
