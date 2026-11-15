@@ -112,15 +112,13 @@ export class TestStep implements IStep {
     if (filters.length > 0)
       return problems.length === 0 ? StepResult.succeeded(Resources.filteredCoverageSkipped) : StepResult.failed([...problems, Resources.filteredCoverageSkipped].join(Resources.lineSeparator));
 
-    const projects = {
-      [Resources.coverageProjectsField]: config.packages.map(t => ({
-        [Resources.coverageNameField]: t.name,
-        [Resources.coveragePackageFolderField]: this.resolve(Resources.formatPath(Resources.nodeModulesFolder, t.packageName)),
-        [Resources.coverageSourceFolderField]: this.resolve(Resources.formatPath(t.sourceFolder, Resources.sourceFolder))
-      }))
-    };
+    const projectFolders = config.packages.flatMap(t => [
+      t.name,
+      this.resolve(Resources.formatPath(Resources.nodeModulesFolder, t.packageName)),
+      this.resolve(Resources.formatPath(t.sourceFolder, Resources.sourceFolder))
+    ]);
     const skipDetails = options.has(Resources.skipCoverageDetailsOption) ? Resources.enabledValue : "";
-    const coverageExitCode = await this.processRunner.runVisibleAsync(process.execPath, [TestStep.COVERAGE_ENTRY_POINT_PATH, coverageFolder, skipDetails, JSON.stringify(projects)], this.typeScript.workingDirectory, {});
+    const coverageExitCode = await this.processRunner.runVisibleAsync(process.execPath, [TestStep.COVERAGE_ENTRY_POINT_PATH, coverageFolder, skipDetails, ...projectFolders], this.typeScript.workingDirectory, {});
     if (coverageExitCode === Resources.failureExitCode)
       problems.push(Resources.coverageIncomplete);
     else if (coverageExitCode !== Resources.successExitCode)

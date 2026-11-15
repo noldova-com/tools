@@ -117,17 +117,15 @@ export class TestStepTests {
     Assert.isFalse(checkout.exists("_build/coverage/stale.json"));
     Assert.isTrue(checkout.exists("_build/coverage"));
     const coverageFolder = path.join(checkout.directory, "_build/coverage");
-    const projects = {
-      projects: [
-        { name: "noldova.a", packageFolder: path.join(checkout.directory, "node_modules/@noldova/a"), sourceFolder: path.join(checkout.directory, "src/noldova.a/src") },
-        { name: "noldova.b", packageFolder: path.join(checkout.directory, "node_modules/@noldova/b"), sourceFolder: path.join(checkout.directory, "src/group/noldova.b/src") }
-      ]
-    };
+    const projects = [
+      "noldova.a", path.join(checkout.directory, "node_modules/@noldova/a"), path.join(checkout.directory, "src/noldova.a/src"),
+      "noldova.b", path.join(checkout.directory, "node_modules/@noldova/b"), path.join(checkout.directory, "src/group/noldova.b/src")
+    ];
     const resultsFile = path.join(checkout.directory, "_build/test-results.json");
     Assert.areEqual(JSON.stringify([
       [process.execPath, "--enable-source-maps", "node_modules/@noldova/context.testing/services/execution/test-run-entry-point.js", "noldova.a", "_build/tests/noldova.a", checkout.directory],
       [process.execPath, TestStepTests.TIMES_ENTRY_POINT_PATH, "slowest", resultsFile, "10", checkout.directory],
-      [process.execPath, TestStepTests.COVERAGE_ENTRY_POINT_PATH, coverageFolder, "", JSON.stringify(projects), checkout.directory]
+      [process.execPath, TestStepTests.COVERAGE_ENTRY_POINT_PATH, coverageFolder, "", ...projects, checkout.directory]
     ]), JSON.stringify(runner.calls));
     Assert.areEqual(JSON.stringify([
       { CONTEXT_TEST_FILTERS: "[]", CONTEXT_TEST_TIMEOUT_MILLISECONDS: "30000", CONTEXT_TEST_RESULTS_FILE: resultsFile, NODE_V8_COVERAGE: coverageFolder },
@@ -281,34 +279,47 @@ export class TestStepTests {
       ].join("\n")
     });
 
-    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "1", JSON.stringify({ projects: [{ name: "noldova.a", packageFolder: "node_modules/@noldova/a", sourceFolder: "src/noldova.a/src" }] })], checkout.directory);
+    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "1", "noldova.a", "node_modules/@noldova/a", "src/noldova.a/src"], checkout.directory);
 
     Assert.areEqual(exitCode, result.exitCode);
     Assert.areEqual(`${report.replaceAll("|", "\n")}\nskip true _build/coverage\n`, result.output);
   }
 
   @TestMethod
-  public async rejectsACoverageProjectWithoutItsFoldersAsync(): Promise<void> {
+  public async reportsTheCoverageWhenTheCheckoutHasItsOwnContextCoreAsync(): Promise<void> {
     using checkout = new Checkout({
+      "node_modules/@noldova/context.core/package.json": "{\"name\":\"@noldova/context.core\",\"type\":\"module\",\"main\":\"index.js\"}",
+      "node_modules/@noldova/context.core/index.js": "Object.defineProperties(Object, { isFunction: { value: t => typeof t === \"function\" } });",
       "node_modules/@noldova/context.testing/package.json": "{\"name\":\"@noldova/context.testing\",\"type\":\"module\",\"main\":\"index.js\"}",
       "node_modules/@noldova/context.testing/index.js": [
+        "import \"@noldova/context.core\";",
         "export class CoverageProject { }",
         "export class CoverageAnalyzer { async analyzeAsync() { return { isComplete: true }; } }",
-        "export class CoverageReportWriter { formatLines() { return []; } }"
+        "export class CoverageReportWriter { formatLines() { return [\"report\"]; } }"
       ].join("\n")
     });
 
-    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "", JSON.stringify({ projects: [{ name: "noldova.a" }] })], checkout.directory);
+    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "", "noldova.a", "node_modules/@noldova/a", "src/noldova.a/src"], checkout.directory);
 
-    Assert.areEqual(1, result.exitCode);
-    Assert.isTrue(result.errorOutput.includes("JsonException") && result.errorOutput.includes("packageFolder"), result.errorOutput);
+    Assert.areEqual(0, result.exitCode, result.errorOutput);
+    Assert.areEqual("report\n", result.output);
+  }
+
+  @TestMethod
+  public async rejectsACoverageProjectWithoutItsFoldersAsync(): Promise<void> {
+    using checkout = new Checkout();
+
+    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "", "noldova.a"], checkout.directory);
+
+    Assert.areEqual(2, result.exitCode);
+    Assert.areEqual("The coverage report takes a name, a package folder and a source folder for each project.\n", result.errorOutput);
   }
 
   @TestMethod
   public async endsWithAFailureToFindTheTestingPackageThatIsNotAMissingPackageAsync(): Promise<void> {
     using checkout = new Checkout({ "node_modules/@noldova/context.testing/package.json": "{\"name\":\"@noldova/context.testing\",\"exports\":{\"./other\":\"./other.js\"}}" });
 
-    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "", "{\"projects\":[]}"], checkout.directory);
+    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", ""], checkout.directory);
 
     Assert.areEqual(1, result.exitCode);
     Assert.isTrue(result.errorOutput.includes("ERR_PACKAGE_PATH_NOT_EXPORTED"), result.errorOutput);
@@ -318,7 +329,7 @@ export class TestStepTests {
   public async failsToReportWithoutTheTestingPackageAsync(): Promise<void> {
     using checkout = new Checkout();
 
-    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", "", "{\"projects\":[]}"], checkout.directory);
+    const result = await new ProcessRunner().runAsync(process.execPath, [TestStepTests.COVERAGE_ENTRY_POINT_PATH, "_build/coverage", ""], checkout.directory);
 
     Assert.areEqual(2, result.exitCode);
     Assert.areEqual("@noldova/context.testing is not installed; the repository's devDependencies name it.\n", result.errorOutput);
