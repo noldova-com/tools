@@ -35,7 +35,7 @@ export class TypeScript {
       manifestPath = createRequire(path.resolve(this.workingDirectory, Resources.manifestFileName)).resolve(Resources.typeScriptManifestPath);
     }
     catch (error: unknown) {
-      if (!(error instanceof Error && Reflect.get(error, Resources.codeField) === Resources.moduleNotFoundCode))
+      if (!(error instanceof Error && Resources.codeField in error && error.code === Resources.moduleNotFoundCode))
         throw error;
 
       throw new BuildException(Resources.typeScriptMissing, new ExceptionOptions(error));
