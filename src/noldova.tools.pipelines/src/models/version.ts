@@ -61,6 +61,10 @@ export class Version {
     return this.compareTo(other) === 0;
   }
 
+  public nextMinor(): Version {
+    return new Version(this.major, this.minor + 1, 0);
+  }
+
   public toString(): string {
     const release = [this.major, this.minor, this.patch].join(Resources.versionPartSeparator);
 

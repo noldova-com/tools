@@ -596,6 +596,14 @@ export class Resources {
     return `${archiveName}: its dependency ${dependency} is ${found}, not exactly ${version}.`;
   }
 
+  public static formatSiblingPeerRange(version: string, nextMinor: string): string {
+    return `>=${version} <${nextMinor}`;
+  }
+
+  public static formatPeerRangeDiffers(archiveName: string, peer: string, found: string, expected: string): string {
+    return `${archiveName}: its peer ${peer} is ${found}, not ${expected}.`;
+  }
+
   public static formatArchiveChecked(archiveName: string, packageName: string, version: string, commit: string): string {
     return `${archiveName}: ${packageName}@${version} from commit ${commit}`;
   }
