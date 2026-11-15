@@ -192,4 +192,18 @@ export class InstalledStepTests {
 
     await Assert.throwsAsync(() => checkout.runAsync(), JsonException);
   }
+
+  @TestMethod
+  public async rejectsALockedEntryThatIsNotAnObjectAsync(): Promise<void> {
+    using checkout = new Checkout({ "node_modules/typescript": "7.0.2" }, { "node_modules/typescript": "7.0.2" });
+
+    await Assert.throwsAsync(() => checkout.runAsync(), JsonException);
+  }
+
+  @TestMethod
+  public async rejectsAnInstalledEntryThatIsNotAnObjectAsync(): Promise<void> {
+    using checkout = new Checkout({ "node_modules/typescript": InstalledStepTests.TYPESCRIPT }, { "node_modules/typescript": ["7.0.2"] });
+
+    await Assert.throwsAsync(() => checkout.runAsync(), JsonException);
+  }
 }
