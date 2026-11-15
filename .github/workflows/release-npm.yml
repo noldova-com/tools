@@ -36,7 +36,7 @@ env:
 jobs:
   versions:
     name: Versions
-    uses: noldova-com/.github/.github/workflows/versions.yml@5328d6b67990d5c1dd955f55e666d72de05a0b2a # v2.32.0
+    uses: noldova-com/.github/.github/workflows/versions.yml@2015cd5427c0af2d83e6ba789787ff8c9d218f7c # v2.33.0
     permissions: {}
     with:
       targets: linux-x64
@@ -200,7 +200,7 @@ jobs:
     name: Propose the version to dependents
     needs: publish
     if: github.ref == 'refs/heads/main'
-    uses: noldova-com/.github/.github/workflows/update-dependents.yml@5328d6b67990d5c1dd955f55e666d72de05a0b2a # v2.32.0
+    uses: noldova-com/.github/.github/workflows/update-dependents.yml@2015cd5427c0af2d83e6ba789787ff8c9d218f7c # v2.33.0
     permissions:
       contents: read
       packages: read
