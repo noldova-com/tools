@@ -77,7 +77,7 @@ export class PublishStep implements IStep {
     for (const archive of pending) {
       const result = await this.npm.publishAsync(archive.filePath, tag, access, registry);
       if (!result.isSuccessful) {
-        findings.push(Resources.formatNpmFailed(Resources.formatSpecifier(archive.packageName, version), Resources.npmPublishValues, result.exitCode, result.errorOutput));
+        findings.push(Resources.formatNpmFailed(Resources.formatSpecifier(archive.packageName, version), Resources.npmPublishValues, result.exitCode, PublishStep.removeTarballListing(result.errorOutput)));
         break;
       }
 
@@ -132,6 +132,25 @@ export class PublishStep implements IStep {
       return Resources.formatNotServed(specifier, this.waitMilliseconds);
 
     return served === PublishStep.readIntegrity(archive.filePath) ? null : Resources.formatPublishedOtherwise(specifier);
+  }
+
+  private static removeTarballListing(errorOutput: string): string {
+    const kept: string[] = [];
+    let isListing = false;
+    for (const line of errorOutput.split(Resources.lineBreakPattern)) {
+      const text = line.trim();
+      if (text === Resources.tarballListingStart)
+        isListing = true;
+      else if (isListing && !text.startsWith(Resources.npmNoticePrefix))
+        isListing = false;
+
+      if (isListing)
+        isListing = !Resources.tarballListingEndPattern.test(text);
+      else if (text !== Resources.npmNoticeLine)
+        kept.push(line);
+    }
+
+    return kept.join(Resources.lineSeparator);
   }
 
   private static readIntegrity(archivePath: string): string {
