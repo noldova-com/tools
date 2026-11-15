@@ -417,6 +417,7 @@ It backs up `package.json` and `package-lock.json` in `_build/restore/` before i
 
 `test [--skip-test-details] [--skip-coverage-details] [<filter>...]` compiles each package's `tests/tsconfig.json`, runs the tests through the repository's `@noldova/context.testing` under `build.json`'s `testTimeoutMilliseconds`, with V8 coverage in `_build/coverage`, and requires complete coverage of the packages' `src/` folders.
 The run writes each test's time to `_build/test-results.json`, and the step then prints the 10 slowest tests with their times, with or without `--skip-test-details`, and fails when it can't read them.
+The slowest tests and the coverage report are read through the repository's own `@noldova/context.testing`, in processes that load no `@noldova/context` package of the tool's, so the step works whether the tool is installed with the repository's packages or in a folder of its own, as tools' `.pipelines` is.
 It writes `Compiling the tests of <package>...` for each, and ends the line with ` Done.`, or ` Failed.` before the compiler's errors.
 
 - Run the build first: the tests use the installed packages.
