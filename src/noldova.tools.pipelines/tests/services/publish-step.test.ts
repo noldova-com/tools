@@ -270,6 +270,19 @@ export class PublishStepTests {
   }
 
   @TestMethod
+  public async endsAFailedPublishWithOnlyNoticesAtItsExitCodeAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(PublishStepTests.PACKAGES);
+    const folder = PublishStepTests.packArchives(repository);
+    const npm = new FakeNpm({}, { "noldova-a-0.0.4.tgz": new ProcessResult(1, "", "npm notice\nnpm notice Tarball Contents\nnpm notice 1.1kB LICENSE\n") });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/a@0.0.4: npm publish exited with code 1.", result.message);
+  }
+
+  @TestMethod
   public async keepsAskingUntilTheRegistryServesTheVersionAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);
