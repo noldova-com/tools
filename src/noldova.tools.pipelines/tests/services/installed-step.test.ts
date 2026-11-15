@@ -61,18 +61,12 @@ export class InstalledStepTests {
         "node_modules/typescript": InstalledStepTests.TYPESCRIPT,
         "node_modules/@typescript/typescript-darwin-arm64": { version: "7.0.2", optional: true },
         "node_modules/@noldova/example": { version: "0.0.4", integrity: "sha512-published" },
-        "node_modules/odd": "not an object",
-        "node_modules/empty": null,
-        "node_modules/list": [],
         "src/linked": { version: "1.0.0", link: true }
       },
       {
         "node_modules/typescript": { ...InstalledStepTests.TYPESCRIPT, license: "Apache-2.0" },
         "node_modules/@noldova/example": { version: "0.0.5", resolved: "file:_packages/noldova-example-0.0.5.tgz" },
         "node_modules/tool/node_modules/@noldova/example": { version: "0.0.4" },
-        "node_modules/odd": "not an object",
-        "node_modules/empty": null,
-        "node_modules/list": [],
         "src/linked": { version: "1.0.0", link: true }
       });
 
@@ -189,6 +183,20 @@ export class InstalledStepTests {
   public async rejectsALockFileThatIsNotJsonAsync(): Promise<void> {
     using checkout = new Checkout(null, {});
     checkout.write("package-lock.json", "{");
+
+    await Assert.throwsAsync(() => checkout.runAsync(), JsonException);
+  }
+
+  @TestMethod
+  public async rejectsALockedEntryThatIsNotAnObjectAsync(): Promise<void> {
+    using checkout = new Checkout({ "node_modules/typescript": "7.0.2" }, { "node_modules/typescript": "7.0.2" });
+
+    await Assert.throwsAsync(() => checkout.runAsync(), JsonException);
+  }
+
+  @TestMethod
+  public async rejectsAnInstalledEntryThatIsNotAnObjectAsync(): Promise<void> {
+    using checkout = new Checkout({ "node_modules/typescript": InstalledStepTests.TYPESCRIPT }, { "node_modules/typescript": ["7.0.2"] });
 
     await Assert.throwsAsync(() => checkout.runAsync(), JsonException);
   }

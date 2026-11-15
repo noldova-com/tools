@@ -116,14 +116,14 @@ export class PinsStep implements IStep {
     const actions = new Map<string, ActionPin>();
     for (const filePath of (await this.git.listFilesAsync(commit, Resources.workflowsFolderPath)).filter(t => PinsStep.isWorkflow(t))) {
       for (const match of (await this.git.readFileAsync(commit, filePath)).matchAll(Resources.usesPattern)) {
-        const [, , action, found, tag] = match as unknown as readonly [string, string, string, string, string | undefined];
+        const [, , action, found, tag] = match;
         const version = PinsStep.readTagVersion(tag);
-        if (version === null || PinsStep.readSharedOwner(action, source) !== null)
+        if (version === null || tag === undefined || action === undefined || found === undefined || PinsStep.readSharedOwner(action, source) !== null)
           continue;
 
         const known = actions.get(action);
         if (known === undefined || version.compareTo(known.version) > 0)
-          actions.set(action, { commit: found, tag: tag as string, version });
+          actions.set(action, { commit: found, tag, version });
       }
     }
 
@@ -185,8 +185,8 @@ export class PinsStep implements IStep {
     const ancestors = new Set<string>();
     for (const fullPath of fullPaths) {
       for (const match of fs.readFileSync(fullPath, Resources.textEncoding).matchAll(Resources.usesPattern)) {
-        const [, , action, found, tag] = match as unknown as readonly [string, string, string, string, string | undefined];
-        if (PinsStep.readSharedOwner(action, update.source) === owner.toLowerCase() && PinsStep.readTagVersion(tag) === null
+        const [, , action, found, tag] = match;
+        if (action !== undefined && found !== undefined && PinsStep.readSharedOwner(action, update.source) === owner.toLowerCase() && PinsStep.readTagVersion(tag) === null
           && await this.git.hasCommitAsync(found) && await this.git.isAncestorAsync(found, update.commit))
           ancestors.add(found);
       }
