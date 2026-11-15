@@ -2202,8 +2202,9 @@ export declare class PublishStep implements IStep {
    * After that, it publishes the archives in turn and stops at the first
    * publish that fails; it still waits for the versions it published before
    * it, and fails with a line for that publish, with `npm`'s exit code and
-   * message without its `npm notice` lines, the archive's file listing that
-   * comes before npm's error, and for each version the registry does not serve in time or
+   * message without the archive's file listing, its `npm notice` lines from
+   * `Tarball Contents` through `total files`, or its empty `npm notice`
+   * lines, and for each version the registry does not serve in time or
    * serves from another archive. A URL's credentials, query and fragment in
    * `npm`'s message are left out of the line. It rejects as {@link ArchiveStep.runAsync} does,
    * and with {@link ProcessException} if `npm` cannot start.

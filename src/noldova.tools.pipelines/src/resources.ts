@@ -131,7 +131,8 @@ export class Resources {
   public static readonly npmJsonValues: readonly string[] = ["--json"];
   public static readonly npmLockValues: readonly string[] = ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"];
   public static readonly npmNotFoundCode: string = "E404";
-  public static readonly npmNoticePattern: RegExp = /^npm notice\b/;
+  public static readonly npmNoticeLine: string = "npm notice";
+  public static readonly npmNoticePrefix: string = "npm notice ";
   public static readonly codeField: "code" = "code";
   public static readonly moduleNotFoundCode: string = "MODULE_NOT_FOUND";
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
@@ -174,6 +175,8 @@ export class Resources {
   public static readonly tarExtractValues: readonly string[] = ["-xzf"];
   public static readonly tarListFilesValues: readonly string[] = ["-tzf"];
   public static readonly tarReadFileValues: readonly string[] = ["-xzOf"];
+  public static readonly tarballListingStart: string = "npm notice Tarball Contents";
+  public static readonly tarballListingEndPattern: RegExp = /^npm notice total files: \d+$/;
   public static readonly testsFolderName: string = "tests";
   public static readonly trackedFilesMissing: string = "Git lists no tracked file in this folder; run this step in a clone's checkout.";
   public static readonly unchangedStepName: string = "unchanged";
@@ -655,12 +658,6 @@ export class Resources {
 
   public static formatNpmFailed(specifier: string, commandValues: readonly string[], exitCode: number | null, errorOutput: string): string {
     return Resources.formatFailureLine(`${specifier}: ${Resources.npmProgram} ${commandValues.join(Resources.valueSeparator)} exited with code ${exitCode}`, errorOutput);
-  }
-
-  public static formatPublishFailed(specifier: string, exitCode: number | null, errorOutput: string): string {
-    const errors = errorOutput.split(Resources.lineBreakPattern).filter(t => !Resources.npmNoticePattern.test(t.trim())).join(Resources.lineSeparator);
-
-    return Resources.formatNpmFailed(specifier, Resources.npmPublishValues, exitCode, errors);
   }
 
   public static formatNotServed(specifier: string, waitMilliseconds: number): string {
