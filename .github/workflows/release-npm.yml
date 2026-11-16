@@ -40,6 +40,8 @@ jobs:
     permissions: {}
     with:
       targets: linux-x64
+      node-version: 26.13.1
+      npm-version: 11.20.0
 
   check:
     name: Check and build
@@ -207,4 +209,6 @@ jobs:
     with:
       version: ${{ inputs.version }}
       commit: ${{ inputs.commit }}
+      node-version: 26.13.1
+      npm-version: 11.20.0
     secrets: inherit

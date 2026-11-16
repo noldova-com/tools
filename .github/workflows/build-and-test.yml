@@ -31,6 +31,8 @@ jobs:
       targets: linux-x64
       publishes: true
       tool-from-source: true
+      node-version: 26.13.1
+      npm-version: 11.20.0
 
   versions:
     name: Versions
@@ -38,6 +40,8 @@ jobs:
     permissions: {}
     with:
       targets: linux-x64
+      node-version: 26.13.1
+      npm-version: 11.20.0
 
   version-check:
     name: Version check
