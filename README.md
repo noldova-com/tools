@@ -14,7 +14,7 @@ Each package lives in `src/`, in a folder named after it, such as `src/noldova.t
 
 ## Build and test
 
-The toolchain is Node.js 24.21.0 with npm 11.19.0, as `package.json` pins them.
+The toolchain is Node.js 26.13.1 with npm 11.20.0, as `package.json` pins them.
 
 ```bash
 npm run build
