@@ -62,10 +62,9 @@ Every pull request into `main` must pass its checks before it merges.
 The coverage gate has no exclusions: every line, branch and function of both packages' sources is covered.
 One test pauses for a fixed time: `stopsAProgramThatRunsLongerThanItsTimeAsync` in `src/noldova.tools.pipelines/tests/services/process-runner.test.ts` starts a program that would run for a minute and waits half a second for the timeout under test to stop it.
 `build.json`'s `testTimeoutMilliseconds`, the suite's hang limit, is 30000: a test that reaches it fails, named with what it waited for.
-The pinned 0.0.12 tool doesn't read it; the `test` step uses it from 0.0.21 on, the first version that requires it.
-The limit was chosen from four whole-suite runs of the 0.0.21 `test` step on a Linux test machine: the slowest test, `movesAPinThatNeedsTheOldVersionOfAMovedPackageToTheVersionThatNeedsTheNewOneAsync` in `src/noldova.tools.pipelines/tests/services/dependents-step-npm.test.ts`, took at most 3.55 s, and each suite took about 21 s, against 30.19 s in the GitHub-hosted run of `main` at 0.0.21, so about 5.2 s there.
-That hosted time is an estimate, scaled from the test machine, until tools' own checks run 0.0.21 or later and print the slowest tests: the `.pipelines` move reads them from `main`'s first run on it and raises the limit only if it falls under three times the slowest (#181).
-30000 ms is almost six times the estimate, so the limit stays over three times the slowest test on a runner up to twice as slow.
+The `test` step of the pinned tool runs every test under it and then prints the ten slowest; tools' own checks read it since `.pipelines` moved to 0.0.22.
+The slowest test is `movesAPinThatNeedsTheOldVersionOfAMovedPackageToTheVersionThatNeedsTheNewOneAsync` in `src/noldova.tools.pipelines/tests/services/dependents-step-npm.test.ts`: 3.34 to 5.27 s in the two GitHub-hosted runs of the pull request that moved `.pipelines` to 0.0.22, whose 930 tests took 19.72 to 30.21 s, and at most 3.55 s in four whole-suite runs on a Linux test machine.
+30000 ms is about 5.7 times the slower hosted run's slowest test; `main`'s first run on 0.0.22 is read for #181, and the limit rises only if it falls under three times that run's slowest test.
 Tests that need a checkout, a git repository or a clone of their own, such as those that use `git-repository.fixture.ts` and `git-clone.fixture.ts`, make it in a new folder under the system's temporary folder, outside `_build`, so that git never takes it for part of this checkout, and remove the folder when they end.
 
 ## Releases
