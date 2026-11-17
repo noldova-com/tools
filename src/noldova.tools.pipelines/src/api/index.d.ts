@@ -2770,7 +2770,13 @@ export declare class ReproducibleStep implements IStep {
  * `optionalDependencies` that names a module the commit releases, by the id
  * {@link ArchiveStep.readModuleIdsAsync} reads, at an older exact version,
  * to the version, and lists each such move in the description as it lists
- * the pins; a range and a newer or equal version stay.
+ * the pins; a range and a newer or equal version stay. When the commit
+ * releases `@noldova/desktop.runtime`, it also writes
+ * `>=<version> <next version that may break modules>`, the next minor below
+ * 1.0 and the next major from 1.0, in place of each `>=<lowest> <first refused>`
+ * range older than the release in a tracked `module.json`'s `noldovaDesktop`
+ * and, before it relocks, in a tracked `package.json`'s value for a released
+ * package, and lists each such move too.
  */
 export declare class DependentsStep implements IStep {
   /**

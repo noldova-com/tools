@@ -151,7 +151,7 @@ export class DependentsStep implements IStep {
     if (relocked instanceof StepResult)
       return relocked;
 
-    const moves = [...relocked.moves, ...await DependentsStep.moveModulePinsAsync(git, directory, moduleIds, update.version)];
+    const moves = [...relocked.moves, ...await DependentsStep.moveModulePinsAsync(git, directory, moduleIds, update)];
 
     const title = Resources.formatUpdateTitle(update.source, update.version);
     await git.commitAllAsync(title);
@@ -200,14 +200,14 @@ export class DependentsStep implements IStep {
     return relocked;
   }
 
-  private static async moveModulePinsAsync(git: Git, directory: string, moduleIds: readonly string[], version: string): Promise<readonly string[]> {
-    if (moduleIds.length === 0)
-      return [];
-
-    const targets = moduleIds.map(t => ({ packageName: t, version, reason: null }));
+  private static async moveModulePinsAsync(git: Git, directory: string, moduleIds: readonly string[], update: DependentsUpdate): Promise<readonly string[]> {
+    const targets = moduleIds.map(t => ({ packageName: t, version: update.version, reason: null }));
 
     return (await git.listTrackedFilesAsync()).map(t => t.filePath).filter(t => path.posix.basename(t) === Resources.moduleFileName)
-      .flatMap(t => DependentRelock.moveModulePins(path.join(directory, t), t, targets));
+      .flatMap(t => [
+        ...targets.length === 0 ? [] : DependentRelock.moveModulePins(path.join(directory, t), t, targets),
+        ...DependentRelock.moveModuleRange(path.join(directory, t), t, update.packageNames, update.version)
+      ]);
   }
 
   private static readPeerPins(manifests: readonly JsonReader[], packageNames: readonly string[], releasedVersion: string): readonly PinTarget[] {
