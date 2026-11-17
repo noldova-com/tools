@@ -53,6 +53,7 @@ export class Resources {
   public static readonly dependabotFilePaths: readonly string[] = [".github/dependabot.yml", ".github/dependabot.yaml"];
   public static readonly failureExitCode: number = 1;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+  public static readonly exactRangePattern: RegExp = /^>=((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)) <(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
   public static readonly fileEndByteCount: number = 2;
   public static readonly gitAddWorktreeValues: readonly string[] = ["worktree", "add", "--quiet", "--detach", "--end-of-options"];
   public static readonly gitAttributesFilePath: string = ".gitattributes";
@@ -112,6 +113,8 @@ export class Resources {
   public static readonly moduleFileName: string = "module.json";
   public static readonly moduleIdField: string = "id";
   public static readonly nameField: string = "name";
+  public static readonly noldovaDesktopField: string = "noldovaDesktop";
+  public static readonly noldovaDesktopPackageName: string = "@noldova/desktop.runtime";
   public static readonly newlineByte: number = 10;
   public static readonly nightlyDatePattern: RegExp = /^([1-9][0-9]{3})([0-9]{2})([0-9]{2})$/;
   public static readonly nightlySeparator: string = "-nightly.";
