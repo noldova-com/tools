@@ -105,6 +105,7 @@ export class DependentRelock {
     if (unmanifested.length > 0)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockManifestsUntracked(unmanifested)));
 
+    const rangeMoves = manifestPaths.flatMap(t => DependentRelock.moveRanges(path.join(directory, t), t, update.packageNames, update.packageNames, update.version));
     const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
@@ -125,7 +126,7 @@ export class DependentRelock {
     if (shared.size > 0)
       return StepResult.succeeded(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
-    const allMoves = [...moves, ...peerMoves, ...chase.moves];
+    const allMoves = [...moves, ...rangeMoves, ...peerMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
     for (const lockFilePath of [...lockFilePaths.filter(t => !lockScripts.has(t)), ...lockFilePaths.filter(t => lockScripts.has(t))]) {
       const script = lockScripts.get(lockFilePath);
@@ -511,6 +512,35 @@ export class DependentRelock {
       fs.writeFileSync(fullPath, text);
 
     return moves.map(t => t.line);
+  }
+
+  public static moveModuleRange(fullPath: string, filePath: string, packageNames: readonly string[], version: string): readonly string[] {
+    return DependentRelock.moveRanges(fullPath, filePath, packageNames, [Resources.noldovaDesktopField], version).map(t => t.line);
+  }
+
+  private static moveRanges(fullPath: string, filePath: string, packageNames: readonly string[], fieldNames: readonly string[], version: string): readonly PinMove[] {
+    if (!packageNames.includes(Resources.noldovaDesktopPackageName))
+      return [];
+
+    const target = Version.parse(version);
+    const range = Resources.formatSiblingPeerRange(version, (target.major === 0 ? target.nextMinor() : new Version(target.major + 1, 0, 0)).toString());
+    const moves: PinMove[] = [];
+    let text = fs.readFileSync(fullPath, Resources.textEncoding);
+    for (const fieldName of fieldNames) {
+      text = text.replace(Resources.createPinPattern(fieldName), (pin: string, prefix: string, found: string, suffix: string) => {
+        const lowest = Resources.exactRangePattern.exec(found)?.[1];
+        if (lowest === undefined || Version.parse(lowest).compareTo(target) >= 0)
+          return pin;
+
+        moves.push({ packageName: fieldName, line: Resources.formatPinMoved(filePath, fieldName, found, range) });
+
+        return `${prefix}${range}${suffix}`;
+      });
+    }
+    if (moves.length > 0)
+      fs.writeFileSync(fullPath, text);
+
+    return moves;
   }
 
   private static movePins(fullPath: string, filePath: string, targets: readonly PinTarget[]): readonly PinMove[] {

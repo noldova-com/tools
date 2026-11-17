@@ -950,6 +950,88 @@ export class DependentsStepTests {
     Assert.isTrue(body.includes("\n- `package.json`: `@noldova/a` from 0.0.3 to 0.0.4\n- `module.json`: `a` from 0.0.3 to 0.0.4\n- `src/plugin/module.json`: `a` from 0.0.2 to 0.0.4\n- `package-lock.json`: relocked by the repository\n"), body);
   }
 
+  @TestMethod
+  public async raisesTheNoldovaDesktopRangeOfEachModuleAndItsPeersToTheReleaseAsync(): Promise<void> {
+    using source = DependentsStepTests.createDesktopSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.createRangedModule(">=0.0.1 <0.1.0"));
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.3", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 5 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    const pushed = host.pushed.get("noldova-com/pinned");
+    Assert.areEqual("{ \"id\": \"m\", \"noldovaDesktop\": \">=0.0.3 <0.1.0\" }\n", pushed?.["src/m/module.json"]);
+    Assert.areEqual(
+      "{ \"name\": \"@noldova/m\", \"peerDependencies\": { \"@noldova/context.json\": \">=0.0.1 <0.1.0\", \"@noldova/desktop.protocol\": \">=0.0.3 <0.1.0\", \"@noldova/desktop.runtime\": \">=0.0.3 <0.1.0\" } }\n",
+      pushed?.["src/m/package.json"]);
+    const body = host.proposals[0] ?? "";
+    Assert.isTrue(body.includes([
+      "- `src/m/package.json`: `@noldova/desktop.protocol` from >=0.0.1 <0.1.0 to >=0.0.3 <0.1.0",
+      "- `src/m/package.json`: `@noldova/desktop.runtime` from >=0.0.1 <0.1.0 to >=0.0.3 <0.1.0",
+      "- `src/m/module.json`: `noldovaDesktop` from >=0.0.1 <0.1.0 to >=0.0.3 <0.1.0"
+    ].join("\n")), body);
+  }
+
+  @TestData("1.2.0", ">=0.0.1 <0.1.0", ">=1.2.0 <2.0.0")
+  @TestData("0.0.3", ">=0.0.3 <0.1.0", ">=0.0.3 <0.1.0")
+  @TestData("0.0.3", ">=0.0.5 <0.1.0", ">=0.0.5 <0.1.0")
+  @TestData("0.0.3", "^0.0.1", "^0.0.1")
+  @TestMethod
+  public async writesTheRangeUpToTheNextVersionThatMayBreakModulesOnlyBelowTheReleaseAsync(version: string, range: string, expected: string): Promise<void> {
+    using source = DependentsStepTests.createDesktopSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.createRangedModule(range));
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync([version, source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    const pushed = host.pushed.get("noldova-com/pinned");
+    Assert.areEqual(`{ "id": "m", "noldovaDesktop": "${expected}" }\n`, pushed?.["src/m/module.json"]);
+    Assert.isTrue((pushed?.["src/m/package.json"] ?? "").includes(`"@noldova/desktop.runtime": "${expected}"`), pushed?.["src/m/package.json"]);
+  }
+
+  @TestMethod
+  public async leavesTheRangesAloneWhenTheReleaseIsNotNoldovaDesktopsAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"devDependencies\": { \"@noldova/a\": \"0.0.1\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/m/module.json": "{ \"id\": \"m\", \"noldovaDesktop\": \">=0.0.1 <0.1.0\" }\n",
+      "src/m/package.json": "{ \"name\": \"@noldova/m\", \"peerDependencies\": { \"@noldova/a\": \">=0.0.1 <0.1.0\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    const pushed = host.pushed.get("noldova-com/pinned");
+    Assert.areEqual("{ \"id\": \"m\", \"noldovaDesktop\": \">=0.0.1 <0.1.0\" }\n", pushed?.["src/m/module.json"]);
+    Assert.areEqual("{ \"name\": \"@noldova/m\", \"peerDependencies\": { \"@noldova/a\": \">=0.0.1 <0.1.0\" } }\n", pushed?.["src/m/package.json"]);
+  }
+
+  private static createDesktopSource(): GitRepositoryFixture {
+    const source = GitRepositoryFixture.create();
+    source.commit({
+      "src/protocol/package.json": "{ \"name\": \"@noldova/desktop.protocol\" }\n",
+      "src/runtime/package.json": "{ \"name\": \"@noldova/desktop.runtime\" }\n"
+    });
+
+    return source;
+  }
+
+  private static createRangedModule(range: string): Readonly<Record<string, string>> {
+    return {
+      "package.json": "{ \"devDependencies\": { \"@noldova/desktop.protocol\": \"0.0.1\", \"@noldova/desktop.runtime\": \"0.0.1\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/m/module.json": `{ "id": "m", "noldovaDesktop": "${range}" }\n`,
+      "src/m/package.json": `{ "name": "@noldova/m", "peerDependencies": { "@noldova/context.json": ">=0.0.1 <0.1.0", "@noldova/desktop.protocol": "${range}", "@noldova/desktop.runtime": "${range}" } }\n`
+    };
+  }
+
   private static createModuleSource(): GitRepositoryFixture {
     const source = DependentsStepTests.createSource();
     source.commit({
