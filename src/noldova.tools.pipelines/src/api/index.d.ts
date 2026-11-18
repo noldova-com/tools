@@ -2739,7 +2739,8 @@ export declare class ReproducibleStep implements IStep {
  * a peer, and names each such package, since npm couldn't install the moved
  * pins until that package accepts them; after, it leaves it as it is,
  * without chasing further, when a relocked lock file still holds a
- * package whose exact peer differs from the version it locks. A lock folder
+ * package whose exact peer differs from the version it locks, or a moved
+ * package at another version under another package's `node_modules`. A lock folder
  * whose `package.json` pins exactly a package one of the repository's own
  * tracked manifests names, while its lock holds no entry for it, as when the
  * repository locks its own unpublished packages from its built archives, is
@@ -2890,7 +2891,8 @@ export declare class RelockedFiles {
 
   /**
    * Writes a result, or a repository's line, as the JSON the relock step's
-   * result file holds.
+   * result file holds. A line is marked as written by a relock step that
+   * fails a repository left at its pins.
    *
    * @param relocked The result, or the line as a {@link StepResult}.
    * @returns The JSON.
@@ -2899,7 +2901,7 @@ export declare class RelockedFiles {
    * import { RelockedFiles, StepResult } from "@noldova/tools.pipelines";
    *
    * RelockedFiles.format(StepResult.succeeded("noldova-com/example: pins none of them below 0.0.4."));
-   * // {"isSuccessful":true,"message":"noldova-com/example: pins none of them below 0.0.4."}
+   * // {"isSuccessful":true,"message":"noldova-com/example: pins none of them below 0.0.4.","failsWhenLeft":true}
    * ```
    */
   public static format(relocked: StepResult | RelockedFiles): string;
@@ -2909,8 +2911,10 @@ export declare class RelockedFiles {
    *
    * @param text The JSON.
    * @returns The result, or the repository's line as a {@link StepResult}
-   * that succeeded or failed as it did. It throws when the text isn't such
-   * JSON.
+   * that succeeded or failed as it did. A line that succeeded without the
+   * mark {@link format} writes came from an older relock step, which also
+   * reports a repository left at its pins as a success, so it comes back
+   * failed and says so. It throws when the text isn't such JSON.
    */
   public static parse(text: string): StepResult | RelockedFiles;
 }

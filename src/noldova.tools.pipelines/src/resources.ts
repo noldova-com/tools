@@ -37,6 +37,7 @@ export class Resources {
   public static readonly lockScriptSeparator: string = "=";
   public static readonly npmScriptValues: readonly string[] = ["run"];
   public static readonly relockCommitField: string = "commit";
+  public static readonly relockFailsLeftField: string = "failsWhenLeft";
   public static readonly relockFilesField: string = "files";
   public static readonly relockLockLinesField: string = "lockLines";
   public static readonly relockMessageField: string = "message";
@@ -713,6 +714,18 @@ export class Resources {
 
   public static formatRepositoryConflicted(repository: string, version: string, conflicts: readonly string[]): string {
     return `${repository}: left at its pins, since the lock files relocked for ${version} still hold packages whose exact peers differ from what they lock: ${conflicts.join("; ")}.`;
+  }
+
+  public static formatRelockFromOlderPipelines(line: string): string {
+    return `${line} Its relock ran older pipelines, which also report a repository left at its pins as a success, so this can't tell whether it moved; it fails until the repository's pipelines pin moves.`;
+  }
+
+  public static formatRepositoryNested(repository: string, version: string, copies: readonly string[]): string {
+    return `${repository}: left at its pins, since the lock files relocked for ${version} still hold another copy of a package the pins moved: ${copies.join("; ")}.`;
+  }
+
+  public static formatNestedCopy(filePath: string, nester: string, packageName: string, version: string, movedVersion: string): string {
+    return `${filePath} holds ${packageName} ${version} under ${nester}, beside the ${movedVersion} the pins moved to`;
   }
 
   public static formatPeerBlocker(filePath: string, packageName: string, version: string, peerName: string, peerVersion: string): string {

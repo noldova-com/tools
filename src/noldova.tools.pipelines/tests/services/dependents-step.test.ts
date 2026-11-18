@@ -496,6 +496,39 @@ export class DependentsStepTests {
   }
 
   @TestMethod
+  public async failsADependentWhoseRelockedLockNestsAnotherCopyOfWhatAReleasedPackageDependsOnAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\", \"@noldova/window\": \"0.0.5\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/window@0.0.5", "peerDependencies", {});
+    npm.locked = {
+      packages: {
+        "": { dependencies: { "@noldova/ui": "0.0.13", "@noldova/window": "0.0.5" } },
+        "node_modules/@noldova/ui": { version: "0.0.13", dependencies: { "@noldova/cdk": "22.3.0" } },
+        "node_modules/@noldova/cdk": { version: "22.3.0" },
+        "node_modules/@noldova/window": { version: "0.0.5", dependencies: { "@noldova/cdk": "22.2.7", "@noldova/plain": "1.0.0" } },
+        "node_modules/@noldova/window/node_modules/@noldova/cdk": { version: "22.2.7" },
+        "node_modules/@noldova/window/node_modules/@noldova/plain": { version: "1.0.0" },
+        "node_modules/@noldova/panel/node_modules/@noldova/ui": { version: "0.0.13" }
+      }
+    };
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, since the lock files relocked for 0.0.13 still hold another copy of a package the pins moved: "
+        + "package-lock.json holds @noldova/cdk 22.2.7 under node_modules/@noldova/window, beside the 22.3.0 the pins moved to.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
   public async leavesARepositoryWhoseLockedPackagesNeedAnotherVersionOfAMovedPeerAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     const lock = { packages: { "node_modules/@noldova/panel": { version: "0.0.7", peerDependencies: { "@noldova/kit": "0.0.4" } } } };
@@ -921,6 +954,26 @@ export class DependentsStepTests {
 
     Assert.areEqual(isSuccessful, result.isSuccessful);
     Assert.areEqual(line, result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestData(true)
+  @TestData(false)
+  @TestMethod
+  public async failsALineAnOlderRelockStepWroteAsync(isSuccessful: boolean): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const line = "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: a reason.";
+    host.relocks.set("noldova-com/pinned", JSON.stringify({ isSuccessful, message: line }));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(isSuccessful
+      ? `${line} Its relock ran older pipelines, which also report a repository left at its pins as a success, so this can't tell whether it moved; it fails until the repository's pipelines pin moves.`
+      : line, result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
 

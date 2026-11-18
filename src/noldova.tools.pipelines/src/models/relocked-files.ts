@@ -27,7 +27,7 @@ export class RelockedFiles {
 
   public static format(relocked: StepResult | RelockedFiles): string {
     return JSON.stringify(relocked instanceof StepResult
-      ? { [Resources.relockSucceededField]: relocked.isSuccessful, [Resources.relockMessageField]: relocked.message }
+      ? { [Resources.relockSucceededField]: relocked.isSuccessful, [Resources.relockMessageField]: relocked.message, [Resources.relockFailsLeftField]: true }
       : { [Resources.relockCommitField]: relocked.commit, [Resources.relockMovesField]: relocked.moves, [Resources.relockLockLinesField]: relocked.lockLines, [Resources.relockFilesField]: relocked.files });
   }
 
@@ -36,7 +36,10 @@ export class RelockedFiles {
     if (reader.hasField(Resources.relockMessageField)) {
       const message = reader.readString(Resources.relockMessageField);
 
-      return reader.readBoolean(Resources.relockSucceededField) ? StepResult.succeeded(message) : StepResult.failed(message);
+      if (!reader.readBoolean(Resources.relockSucceededField))
+        return StepResult.failed(message);
+
+      return reader.hasField(Resources.relockFailsLeftField) ? StepResult.succeeded(message) : StepResult.failed(Resources.formatRelockFromOlderPipelines(message));
     }
 
     const files = reader.readObject(Resources.relockFilesField);

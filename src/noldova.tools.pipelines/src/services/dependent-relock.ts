@@ -155,6 +155,10 @@ export class DependentRelock {
     if (conflicts.length > 0)
       return StepResult.failed(Resources.formatRepositoryConflicted(repository, update.version, conflicts));
 
+    const nested = lockFilePaths.flatMap(t => DependentRelock.findNested(path.join(directory, t), t, expected));
+    if (nested.length > 0)
+      return StepResult.failed(Resources.formatRepositoryNested(repository, update.version, nested));
+
     const after = DependentRelock.readFiles(directory, [...manifestPaths, ...lockFilePaths]);
     const lockLines = lockFilePaths.map(t => {
       const script = lockScripts.get(t);
@@ -492,6 +496,19 @@ export class DependentRelock {
     }
 
     return [...conflicts];
+  }
+
+  private static findNested(fullPath: string, filePath: string, expected: ReadonlyMap<string, string>): readonly string[] {
+    const lock: LockFile = JSON.parse(fs.readFileSync(fullPath, Resources.textEncoding));
+    return Object.entries(lock.packages ?? {}).flatMap(([key, entry]) => {
+      const index = key.lastIndexOf(Resources.nestedNodeModulesSegment);
+      const name = key.slice(index + Resources.nestedNodeModulesSegment.length);
+      const movedVersion = expected.get(name);
+      if (index < 0 || movedVersion === undefined || movedVersion === entry.version)
+        return [];
+
+      return [Resources.formatNestedCopy(filePath, key.slice(0, index), name, entry.version, movedVersion)];
+    });
   }
 
   private static unlockMoved(fullPath: string, packageNames: ReadonlySet<string>): void {
