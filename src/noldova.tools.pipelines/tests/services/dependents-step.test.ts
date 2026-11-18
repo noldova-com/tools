@@ -546,6 +546,21 @@ export class DependentsStepTests {
   }
 
   @TestMethod
+  public async endsWithOnlyTheSummaryWhenEveryLineWentToTheOutputAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using unpinned = DependentsStepTests.createTarget({ "README.md": "Read me.\n" });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/unpinned", unpinned);
+    const output = new RecordingOutput(host.events);
+
+    const result = await new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), new LockingNpm(), undefined, output).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("success: noldova-com/unpinned: pins none of them below 0.0.4.", host.events.filter(t => t.startsWith("success")).join("\n"));
+    Assert.areEqual("Looked for exact pins of @noldova/a, @noldova/a.b, @noldova/b older than 0.0.4 in 1 repositories; each one's line is above.", result.message);
+  }
+
+  @TestMethod
   public async writesEachRepositorysLineAsItIsDoneAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     using failed = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
