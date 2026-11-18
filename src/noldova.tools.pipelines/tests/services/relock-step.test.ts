@@ -105,6 +105,52 @@ export class RelockStepTests {
   }
 
   @TestMethod
+  public async raisesTheNoldovaDesktopPeerRangesToTheReleaseAndLeavesTheModuleToTheDependentsStepAsync(): Promise<void> {
+    using target = RelockStepTests.createRangedTarget(">=0.0.1 <0.1.0");
+    const npm = new ScriptNpm(target.directory);
+
+    const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createDesktopRequest("0.0.3"), "relock.json"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 4 pins and wrote the 3 files that changed into the result.", result.message);
+    const written = RelockStepTests.readResult(target);
+    if (!(written instanceof RelockedFiles))
+      throw new Error(`The result is a message: ${written.message}`);
+
+    Assert.areEqual(
+      [
+        "`package.json`: `@noldova/desktop.protocol` from 0.0.1 to 0.0.3",
+        "`package.json`: `@noldova/desktop.runtime` from 0.0.1 to 0.0.3",
+        "`src/m/package.json`: `@noldova/desktop.protocol` from >=0.0.1 <0.1.0 to >=0.0.3 <0.1.0",
+        "`src/m/package.json`: `@noldova/desktop.runtime` from >=0.0.1 <0.1.0 to >=0.0.3 <0.1.0"
+      ].join("|"),
+      written.moves.join("|"));
+    Assert.areEqual("package.json,src/m/package.json,package-lock.json", Object.keys(written.files).join(","));
+    Assert.areEqual(
+      "{ \"name\": \"@noldova/m\", \"peerDependencies\": { \"@noldova/context.json\": \">=0.0.1 <0.1.0\", \"@noldova/desktop.protocol\": \">=0.0.3 <0.1.0\", \"@noldova/desktop.runtime\": \">=0.0.3 <0.1.0\" } }\n",
+      written.files["src/m/package.json"]);
+    Assert.areEqual("{ \"id\": \"m\", \"noldovaDesktop\": \">=0.0.1 <0.1.0\" }\n", fs.readFileSync(path.join(target.directory, "src", "m", "module.json"), "utf8"));
+  }
+
+  @TestData("1.2.0", ">=0.0.1 <0.1.0", ">=1.2.0 <2.0.0")
+  @TestData("0.0.3", ">=0.0.3 <0.1.0", ">=0.0.3 <0.1.0")
+  @TestData("0.0.3", ">=0.0.4 <0.1.0", ">=0.0.4 <0.1.0")
+  @TestData("0.0.3", "^0.0.1", "^0.0.1")
+  @TestMethod
+  public async raisesOnlyANoldovaDesktopPeerRangeBelowTheReleaseAsync(version: string, range: string, expected: string): Promise<void> {
+    using target = RelockStepTests.createRangedTarget(range);
+
+    const result = await new RelockStep(new ProcessRunner(), new ScriptNpm(target.directory), target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createDesktopRequest(version), "relock.json"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    const written = RelockStepTests.readResult(target);
+    if (!(written instanceof RelockedFiles))
+      throw new Error(`The result is a message: ${written.message}`);
+
+    Assert.areEqual(`{ "name": "@noldova/m", "peerDependencies": { "@noldova/context.json": ">=0.0.1 <0.1.0", "@noldova/desktop.protocol": "${expected}", "@noldova/desktop.runtime": "${expected}" } }\n`, fs.readFileSync(path.join(target.directory, "src", "m", "package.json"), "utf8"));
+  }
+
+  @TestMethod
   public async writesTheLineOfARepositoryThatPinsNoneAsync(): Promise<void> {
     using target = RelockStepTests.createTarget();
 
@@ -230,6 +276,22 @@ export class RelockStepTests {
 
   private static createRequest(packageName: string): string {
     return JSON.stringify({ source: "source", version: "0.0.4", commit: "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", packageNames: [packageName], peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: null }] });
+  }
+
+  private static createDesktopRequest(version: string): string {
+    return JSON.stringify({ source: "desktop", version, commit: "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8", packageNames: ["@noldova/desktop.protocol", "@noldova/desktop.runtime"], peerPins: [] });
+  }
+
+  private static createRangedTarget(range: string): GitRepositoryFixture {
+    const target = GitRepositoryFixture.create();
+    target.commit({
+      "package.json": "{ \"devDependencies\": { \"@noldova/desktop.protocol\": \"0.0.1\", \"@noldova/desktop.runtime\": \"0.0.1\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/m/module.json": `{ "id": "m", "noldovaDesktop": "${range}" }\n`,
+      "src/m/package.json": `{ "name": "@noldova/m", "peerDependencies": { "@noldova/context.json": ">=0.0.1 <0.1.0", "@noldova/desktop.protocol": "${range}", "@noldova/desktop.runtime": "${range}" } }\n`
+    });
+
+    return target;
   }
 
   private static createTarget(): GitRepositoryFixture {
