@@ -2829,7 +2829,14 @@ export declare class DependentsStep implements IStep {
    * or why it failed. It fails for any number of values but two, a version that isn't
    * one or is a nightly, a commit that isn't a full id, a commit that
    * releases no package, what the host can't answer, and when any
-   * repository fails, after trying every other; an error in one repository,
+   * repository is left at its pins or fails, after trying every other; its
+   * message then starts by saying the packages are published and how many
+   * repositories are left at their pins, followed by every repository's line,
+   * or, given an output, only the lines of those left. A repository is left
+   * at its pins when a pin can't take what the release moves, such as a pin
+   * outside the exact version or the peer range a released package names,
+   * or another pinned package that needs an outside package's old version
+   * and has no later version that needs the new one; an error in one repository,
    * such as git failing, is that repository's line. It removes its temporary
    * folder whether it succeeds or fails, and rejects with
    * {@link ProcessException} if git cannot start or fails while it reads the

@@ -110,7 +110,7 @@ export class DependentsStepNpmTests {
 
     const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       `${DependentsStepNpmTests.DEPENDENT}: left at its pins, which can't take what 0.0.71 moves: `
       + "@noldova/compiler-cli 1.0.1 needs @noldova/compiler 1.0.1, and no later version of it needs @noldova/compiler 1.0.5.",
@@ -131,7 +131,7 @@ export class DependentsStepNpmTests {
 
     const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       `${DependentsStepNpmTests.DEPENDENT}: left at its pins, which can't take what 0.0.71 moves: `
       + "@noldova/compiler 1.0.6 is newer than the 1.0.5 that @noldova/core 1.0.5 needs.",
@@ -172,7 +172,7 @@ export class DependentsStepNpmTests {
 
     const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(`${DependentsStepNpmTests.DEPENDENT}: left at its pins for 0.0.71, since a lock folder pins its own unpublished packages and more than one tracked manifest `
       + "names the same one: @noldova/own-core in fixtures/own/package.json, src/own-core/package.json.", result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));
@@ -188,7 +188,7 @@ export class DependentsStepNpmTests {
 
     const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(`${DependentsStepNpmTests.DEPENDENT}: left at its pins for 0.0.71, since relocking app/package-lock.json, which installs no peer for the repository's own `
       + "packages, would drop the peers it locks that no moved package names: node_modules/@noldova/peer.", result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has(DependentsStepNpmTests.DEPENDENT));

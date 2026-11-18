@@ -92,7 +92,7 @@ export class DependentRelock {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockScriptsUntracked(unknown)));
 
     const before = DependentRelock.readFiles(directory, [...manifestPaths, ...lockFilePaths]);
-    const released = update.packageNames.map(t => ({ packageName: t, version: update.version, reason: null }));
+    const released = update.packageNames.map(t => ({ packageName: t, version: update.version, reason: null, range: null }));
     const moves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, released));
     if (moves.length === 0)
       return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
@@ -109,22 +109,25 @@ export class DependentRelock {
     const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
+    for (const { packageName, version } of update.peerPins.filter(t => t.range === t.version && !moved.has(t.packageName)))
+      moved.set(packageName, version);
+    const outside = DependentRelock.findOutside(directory, manifestPaths, update.peerPins);
     const chase = await this.chasePeersAsync(directory, manifestPaths, moved);
     for (const [packageName, version] of moved)
       expected.set(packageName, version);
-    if (chase.misses.length > 0)
-      return StepResult.succeeded(Resources.formatRepositoryUnmatched(repository, update.version, chase.misses));
+    if (outside.length + chase.misses.length > 0)
+      return StepResult.failed(Resources.formatRepositoryUnmatched(repository, update.version, [...outside, ...chase.misses]));
 
     const blockers = lockFilePaths.flatMap(t => DependentRelock.findConflicts(path.join(directory, t), t, expected));
     if (blockers.length > 0)
-      return StepResult.succeeded(Resources.formatRepositoryBlocked(repository, update.version, blockers));
+      return StepResult.failed(Resources.formatRepositoryBlocked(repository, update.version, blockers));
 
     const owners = DependentRelock.readOwners(directory, manifestPaths);
     const ownLocks = lockFilePaths.filter(t => !lockScripts.has(t)).flatMap(t => DependentRelock.findOwnLock(directory, t, owners));
     const shared = new Map(ownLocks.flatMap(t => [...t.pins]).filter(([, t]) => t.manifestPaths.length > 1)
       .map(([packageName, t]) => [packageName, Resources.formatOwnManifests(packageName, t.manifestPaths)]));
     if (shared.size > 0)
-      return StepResult.succeeded(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
+      return StepResult.failed(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
     const allMoves = [...moves, ...rangeMoves, ...peerMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
@@ -145,12 +148,12 @@ export class DependentRelock {
 
       const lost = DependentRelock.findLost(path.join(directory, lockFilePath), keptPeers);
       if (lost.length > 0)
-        return StepResult.succeeded(Resources.formatRepositoryPeersLost(repository, update.version, lockFilePath, lost));
+        return StepResult.failed(Resources.formatRepositoryPeersLost(repository, update.version, lockFilePath, lost));
     }
 
     const conflicts = lockFilePaths.flatMap(t => DependentRelock.findConflicts(path.join(directory, t), t, null));
     if (conflicts.length > 0)
-      return StepResult.succeeded(Resources.formatRepositoryConflicted(repository, update.version, conflicts));
+      return StepResult.failed(Resources.formatRepositoryConflicted(repository, update.version, conflicts));
 
     const after = DependentRelock.readFiles(directory, [...manifestPaths, ...lockFilePaths]);
     const lockLines = lockFilePaths.map(t => {
@@ -216,7 +219,7 @@ export class DependentRelock {
     const own = new Set(manifestPaths.flatMap(t => DependentRelock.readManifest(directory, t).name ?? []));
     const isSettled = (packageName: string): boolean => moved.has(packageName) || own.has(packageName);
     const move = (packageName: string, version: string, reason: string): void => {
-      const pinMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, [{ packageName, version, reason }]));
+      const pinMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, [{ packageName, version, reason, range: null }]));
       if (pinMoves.length === 0)
         return;
 
@@ -316,6 +319,26 @@ export class DependentRelock {
 
       return movedVersion === undefined || movedVersion === peerVersion ? [] : [{ peerName, peerVersion, movedVersion }];
     });
+  }
+
+  // Names each exact pin of a target the released packages accept only within a range, or at one version, that stays
+  // outside it once the older pins moved: a newer pin, which the release can't move back.
+  private static findOutside(directory: string, manifestPaths: readonly string[], targets: readonly PinTarget[]): readonly string[] {
+    const pins = DependentRelock.readExactPins(directory, manifestPaths);
+
+    return targets.flatMap(({ packageName, reason, range }) => range === null || reason === null ? [] : pins
+      .filter(([name, pinned]) => name === packageName && !DependentRelock.accepts(range, pinned))
+      .map(([, pinned]) => Resources.formatPinOutside(packageName, pinned, range, reason)));
+  }
+
+  private static accepts(range: string, version: string): boolean {
+    const [, lowest, refused] = Resources.exactRangePattern.exec(range) ?? [];
+    if (lowest === undefined || refused === undefined)
+      return range === version;
+
+    const pinned = Version.parse(version);
+
+    return pinned.compareTo(Version.parse(lowest)) >= 0 && pinned.compareTo(Version.parse(refused)) < 0;
   }
 
   private static readExactPins(directory: string, manifestPaths: readonly string[]): readonly (readonly [string, string])[] {

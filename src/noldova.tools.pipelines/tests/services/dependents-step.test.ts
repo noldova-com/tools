@@ -233,7 +233,7 @@ export class DependentsStepTests {
 
     const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/z 3.0.0 is newer than the 2.0.0 that @noldova/kit 0.0.5 needs.",
       result.message.split("\n")[1]);
@@ -256,7 +256,7 @@ export class DependentsStepTests {
 
     const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/q moves to 1.0.4, but @noldova/kit 0.0.5 needs 1.0.5.",
       result.message.split("\n")[1]);
@@ -315,7 +315,7 @@ export class DependentsStepTests {
 
     const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/cli 1.0.0 needs @noldova/kit 0.0.4, and no later version of it needs @noldova/kit 0.0.5.",
       result.message.split("\n")[1]);
@@ -366,7 +366,7 @@ export class DependentsStepTests {
 
     const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       "noldova-com/blocked: left at its pins until these accept 0.0.4: package-lock.json locks @noldova/window 0.0.48, which needs @noldova/a 0.0.3; package-lock.json locks @noldova/panel 0.0.7, which needs @noldova/a 0.0.3.",
       result.message.split("\n")[1]);
@@ -399,6 +399,103 @@ export class DependentsStepTests {
   }
 
   @TestMethod
+  public async movesTheDependentsOwnPinsOfWhatAReleasedPackageDependsOnAndOfTheLowestPeerItAcceptsAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" }, \"devDependencies\": { \"@noldova/cdk\": \"22.2.7\", \"@noldova/core\": \"0.0.9\", \"@noldova/exceptions\": \"0.0.7\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 3 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    Assert.areEqual(
+      "{ \"dependencies\": { \"@noldova/ui\": \"0.0.13\" }, \"devDependencies\": { \"@noldova/cdk\": \"22.3.0\", \"@noldova/core\": \"0.0.9\", \"@noldova/exceptions\": \"0.0.8\" } }\n",
+      host.pushed.get("noldova-com/pinned")?.["package.json"]);
+    Assert.areEqual(
+      [
+        "- `package.json`: `@noldova/ui` from 0.0.12 to 0.0.13",
+        "- `package.json`: `@noldova/cdk` from 22.2.7 to 22.3.0, which `@noldova/ui` 0.0.13 depends on",
+        "- `package.json`: `@noldova/exceptions` from 0.0.7 to 0.0.8, which `@noldova/ui` 0.0.13 accepts as a peer"
+      ].join("\n"),
+      host.proposals.join("").split("\n").filter(t => t.startsWith("- `") && t.includes(" from ")).join("\n"));
+  }
+
+  @TestMethod
+  public async failsADependentWhosePinIsOutsideWhatAReleasedPackageDependsOnOrAcceptsAsAPeerAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" }, \"devDependencies\": { \"@noldova/cdk\": \"23.0.0\", \"@noldova/core\": \"0.0.9\", \"@noldova/exceptions\": \"0.1.0\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      [
+        "@noldova/ui, @noldova/ui.icons 0.0.13 are published; 1 of 1 repositories are left at their pins, each with what holds it:",
+        "noldova-com/pinned: left at its pins, which can't take what 0.0.13 moves: @noldova/cdk 23.0.0 is outside 22.3.0, which `@noldova/ui` 0.0.13 depends on; "
+          + "@noldova/exceptions 0.1.0 is outside >=0.0.8 <0.1.0, which `@noldova/ui` 0.0.13 accepts as a peer."
+      ].join("\n"),
+      result.message);
+    Assert.areEqual(0, npm.directories.length);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async failsADependentWhoseOtherPinNeedsAnotherVersionOfWhatAReleasedPackageDependsOnAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\", \"@noldova/window\": \"0.0.5\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/window@0.0.5", "peerDependencies", { "@noldova/cdk": "22.2.7" });
+    npm.answer("@noldova/window", "versions", ["0.0.5", "0.0.6"]);
+    npm.answer("@noldova/window@0.0.6", "peerDependencies", { "@noldova/cdk": "22.2.7" });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, which can't take what 0.0.13 moves: @noldova/window 0.0.5 needs @noldova/cdk 22.2.7, and no later version of it needs @noldova/cdk 22.3.0.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async movesAnotherPinToTheFirstVersionThatNeedsWhatAReleasedPackageDependsOnAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\", \"@noldova/window\": \"0.0.5\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.answer("@noldova/window@0.0.5", "peerDependencies", { "@noldova/cdk": "22.2.7" });
+    npm.answer("@noldova/window", "versions", ["0.0.5", "0.0.6"]);
+    npm.answer("@noldova/window@0.0.6", "peerDependencies", { "@noldova/cdk": "22.3.0" });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/ui\": \"0.0.13\", \"@noldova/window\": \"0.0.6\" } }\n", host.pushed.get("noldova-com/pinned")?.["package.json"]);
+    Assert.areEqual(
+      "- `package.json`: `@noldova/window` from 0.0.5 to 0.0.6, the first version that needs `@noldova/cdk` 22.3.0 as a peer",
+      host.proposals.join("").split("\n").filter(t => t.includes("`@noldova/window`")).join("\n"));
+  }
+
+  @TestMethod
   public async leavesARepositoryWhoseLockedPackagesNeedAnotherVersionOfAMovedPeerAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     const lock = { packages: { "node_modules/@noldova/panel": { version: "0.0.7", peerDependencies: { "@noldova/kit": "0.0.4" } } } };
@@ -412,7 +509,7 @@ export class DependentsStepTests {
 
     const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       "noldova-com/blocked: left at its pins until these accept 0.0.4: package-lock.json locks @noldova/panel 0.0.7, which needs @noldova/kit 0.0.4.",
       result.message.split("\n")[1]);
@@ -441,7 +538,7 @@ export class DependentsStepTests {
 
     const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
 
-    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isFalse(result.isSuccessful, result.message);
     Assert.areEqual(
       "noldova-com/pinned: left at its pins, since the lock files relocked for 0.0.4 still hold packages whose exact peers differ from what they lock: package-lock.json locks @noldova/kit 0.0.5, which needs @noldova/z 2.0.0.",
       result.message.split("\n")[1]);
@@ -470,7 +567,9 @@ export class DependentsStepTests {
         "success: noldova-com/unpinned: pins none of them below 0.0.4."
       ].join("\n"),
       host.events.join("\n"));
-    Assert.areEqual("Looked for exact pins of @noldova/a, @noldova/a.b, @noldova/b older than 0.0.4 in 2 repositories; each one's line is above.", result.message);
+    Assert.areEqual(
+      ["@noldova/a, @noldova/a.b, @noldova/b 0.0.4 are published; 1 of 2 repositories are left at their pins, each with what holds it:", "noldova-com/failed: rejected"].join("\n"),
+      result.message);
   }
 
   @TestMethod
@@ -508,7 +607,7 @@ export class DependentsStepTests {
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(
       [
-        "Looked for exact pins of @noldova/a, @noldova/a.b, @noldova/b older than 0.0.4 in 4 repositories:",
+        "@noldova/a, @noldova/a.b, @noldova/b 0.0.4 are published; 3 of 4 repositories are left at their pins, each with what holds it:",
         "noldova-com/checkout: git clone exited with code 128: not found",
         "noldova-com/propose: GitHub answered POST repos/noldova-com/propose/pulls with 403: Forbidden",
         "noldova-com/push: git push exited with code 1: rejected",
@@ -779,7 +878,7 @@ export class DependentsStepTests {
       version: "0.0.4",
       commit: source.readHead(),
       packageNames: ["@noldova/a", "@noldova/a.b", "@noldova/b"],
-      peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: ", which `@noldova/a.b` 0.0.4 needs as a peer" }]
+      peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: ", which `@noldova/a.b` 0.0.4 needs as a peer", range: null }]
     };
     Assert.areEqual(`noldova-com/pinned ${pinned.readHead()} ${JSON.stringify(request)}`, host.relockRequests.join("\n"));
     const pushed = host.pushed.get("noldova-com/pinned");
@@ -1030,6 +1129,24 @@ export class DependentsStepTests {
       "src/m/module.json": `{ "id": "m", "noldovaDesktop": "${range}" }\n`,
       "src/m/package.json": `{ "name": "@noldova/m", "peerDependencies": { "@noldova/context.json": ">=0.0.1 <0.1.0", "@noldova/desktop.protocol": "${range}", "@noldova/desktop.runtime": "${range}" } }\n`
     };
+  }
+
+  private static createKitSource(): GitRepositoryFixture {
+    const source = GitRepositoryFixture.create();
+    source.commit({
+      "src/ui/package.json": JSON.stringify({
+        name: "@noldova/ui",
+        dependencies: { "@noldova/cdk": "22.3.0", "@noldova/markdown": "^15.0.0" },
+        peerDependencies: { "@noldova/angular": "22.2.6", "@noldova/core": ">=0.0.8 <0.1.0", "@noldova/exceptions": ">=0.0.8 <0.1.0" }
+      }),
+      "src/ui.icons/package.json": JSON.stringify({
+        name: "@noldova/ui.icons",
+        dependencies: { "@noldova/cdk": "^22.3.0" },
+        peerDependencies: { "@noldova/ui": ">=0.0.13 <0.1.0" }
+      })
+    });
+
+    return source;
   }
 
   private static createModuleSource(): GitRepositoryFixture {
