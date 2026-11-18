@@ -151,6 +151,30 @@ export class RelockStepTests {
   }
 
   @TestMethod
+  public async writesAPinOutsideWhatAReleasedPackageDependsOnAsAFailedResultAsync(): Promise<void> {
+    using target = GitRepositoryFixture.create();
+    target.commit({ "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/cdk\": \"23.0.0\" } }\n", "package-lock.json": "{}\n" });
+    const npm = new ScriptNpm(target.directory);
+    const request = JSON.stringify({
+      source: "source",
+      version: "0.0.4",
+      commit: "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8",
+      packageNames: ["@noldova/a"],
+      peerPins: [{ packageName: "@noldova/cdk", version: "22.3.0", reason: ", which `@noldova/a` 0.0.4 depends on", range: "22.3.0" }]
+    });
+
+    const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, request, "relock.json"]);
+
+    const line = "noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/cdk 23.0.0 is outside 22.3.0, which `@noldova/a` 0.0.4 depends on.";
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(line, result.message);
+    const written = RelockStepTests.readResult(target);
+    Assert.isTrue(written instanceof StepResult && !written.isSuccessful);
+    Assert.areEqual(line, written instanceof StepResult ? written.message : "");
+    Assert.areEqual(0, npm.locked.length);
+  }
+
+  @TestMethod
   public async writesTheLineOfARepositoryThatPinsNoneAsync(): Promise<void> {
     using target = RelockStepTests.createTarget();
 
