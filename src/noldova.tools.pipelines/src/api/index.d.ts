@@ -2739,7 +2739,8 @@ export declare class ReproducibleStep implements IStep {
  * a peer, and names each such package, since npm couldn't install the moved
  * pins until that package accepts them; after, it leaves it as it is,
  * without chasing further, when a relocked lock file still holds a
- * package whose exact peer differs from the version it locks. A lock folder
+ * package whose exact peer differs from the version it locks, or a moved
+ * package at another version under another package's `node_modules`. A lock folder
  * whose `package.json` pins exactly a package one of the repository's own
  * tracked manifests names, while its lock holds no entry for it, as when the
  * repository locks its own unpublished packages from its built archives, is
@@ -2829,7 +2830,14 @@ export declare class DependentsStep implements IStep {
    * or why it failed. It fails for any number of values but two, a version that isn't
    * one or is a nightly, a commit that isn't a full id, a commit that
    * releases no package, what the host can't answer, and when any
-   * repository fails, after trying every other; an error in one repository,
+   * repository is left at its pins or fails, after trying every other; its
+   * message then starts by saying the packages are published and how many
+   * repositories are left at their pins, followed by every repository's line,
+   * or, given an output, only the lines of those left. A repository is left
+   * at its pins when a pin can't take what the release moves, such as a pin
+   * outside the exact version or the peer range a released package names,
+   * or another pinned package that needs an outside package's old version
+   * and has no later version that needs the new one; an error in one repository,
    * such as git failing, is that repository's line. It removes its temporary
    * folder whether it succeeds or fails, and rejects with
    * {@link ProcessException} if git cannot start or fails while it reads the
@@ -2883,7 +2891,8 @@ export declare class RelockedFiles {
 
   /**
    * Writes a result, or a repository's line, as the JSON the relock step's
-   * result file holds.
+   * result file holds. A line is marked as written by a relock step that
+   * fails a repository left at its pins.
    *
    * @param relocked The result, or the line as a {@link StepResult}.
    * @returns The JSON.
@@ -2892,7 +2901,7 @@ export declare class RelockedFiles {
    * import { RelockedFiles, StepResult } from "@noldova/tools.pipelines";
    *
    * RelockedFiles.format(StepResult.succeeded("noldova-com/example: pins none of them below 0.0.4."));
-   * // {"isSuccessful":true,"message":"noldova-com/example: pins none of them below 0.0.4."}
+   * // {"isSuccessful":true,"message":"noldova-com/example: pins none of them below 0.0.4.","failsWhenLeft":true}
    * ```
    */
   public static format(relocked: StepResult | RelockedFiles): string;
@@ -2902,8 +2911,10 @@ export declare class RelockedFiles {
    *
    * @param text The JSON.
    * @returns The result, or the repository's line as a {@link StepResult}
-   * that succeeded or failed as it did. It throws when the text isn't such
-   * JSON.
+   * that succeeded or failed as it did. A line that succeeded without the
+   * mark {@link format} writes came from an older relock step, which also
+   * reports a repository left at its pins as a success, so it comes back
+   * failed and says so. It throws when the text isn't such JSON.
    */
   public static parse(text: string): StepResult | RelockedFiles;
 }

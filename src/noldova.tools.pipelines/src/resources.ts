@@ -37,6 +37,7 @@ export class Resources {
   public static readonly lockScriptSeparator: string = "=";
   public static readonly npmScriptValues: readonly string[] = ["run"];
   public static readonly relockCommitField: string = "commit";
+  public static readonly relockFailsLeftField: string = "failsWhenLeft";
   public static readonly relockFilesField: string = "files";
   public static readonly relockLockLinesField: string = "lockLines";
   public static readonly relockMessageField: string = "message";
@@ -44,6 +45,7 @@ export class Resources {
   public static readonly relockPackageNameField: string = "packageName";
   public static readonly relockPackageNamesField: string = "packageNames";
   public static readonly relockPeerPinsField: string = "peerPins";
+  public static readonly relockRangeField: string = "range";
   public static readonly relockReasonField: string = "reason";
   public static readonly relockSourceField: string = "source";
   public static readonly relockStepName: string = "relock";
@@ -53,7 +55,7 @@ export class Resources {
   public static readonly dependabotFilePaths: readonly string[] = [".github/dependabot.yml", ".github/dependabot.yaml"];
   public static readonly failureExitCode: number = 1;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
-  public static readonly exactRangePattern: RegExp = /^>=((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)) <(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+  public static readonly exactRangePattern: RegExp = /^>=((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)) <((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
   public static readonly fileEndByteCount: number = 2;
   public static readonly gitAddWorktreeValues: readonly string[] = ["worktree", "add", "--quiet", "--detach", "--end-of-options"];
   public static readonly gitAttributesFilePath: string = ".gitattributes";
@@ -690,6 +692,10 @@ export class Resources {
     return `Looked for exact pins of ${packageNames.join(", ")} older than ${version} in ${repositoryCount} repositories:`;
   }
 
+  public static formatDependentsPublished(packageNames: readonly string[], version: string, leftCount: number, repositoryCount: number): string {
+    return `${packageNames.join(", ")} ${version} are published; ${leftCount} of ${repositoryCount} repositories are left at their pins, each with what holds it:`;
+  }
+
   public static formatDependentsWritten(packageNames: readonly string[], version: string, repositoryCount: number): string {
     return `Looked for exact pins of ${packageNames.join(", ")} older than ${version} in ${repositoryCount} repositories; each one's line is above.`;
   }
@@ -710,12 +716,36 @@ export class Resources {
     return `${repository}: left at its pins, since the lock files relocked for ${version} still hold packages whose exact peers differ from what they lock: ${conflicts.join("; ")}.`;
   }
 
+  public static formatRelockFromOlderPipelines(line: string): string {
+    return `${line} Its relock ran older pipelines, which also report a repository left at its pins as a success, so this can't tell whether it moved; it fails until the repository's pipelines pin moves.`;
+  }
+
+  public static formatRepositoryNested(repository: string, version: string, copies: readonly string[]): string {
+    return `${repository}: left at its pins, since the lock files relocked for ${version} still hold another copy of a package the pins moved: ${copies.join("; ")}.`;
+  }
+
+  public static formatNestedCopy(filePath: string, nester: string, packageName: string, version: string, movedVersion: string): string {
+    return `${filePath} holds ${packageName} ${version} under ${nester}, beside the ${movedVersion} the pins moved to`;
+  }
+
   public static formatPeerBlocker(filePath: string, packageName: string, version: string, peerName: string, peerVersion: string): string {
     return `${filePath} locks ${packageName} ${version}, which needs ${peerName} ${peerVersion}`;
   }
 
   public static formatPeerReason(packageName: string, version: string): string {
     return `, which \`${packageName}\` ${version} needs as a peer`;
+  }
+
+  public static formatDependencyReason(packageName: string, version: string): string {
+    return `, which \`${packageName}\` ${version} depends on`;
+  }
+
+  public static formatRangePeerReason(packageName: string, version: string): string {
+    return `, which \`${packageName}\` ${version} accepts as a peer`;
+  }
+
+  public static formatPinOutside(packageName: string, version: string, range: string, reason: string): string {
+    return `${packageName} ${version} is outside ${range}${reason}`;
   }
 
   public static formatPeerMatchReason(peerName: string, peerVersion: string): string {

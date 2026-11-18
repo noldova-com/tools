@@ -87,9 +87,9 @@ export class DependentsStep implements IStep {
     if (notes instanceof StepResult)
       return notes;
 
-    const update = new DependentsUpdate(source, version, commit, packageNames, DependentsStep.readPeerPins(manifests, packageNames, version), notes);
+    const update = new DependentsUpdate(source, version, commit, packageNames, DependentsStep.readOutsidePins(manifests, packageNames, version), notes);
     const lines: string[] = [];
-    let isSuccessful = true;
+    const left: string[] = [];
     const root = fs.mkdtempSync(path.join(this.temporaryRoot, Resources.dependentsFolderPrefix));
     try {
       const started: (StepResult | StartedUpdate)[] = [];
@@ -97,7 +97,8 @@ export class DependentsStep implements IStep {
         started.push(await DependentsStep.tryAsync(repository, async () => await this.startAsync(update, repository, path.join(root, String(index)))));
       for (const start of started) {
         const result = start instanceof StepResult ? start : await DependentsStep.tryAsync(start.repository, async () => await this.finishAsync(update, moduleIds, start));
-        isSuccessful &&= result.isSuccessful;
+        if (!result.isSuccessful)
+          left.push(result.message);
         if (this.output === undefined)
           lines.push(result.message);
         else if (result.isSuccessful)
@@ -110,11 +111,13 @@ export class DependentsStep implements IStep {
       fs.rmSync(root, { recursive: true, force: true });
     }
 
-    const message = this.output === undefined
-      ? [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator)
-      : Resources.formatDependentsWritten(packageNames, version, repositories.length);
+    if (left.length > 0)
+      return StepResult.failed([Resources.formatDependentsPublished(packageNames, version, left.length, repositories.length), ...this.output === undefined ? lines : left]
+        .join(Resources.lineSeparator));
 
-    return isSuccessful ? StepResult.succeeded(message) : StepResult.failed(message);
+    return StepResult.succeeded(this.output === undefined
+      ? [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator)
+      : Resources.formatDependentsWritten(packageNames, version, repositories.length));
   }
 
   private static async tryAsync<T>(repository: string, action: () => Promise<T | StepResult>): Promise<T | StepResult> {
@@ -201,7 +204,7 @@ export class DependentsStep implements IStep {
   }
 
   private static async moveModulePinsAsync(git: Git, directory: string, moduleIds: readonly string[], update: DependentsUpdate): Promise<readonly string[]> {
-    const targets = moduleIds.map(t => ({ packageName: t, version: update.version, reason: null }));
+    const targets = moduleIds.map(t => ({ packageName: t, version: update.version, reason: null, range: null }));
 
     return (await git.listTrackedFilesAsync()).map(t => t.filePath).filter(t => path.posix.basename(t) === Resources.moduleFileName)
       .flatMap(t => [
@@ -210,16 +213,32 @@ export class DependentsStep implements IStep {
       ]);
   }
 
-  private static readPeerPins(manifests: readonly JsonReader[], packageNames: readonly string[], releasedVersion: string): readonly PinTarget[] {
+  // Reads the outside packages the released packages name: each exact peer, each exact dependency, which the
+  // dependent's own exact pin must match so its lock holds one copy, and each peer range of the form >=<lowest> <refused>,
+  // whose lowest version an older exact pin moves to; the first package to name one decides its target.
+  private static readOutsidePins(manifests: readonly JsonReader[], packageNames: readonly string[], releasedVersion: string): readonly PinTarget[] {
     const pins = new Map<string, PinTarget>();
-    for (const manifest of manifests.filter(t => t.hasField(Resources.peerDependenciesField))) {
-      const reason = Resources.formatPeerReason(manifest.readString(Resources.nameField), releasedVersion);
-      for (const [packageName, value] of Object.entries(manifest.readObject(Resources.peerDependenciesField).toJson())) {
-        const version = String(value);
-        if (Resources.exactVersionPattern.test(version) && !packageNames.includes(packageName) && !pins.has(packageName))
-          pins.set(packageName, { packageName, version, reason });
+    const read = (field: string, toTarget: (packageName: string, value: string, releasedName: string) => PinTarget | null): void => {
+      for (const manifest of manifests.filter(t => t.hasField(field))) {
+        const releasedName = manifest.readString(Resources.nameField);
+        for (const [packageName, value] of Object.entries(manifest.readObject(field).toJson())) {
+          const target = packageNames.includes(packageName) || pins.has(packageName) ? null : toTarget(packageName, String(value), releasedName);
+          if (target !== null)
+            pins.set(packageName, target);
+        }
       }
-    }
+    };
+    read(Resources.peerDependenciesField, (packageName, value, releasedName) => Resources.exactVersionPattern.test(value)
+      ? { packageName, version: value, reason: Resources.formatPeerReason(releasedName, releasedVersion), range: null }
+      : null);
+    read(Resources.dependenciesField, (packageName, value, releasedName) => Resources.exactVersionPattern.test(value)
+      ? { packageName, version: value, reason: Resources.formatDependencyReason(releasedName, releasedVersion), range: value }
+      : null);
+    read(Resources.peerDependenciesField, (packageName, value, releasedName) => {
+      const lowest = Resources.exactRangePattern.exec(value)?.[1];
+
+      return lowest === undefined ? null : { packageName, version: lowest, reason: Resources.formatRangePeerReason(releasedName, releasedVersion), range: value };
+    });
 
     return [...pins.values()];
   }

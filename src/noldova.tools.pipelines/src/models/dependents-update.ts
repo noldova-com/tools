@@ -14,6 +14,7 @@ export interface PinTarget {
   readonly packageName: string;
   readonly version: string;
   readonly reason: string | null;
+  readonly range: string | null;
 }
 
 export class DependentsUpdate {
@@ -38,7 +39,8 @@ export class DependentsUpdate {
     const peerPins = reader.readObjectArray(Resources.relockPeerPinsField).map(t => ({
       packageName: t.readString(Resources.relockPackageNameField),
       version: t.readString(Resources.relockVersionField),
-      reason: t.readNullableString(Resources.relockReasonField)
+      reason: t.readNullableString(Resources.relockReasonField),
+      range: t.hasField(Resources.relockRangeField) ? t.readNullableString(Resources.relockRangeField) : null
     }));
 
     return new DependentsUpdate(reader.readString(Resources.relockSourceField), reader.readString(Resources.relockVersionField), reader.readString(Resources.relockCommitField),
@@ -51,7 +53,7 @@ export class DependentsUpdate {
       [Resources.relockVersionField]: this.version,
       [Resources.relockCommitField]: this.commit,
       [Resources.relockPackageNamesField]: this.packageNames,
-      [Resources.relockPeerPinsField]: this.peerPins.map(t => ({ [Resources.relockPackageNameField]: t.packageName, [Resources.relockVersionField]: t.version, [Resources.relockReasonField]: t.reason }))
+      [Resources.relockPeerPinsField]: this.peerPins.map(t => ({ [Resources.relockPackageNameField]: t.packageName, [Resources.relockVersionField]: t.version, [Resources.relockReasonField]: t.reason, [Resources.relockRangeField]: t.range }))
     });
   }
 }
