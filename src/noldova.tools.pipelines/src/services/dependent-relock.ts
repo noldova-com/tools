@@ -107,6 +107,8 @@ export class DependentRelock {
 
     const rangeMoves = manifestPaths.flatMap(t => DependentRelock.moveRanges(path.join(directory, t), t, update.packageNames, update.packageNames, update.version));
     const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
+    const refusals: string[] = [];
+    const peerRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, update.peerPins, refusals));
     const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
     for (const { packageName, version } of update.peerPins.filter(t => t.range === t.version && !moved.has(t.packageName)))
@@ -115,8 +117,8 @@ export class DependentRelock {
     const chase = await this.chasePeersAsync(directory, manifestPaths, moved);
     for (const [packageName, version] of moved)
       expected.set(packageName, version);
-    if (outside.length + chase.misses.length > 0)
-      return StepResult.failed(Resources.formatRepositoryUnmatched(repository, update.version, [...outside, ...chase.misses]));
+    if (outside.length + refusals.length + chase.misses.length > 0)
+      return StepResult.failed(Resources.formatRepositoryUnmatched(repository, update.version, [...outside, ...refusals, ...chase.misses]));
 
     const blockers = lockFilePaths.flatMap(t => DependentRelock.findConflicts(path.join(directory, t), t, expected));
     if (blockers.length > 0)
@@ -129,7 +131,7 @@ export class DependentRelock {
     if (shared.size > 0)
       return StepResult.failed(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
-    const allMoves = [...moves, ...rangeMoves, ...peerMoves, ...chase.moves];
+    const allMoves = [...moves, ...rangeMoves, ...peerMoves, ...peerRangeMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
     for (const lockFilePath of [...lockFilePaths.filter(t => !lockScripts.has(t)), ...lockFilePaths.filter(t => lockScripts.has(t))]) {
       const script = lockScripts.get(lockFilePath);
@@ -583,6 +585,47 @@ export class DependentRelock {
     return moves;
   }
 
+  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> that names a package a released
+  // package needs or accepts as a peer at a version newer than its lowest, such as a module window part's @angular/core
+  // peer when the released window package needs a newer Angular, to start at that version, keeping the version it
+  // refuses. A range that refuses that version, in that form or as ^, ~ or < a plain version, is added to the refusals
+  // instead, and stays. A version a released package only depends on gets its own copy, so it moves no peer range.
+  private static movePeerRanges(fullPath: string, filePath: string, targets: readonly PinTarget[], refusals: string[]): readonly PinMove[] {
+    const moves: PinMove[] = [];
+    const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.peerDependenciesPattern, (field: string) => {
+      let replaced = field;
+      for (const { packageName, version, reason } of targets.filter(t => t.range !== t.version)) {
+        const target = Version.parse(version);
+        replaced = replaced.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
+          const [, lowest, refused] = Resources.exactRangePattern.exec(found) ?? [];
+          if (lowest === undefined || refused === undefined) {
+            if (DependentRelock.refusesAbove(found, target))
+              refusals.push(DependentRelock.withReason(Resources.formatPeerRangeRefuses(filePath, packageName, found, version), reason));
+            return pin;
+          }
+          if (Version.parse(lowest).compareTo(target) >= 0)
+            return pin;
+
+          if (target.compareTo(Version.parse(refused)) >= 0) {
+            refusals.push(DependentRelock.withReason(Resources.formatPeerRangeRefuses(filePath, packageName, found, version), reason));
+            return pin;
+          }
+
+          const range = Resources.formatSiblingPeerRange(version, refused);
+          moves.push({ packageName, line: DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, range), reason) });
+
+          return `${prefix}${range}${suffix}`;
+        });
+      }
+
+      return replaced;
+    });
+    if (moves.length > 0)
+      fs.writeFileSync(fullPath, text);
+
+    return moves;
+  }
+
   private static movePins(fullPath: string, filePath: string, targets: readonly PinTarget[]): readonly PinMove[] {
     const moves: PinMove[] = [];
     const text = DependentRelock.replacePins(fs.readFileSync(fullPath, Resources.textEncoding), filePath, targets, moves);
@@ -600,14 +643,35 @@ export class DependentRelock {
         if (!Resources.exactVersionPattern.test(found) || Version.parse(found).compareTo(target) >= 0)
           return pin;
 
-        const line = Resources.formatPinMoved(filePath, packageName, found, version);
-        moves.push({ packageName, line: reason === null ? line : `${line}${reason}` });
+        moves.push({ packageName, line: DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, version), reason) });
 
         return `${prefix}${version}${suffix}`;
       });
     }
 
     return replaced;
+  }
+
+  // Whether a range of the form ^, ~ or < a plain version refuses the target by its upper end, as npm reads it: ^ up to the
+  // next major, or below 1.0 the next minor, or below 0.1 the next patch; ~ up to the next minor; < up to the version. A
+  // range of any other form isn't read.
+  private static refusesAbove(range: string, target: Version): boolean {
+    const [, operator, text] = Resources.boundedRangePattern.exec(range) ?? [];
+    if (operator === undefined || text === undefined)
+      return false;
+
+    const bound = Version.parse(text);
+    const refused = operator === Resources.belowRangeOperator ? bound
+      : operator === Resources.tildeRangeOperator ? bound.nextMinor()
+        : bound.major > 0 ? new Version(bound.major + 1, 0, 0)
+          : bound.minor > 0 ? bound.nextMinor()
+            : new Version(0, 0, bound.patch + 1);
+
+    return target.compareTo(refused) >= 0;
+  }
+
+  private static withReason(line: string, reason: string | null): string {
+    return reason === null ? line : `${line}${reason}`;
   }
 
   private static readFiles(directory: string, filePaths: readonly string[]): ReadonlyMap<string, string> {
