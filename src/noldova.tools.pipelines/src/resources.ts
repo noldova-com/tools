@@ -55,6 +55,9 @@ export class Resources {
   public static readonly dependabotFilePaths: readonly string[] = [".github/dependabot.yml", ".github/dependabot.yaml"];
   public static readonly failureExitCode: number = 1;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+  public static readonly boundedRangePattern: RegExp = /^([~^<])((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
+  public static readonly belowRangeOperator: string = "<";
+  public static readonly tildeRangeOperator: string = "~";
   public static readonly exactRangePattern: RegExp = /^>=((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)) <((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
   public static readonly fileEndByteCount: number = 2;
   public static readonly gitAddWorktreeValues: readonly string[] = ["worktree", "add", "--quiet", "--detach", "--end-of-options"];

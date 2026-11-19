@@ -585,19 +585,25 @@ export class DependentRelock {
     return moves;
   }
 
-  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> that names a target whose version
-  // is newer than its lowest, such as a module window part's @angular/core peer when the released window package pins a
-  // newer Angular, to start at that version, keeping the version it refuses; a range that refuses the target is added to
-  // the refusals instead, and stays.
+  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> that names a package a released
+  // package needs or accepts as a peer at a version newer than its lowest, such as a module window part's @angular/core
+  // peer when the released window package needs a newer Angular, to start at that version, keeping the version it
+  // refuses. A range that refuses that version, in that form or as ^, ~ or < a plain version, is added to the refusals
+  // instead, and stays. A version a released package only depends on gets its own copy, so it moves no peer range.
   private static movePeerRanges(fullPath: string, filePath: string, targets: readonly PinTarget[], refusals: string[]): readonly PinMove[] {
     const moves: PinMove[] = [];
     const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.peerDependenciesPattern, (field: string) => {
       let replaced = field;
-      for (const { packageName, version, reason } of targets) {
+      for (const { packageName, version, reason } of targets.filter(t => t.range !== t.version)) {
         const target = Version.parse(version);
         replaced = replaced.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
           const [, lowest, refused] = Resources.exactRangePattern.exec(found) ?? [];
-          if (lowest === undefined || refused === undefined || Version.parse(lowest).compareTo(target) >= 0)
+          if (lowest === undefined || refused === undefined) {
+            if (DependentRelock.refusesAbove(found, target))
+              refusals.push(DependentRelock.withReason(Resources.formatPeerRangeRefuses(filePath, packageName, found, version), reason));
+            return pin;
+          }
+          if (Version.parse(lowest).compareTo(target) >= 0)
             return pin;
 
           if (target.compareTo(Version.parse(refused)) >= 0) {
@@ -644,6 +650,24 @@ export class DependentRelock {
     }
 
     return replaced;
+  }
+
+  // Whether a range of the form ^, ~ or < a plain version refuses the target by its upper end, as npm reads it: ^ up to the
+  // next major, or below 1.0 the next minor, or below 0.1 the next patch; ~ up to the next minor; < up to the version. A
+  // range of any other form isn't read.
+  private static refusesAbove(range: string, target: Version): boolean {
+    const [, operator, text] = Resources.boundedRangePattern.exec(range) ?? [];
+    if (operator === undefined || text === undefined)
+      return false;
+
+    const bound = Version.parse(text);
+    const refused = operator === Resources.belowRangeOperator ? bound
+      : operator === Resources.tildeRangeOperator ? bound.nextMinor()
+        : bound.major > 0 ? new Version(bound.major + 1, 0, 0)
+          : bound.minor > 0 ? bound.nextMinor()
+            : new Version(0, 0, bound.patch + 1);
+
+    return target.compareTo(refused) >= 0;
   }
 
   private static withReason(line: string, reason: string | null): string {
