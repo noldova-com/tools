@@ -22,7 +22,6 @@ export class PublishStepTests {
   private static readonly NIGHTLY: string = "0.0.5-nightly.20261101";
   private static readonly COMMIT: string = "0000000000000000000000000000000000000000";
   private static readonly PACKAGES: Readonly<Record<string, string>> = {
-    "build.json": "{ \"packages\": [{ \"name\": \"noldova.a\" }, { \"name\": \"noldova.b\" }] }",
     "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\" }",
     "src/noldova.b/package.json": "{ \"name\": \"@noldova/b\", \"version\": \"__VERSION__\" }"
   };
@@ -254,11 +253,10 @@ export class PublishStepTests {
   }
 
   @TestMethod
-  public async publishesInBuildJsonOrderAndNoDependentOfAPackageWhosePublishFailedAsync(): Promise<void> {
+  public async publishesNoDependentOfAPackageWhosePublishFailedAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit({
       ...PublishStepTests.PACKAGES,
-      "build.json": "{ \"packages\": [{ \"name\": \"noldova.b\" }, { \"name\": \"noldova.a\" }] }",
       "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/b\": \"__VERSION__\" } }"
     });
     const folder = PublishStepTests.packArchives(repository);

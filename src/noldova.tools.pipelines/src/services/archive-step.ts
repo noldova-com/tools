@@ -12,10 +12,8 @@ import path from "node:path";
 
 import { JsonReader } from "@noldova/context.json";
 
-import { PipelineException } from "../exceptions/pipeline.exception.js";
 import type { IStep } from "../interfaces/i-step.js";
 import { ArchiveCheck } from "../models/archive-check.js";
-import { BuildConfig } from "../models/build-config.js";
 import { PackageArchive } from "../models/package-archive.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
@@ -67,18 +65,16 @@ export class ArchiveStep implements IStep {
     if (fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory() !== true)
       return ArchiveStep.failed(Resources.formatFolderMissing(folder));
 
-    const packageNames = await this.readPackageNamesAsync(commit);
+    const manifests = await this.readPackageManifestsAsync(commit);
+    const packageNames = manifests.map(t => t.readString(Resources.nameField)).sort();
     if (packageNames.length === 0)
       return ArchiveStep.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
 
-    const buildOrder = await this.readBuildOrderAsync(commit);
-    if (buildOrder instanceof StepResult)
-      return new ArchiveCheck(buildOrder, []);
-    const unbuilt = packageNames.filter(t => !buildOrder.includes(t));
-    if (unbuilt.length > 0)
-      return ArchiveStep.failed(Resources.formatPackagesNotBuilt(commit, Resources.buildConfigFilePath, unbuilt));
+    const [order, unordered] = ArchiveStep.orderByDependencies(manifests, packageNames);
+    if (unordered.length > 0)
+      return ArchiveStep.failed(Resources.formatDependencyCycle(commit, unordered));
 
-    const archives = buildOrder.filter(t => packageNames.includes(t)).map(t => new PackageArchive(t, path.join(folder, Resources.formatArchiveName(t, version))));
+    const archives = order.map(t => new PackageArchive(t, path.join(folder, Resources.formatArchiveName(t, version))));
     const archiveNames = archives.map(t => path.basename(t.filePath));
     const fileNames = fs.readdirSync(folder).sort();
     const findings = [
@@ -286,26 +282,31 @@ export class ArchiveStep implements IStep {
     return findings;
   }
 
-  private async readBuildOrderAsync(commit: string): Promise<readonly string[] | StepResult> {
-    if (!await this.git.hasFileAsync(commit, Resources.buildConfigFilePath))
-      return StepResult.failed(Resources.formatVersionFileMissing(commit, Resources.buildConfigFilePath));
-
-    try {
-      return BuildConfig.parse(await this.git.readFileAsync(commit, Resources.buildConfigFilePath)).packageNames;
-    }
-    catch (error) {
-      if (error instanceof PipelineException)
-        return StepResult.failed(error.message);
-
-      throw error;
-    }
-  }
-
   private static failed(message: string): ArchiveCheck {
     return new ArchiveCheck(StepResult.failed(message), []);
   }
 
   private static isPrivate(manifest: JsonReader): boolean {
     return manifest.hasField(Resources.privateField) && manifest.readBoolean(Resources.privateField);
+  }
+
+  private static orderByDependencies(manifests: readonly JsonReader[], packageNames: readonly string[]): [readonly string[], readonly string[]] {
+    const pending = packageNames.map((name): [string, readonly string[]] =>
+      [name, manifests.filter(t => t.readString(Resources.nameField) === name).flatMap(t => ArchiveStep.readDependencyNames(t, packageNames))]);
+    const order: string[] = [];
+    for (let index = ArchiveStep.findReady(pending, order); index !== -1; index = ArchiveStep.findReady(pending, order))
+      order.push(...pending.splice(index, 1).map(([name]) => name));
+
+    return [order, pending.map(([name]) => name)];
+  }
+
+  private static findReady(pending: readonly [string, readonly string[]][], order: readonly string[]): number {
+    return pending.findIndex(([, dependencies]) => dependencies.every(t => order.includes(t)));
+  }
+
+  private static readDependencyNames(manifest: JsonReader, packageNames: readonly string[]): readonly string[] {
+    return Resources.publishOrderFields
+      .filter(t => manifest.hasField(t))
+      .flatMap(t => packageNames.filter(u => manifest.readObject(t).hasField(u)));
   }
 }

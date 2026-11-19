@@ -157,6 +157,7 @@ export class Resources {
   public static readonly patchPartName: string = "patch";
   public static readonly pathSeparator: string = "/";
   public static readonly peerDependenciesField: string = "peerDependencies";
+  public static readonly publishOrderFields: readonly string[] = ["dependencies", "peerDependencies"];
   public static readonly peerDependenciesPattern: RegExp = /"peerDependencies"\s*:\s*\{[^{}]*\}/g;
   public static readonly privateField: string = "private";
   public static readonly processKillSignal: NodeJS.Signals = "SIGKILL";
@@ -484,12 +485,12 @@ export class Resources {
     return `There is no folder ${folder}.`;
   }
 
-  public static formatPackagesMissing(commit: string, folderPath: string): string {
-    return `Commit ${commit} has no package to publish under ${folderPath}/.`;
+  public static formatDependencyCycle(commit: string, packageNames: readonly string[]): string {
+    return `The packages at commit ${commit} depend on each other in a cycle, so these can't each be published after their dependencies: ${packageNames.join(", ")}.`;
   }
 
-  public static formatPackagesNotBuilt(commit: string, filePath: string, packageNames: readonly string[]): string {
-    return `${filePath} at commit ${commit} doesn't list ${packageNames.join(", ")}, so the order to publish ${packageNames.length === 1 ? "it" : "them"} in isn't known.`;
+  public static formatPackagesMissing(commit: string, folderPath: string): string {
+    return `Commit ${commit} has no package to publish under ${folderPath}/.`;
   }
 
   public static formatArchiveName(packageName: string, version: string): string {
