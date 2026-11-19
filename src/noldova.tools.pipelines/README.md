@@ -131,7 +131,7 @@ The step:
 
 1. runs the archive step's checks, except the build's copies, and fails with their message when they fail;
 2. asks the registry about each package, and fails, publishing nothing, with one line for each version it already has from another archive and each version that isn't newer than the version a tag it must pass points to; a version it already has from the same archive is skipped;
-3. publishes the rest, each after the packages it depends on and by name where neither depends on the other, and stops at the first publish that fails, so no package that depends on it is published, whose line leaves out the archive's file listing, npm's `npm notice` lines from `Tarball Contents` through `total files`, and its empty `npm notice` lines, so that npm's error shows within an annotation's length, while its other notices stay;
+3. publishes the rest, each time the first package by name whose dependencies, through `dependencies` or `peerDependencies`, are published, and stops at the first publish that fails, whose line leaves out the archive's file listing, npm's `npm notice` lines from `Tarball Contents` through `total files`, and its empty `npm notice` lines, so that npm's error shows within an annotation's length, while its other notices stay, so no package that depends on it is published;
 4. waits until the registry serves each version it published with the same archive, up to 10 minutes, asking every 10 seconds, also after a failed publish, so a rerun skips the versions already published.
 
 It succeeds with one line for each package, such as `@noldova/tools.pipelines@0.0.4 published.`, and otherwise fails with one line for each problem.

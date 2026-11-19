@@ -475,8 +475,8 @@ export declare class ArchiveCheck {
   public readonly result: StepResult;
 
   /**
-   * Each expected package with its archive, each after the packages it depends on, through `dependencies` or
-   * `peerDependencies`, and by package name where neither depends on the other, when the result succeeded; none when it failed.
+   * Each expected package with its archive, in the order to publish them: each time, the first package by name whose
+   * dependencies, through `dependencies` or `peerDependencies`, are published, when the result succeeded; none when it failed.
    */
   public readonly archives: readonly PackageArchive[];
 
@@ -2065,8 +2065,8 @@ export declare class ArchiveStep implements IStep {
    *
    * @param values The same values as {@link ArchiveStep.runAsync}.
    * @returns A promise of the check: the result, and when it succeeded, each
-   * expected package with its archive, each after the packages it depends on, through `dependencies` or
-   * `peerDependencies`, and by package name where neither depends on the other. It rejects as
+   * expected package with its archive, in the order to publish them: each time, the first package by name
+   * whose dependencies, through `dependencies` or `peerDependencies`, are published. It rejects as
    * {@link ArchiveStep.runAsync} does.
    * @example
    * ```ts
