@@ -475,8 +475,8 @@ export declare class ArchiveCheck {
   public readonly result: StepResult;
 
   /**
-   * Each expected package with its archive, by package name, when the result
-   * succeeded; none when it failed.
+   * Each expected package with its archive, in the order to publish them: each time, the first package by name whose
+   * dependencies, through `dependencies` or `peerDependencies`, are published, when the result succeeded; none when it failed.
    */
   public readonly archives: readonly PackageArchive[];
 
@@ -2014,7 +2014,9 @@ export declare class ArchiveStep implements IStep {
    * It fails with the first of these that is wrong: not four values, a
    * version that is not a version, a commit that is not a full id, a scope
    * that is not `@` and a lowercase name, a checkout at another commit, a
-   * folder that does not exist, and a commit without a package to publish.
+   * folder that does not exist, a commit without a package to publish, and
+   * packages that depend on each other in a cycle, naming those it can't put
+   * after their dependencies.
    * Otherwise it fails with one line for each problem with the archives: an
    * archive missing, a file that is not an expected archive, an archive
    * `tar` cannot read the manifest of, with `tar`'s exit code and message,
@@ -2063,7 +2065,8 @@ export declare class ArchiveStep implements IStep {
    *
    * @param values The same values as {@link ArchiveStep.runAsync}.
    * @returns A promise of the check: the result, and when it succeeded, each
-   * expected package with its archive, by package name. It rejects as
+   * expected package with its archive, in the order to publish them: each time, the first package by name
+   * whose dependencies, through `dependencies` or `peerDependencies`, are published. It rejects as
    * {@link ArchiveStep.runAsync} does.
    * @example
    * ```ts
@@ -2199,8 +2202,9 @@ export declare class PublishStep implements IStep {
    * archive, each version not newer than the version a tag it must pass
    * points to, and each
    * read of the registry that fails, with `npm`'s exit code and message.
-   * After that, it publishes the archives in turn and stops at the first
-   * publish that fails; it still waits for the versions it published before
+   * After that, it publishes the archives in the check's order, each after
+   * the packages it depends on, and stops at the first publish that fails,
+   * so no package that depends on it is published; it still waits for the versions it published before
    * it, and fails with a line for that publish, with `npm`'s exit code and
    * message without the archive's file listing, its `npm notice` lines from
    * `Tarball Contents` through `total files`, or its empty `npm notice`

@@ -412,6 +412,37 @@ export class ArchiveStepTests {
   }
 
   @TestMethod
+  public async givesEachArchiveAfterThePackagesItDependsOnAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({
+      ...ArchiveStepTests.PACKAGES,
+      "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\", \"peerDependencies\": { \"@noldova/b\": \"__VERSION__\" } }",
+      "src/noldova.b/package.json": "{ \"name\": \"@noldova/b\", \"version\": \"__VERSION__\" }"
+    });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const check = await ArchiveStepTests.createStep(repository.directory).checkAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(check.result.isSuccessful, check.result.message);
+    Assert.areEqual("@noldova/b,@noldova/a", check.archives.map(t => t.packageName).join(","));
+  }
+
+  @TestMethod
+  public async failsForPackagesThatDependOnEachOtherAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({
+      ...ArchiveStepTests.PACKAGES,
+      "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/b\": \"__VERSION__\" } }"
+    });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`The packages at commit ${commit} depend on each other in a cycle, so these can't each be published after their dependencies: @noldova/a, @noldova/b.`, result.message);
+  }
+
+  @TestMethod
   public async failsWithEveryArchiveTheFolderLacksOrShouldNotHoldAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(ArchiveStepTests.PACKAGES);

@@ -253,6 +253,23 @@ export class PublishStepTests {
   }
 
   @TestMethod
+  public async publishesNoDependentOfAPackageWhosePublishFailedAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({
+      ...PublishStepTests.PACKAGES,
+      "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/b\": \"__VERSION__\" } }"
+    });
+    const folder = PublishStepTests.packArchives(repository);
+    const npm = new FakeNpm({}, { "noldova-b-0.0.4.tgz": new ProcessResult(1, "", "npm error code ECONNRESET\n") });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/b@0.0.4: npm publish exited with code 1: npm error code ECONNRESET", result.message);
+    Assert.areEqual("publish noldova-b-0.0.4.tgz latest public https://registry.example/", npm.calls.filter(t => t.startsWith("publish ")).join("\n"));
+  }
+
+  @TestMethod
   public async leavesNpmsFileListingOutOfAFailedPublishSoItsErrorShowsAsync(): Promise<void> {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PublishStepTests.PACKAGES);
