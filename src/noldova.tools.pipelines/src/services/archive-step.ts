@@ -65,11 +65,16 @@ export class ArchiveStep implements IStep {
     if (fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory() !== true)
       return ArchiveStep.failed(Resources.formatFolderMissing(folder));
 
-    const packageNames = await this.readPackageNamesAsync(commit);
+    const manifests = await this.readPackageManifestsAsync(commit);
+    const packageNames = manifests.map(t => t.readString(Resources.nameField)).sort();
     if (packageNames.length === 0)
       return ArchiveStep.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
 
-    const archives = packageNames.map(t => new PackageArchive(t, path.join(folder, Resources.formatArchiveName(t, version))));
+    const [order, unordered] = ArchiveStep.orderByDependencies(manifests, packageNames);
+    if (unordered.length > 0)
+      return ArchiveStep.failed(Resources.formatDependencyCycle(commit, unordered));
+
+    const archives = order.map(t => new PackageArchive(t, path.join(folder, Resources.formatArchiveName(t, version))));
     const archiveNames = archives.map(t => path.basename(t.filePath));
     const fileNames = fs.readdirSync(folder).sort();
     const findings = [
@@ -283,5 +288,25 @@ export class ArchiveStep implements IStep {
 
   private static isPrivate(manifest: JsonReader): boolean {
     return manifest.hasField(Resources.privateField) && manifest.readBoolean(Resources.privateField);
+  }
+
+  private static orderByDependencies(manifests: readonly JsonReader[], packageNames: readonly string[]): [readonly string[], readonly string[]] {
+    const pending = packageNames.map((name): [string, readonly string[]] =>
+      [name, manifests.filter(t => t.readString(Resources.nameField) === name).flatMap(t => ArchiveStep.readDependencyNames(t, packageNames))]);
+    const order: string[] = [];
+    for (let index = ArchiveStep.findReady(pending, order); index !== -1; index = ArchiveStep.findReady(pending, order))
+      order.push(...pending.splice(index, 1).map(([name]) => name));
+
+    return [order, pending.map(([name]) => name)];
+  }
+
+  private static findReady(pending: readonly [string, readonly string[]][], order: readonly string[]): number {
+    return pending.findIndex(([, dependencies]) => dependencies.every(t => order.includes(t)));
+  }
+
+  private static readDependencyNames(manifest: JsonReader, packageNames: readonly string[]): readonly string[] {
+    return Resources.publishOrderFields
+      .filter(t => manifest.hasField(t))
+      .flatMap(t => packageNames.filter(u => manifest.readObject(t).hasField(u)));
   }
 }
