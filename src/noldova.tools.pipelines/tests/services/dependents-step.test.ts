@@ -476,7 +476,7 @@ export class DependentsStepTests {
         "- `src/window/package.json`: `@noldova/angular` from >=22.0.0 <23.0.0 to >=22.2.6 <23.0.0, which `@noldova/ui` 0.0.13 needs as a peer"
       ].join("\n"),
       host.proposals.join("").split("\n").filter(t => t.startsWith("- `") && t.includes(" from ")).join("\n"));
-    Assert.areEqual(["", "node_modules/@noldova/kept"], Object.keys(JSON.parse(npm.givenLocks[0] ?? "{}").packages));
+    Assert.areEqual("|node_modules/@noldova/kept", Object.keys(JSON.parse(npm.givenLocks[0] ?? "{}").packages).join("|"));
   }
 
   @TestMethod
