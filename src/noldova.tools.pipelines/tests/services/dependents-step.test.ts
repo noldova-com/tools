@@ -506,8 +506,8 @@ export class DependentsStepTests {
       "package-lock.json": "{}\n",
       "src/a/package.json": "{ \"peerDependencies\": { \"@noldova/angular\": \">=22.0.0 <22.2.0\", \"@noldova/core\": \"^0.1.0\", \"@noldova/exceptions\": \"^0.0.7\" } }\n",
       "src/b/package.json": "{ \"peerDependencies\": { \"@noldova/angular\": \"^21.0.0\", \"@noldova/core\": \"<0.0.8\" } }\n",
-      "src/c/package.json": "{ \"peerDependencies\": { \"@noldova/angular\": \"~22.1.0\", \"@noldova/core\": \"0.0.x\" } }\n",
-      "src/d/package.json": "{ \"peerDependencies\": { \"@noldova/angular\": \"^22.0.0\", \"@noldova/core\": \"~0.0.8\" } }\n"
+      "src/c/package.json": "{ \"peerDependencies\": { \"@noldova/angular\": \"~22.1.0\", \"@noldova/forms\": \"^0.2.0\", \"@noldova/core\": \"0.0.x\" } }\n",
+      "src/d/package.json": "{ \"peerDependencies\": { \"@noldova/angular\": \"^22.0.0\", \"@noldova/icons\": \"^0.2.0\", \"@noldova/core\": \"~0.0.8\" } }\n"
     });
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/pinned", pinned);
@@ -522,7 +522,8 @@ export class DependentsStepTests {
         + "@noldova/exceptions ^0.0.7 in src/a/package.json refuses 0.0.8, which `@noldova/ui` 0.0.13 accepts as a peer; "
         + "@noldova/angular ^21.0.0 in src/b/package.json refuses 22.2.6, which `@noldova/ui` 0.0.13 needs as a peer; "
         + "@noldova/core <0.0.8 in src/b/package.json refuses 0.0.8, which `@noldova/ui` 0.0.13 accepts as a peer; "
-        + "@noldova/angular ~22.1.0 in src/c/package.json refuses 22.2.6, which `@noldova/ui` 0.0.13 needs as a peer.",
+        + "@noldova/angular ~22.1.0 in src/c/package.json refuses 22.2.6, which `@noldova/ui` 0.0.13 needs as a peer; "
+        + "@noldova/forms ^0.2.0 in src/c/package.json refuses 0.3.0, which `@noldova/ui` 0.0.13 needs as a peer.",
       result.message.split("\n")[1]);
     Assert.areEqual(0, npm.directories.length);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
@@ -1284,7 +1285,7 @@ export class DependentsStepTests {
       "src/ui/package.json": JSON.stringify({
         name: "@noldova/ui",
         dependencies: { "@noldova/cdk": "22.3.0", "@noldova/markdown": "^15.0.0" },
-        peerDependencies: { "@noldova/angular": "22.2.6", "@noldova/core": ">=0.0.8 <0.1.0", "@noldova/exceptions": ">=0.0.8 <0.1.0" }
+        peerDependencies: { "@noldova/angular": "22.2.6", "@noldova/forms": "0.3.0", "@noldova/icons": "0.2.9", "@noldova/core": ">=0.0.8 <0.1.0", "@noldova/exceptions": ">=0.0.8 <0.1.0" }
       }),
       "src/ui.icons/package.json": JSON.stringify({
         name: "@noldova/ui.icons",
