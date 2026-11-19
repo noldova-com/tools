@@ -12,8 +12,10 @@ import path from "node:path";
 
 import { JsonReader } from "@noldova/context.json";
 
+import { PipelineException } from "../exceptions/pipeline.exception.js";
 import type { IStep } from "../interfaces/i-step.js";
 import { ArchiveCheck } from "../models/archive-check.js";
+import { BuildConfig } from "../models/build-config.js";
 import { PackageArchive } from "../models/package-archive.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
@@ -69,7 +71,14 @@ export class ArchiveStep implements IStep {
     if (packageNames.length === 0)
       return ArchiveStep.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
 
-    const archives = packageNames.map(t => new PackageArchive(t, path.join(folder, Resources.formatArchiveName(t, version))));
+    const buildOrder = await this.readBuildOrderAsync(commit);
+    if (buildOrder instanceof StepResult)
+      return new ArchiveCheck(buildOrder, []);
+    const unbuilt = packageNames.filter(t => !buildOrder.includes(t));
+    if (unbuilt.length > 0)
+      return ArchiveStep.failed(Resources.formatPackagesNotBuilt(commit, Resources.buildConfigFilePath, unbuilt));
+
+    const archives = buildOrder.filter(t => packageNames.includes(t)).map(t => new PackageArchive(t, path.join(folder, Resources.formatArchiveName(t, version))));
     const archiveNames = archives.map(t => path.basename(t.filePath));
     const fileNames = fs.readdirSync(folder).sort();
     const findings = [
@@ -275,6 +284,21 @@ export class ArchiveStep implements IStep {
       findings.push(Resources.formatArchiveLicenseMissing(archiveName));
 
     return findings;
+  }
+
+  private async readBuildOrderAsync(commit: string): Promise<readonly string[] | StepResult> {
+    if (!await this.git.hasFileAsync(commit, Resources.buildConfigFilePath))
+      return StepResult.failed(Resources.formatVersionFileMissing(commit, Resources.buildConfigFilePath));
+
+    try {
+      return BuildConfig.parse(await this.git.readFileAsync(commit, Resources.buildConfigFilePath)).packageNames;
+    }
+    catch (error) {
+      if (error instanceof PipelineException)
+        return StepResult.failed(error.message);
+
+      throw error;
+    }
   }
 
   private static failed(message: string): ArchiveCheck {

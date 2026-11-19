@@ -77,6 +77,7 @@ class UnlistableTar extends Tar {
 export class ArchiveStepTests {
   private static readonly COMMIT: string = "0000000000000000000000000000000000000000";
   private static readonly PACKAGES: Readonly<Record<string, string>> = {
+    "build.json": "{ \"packages\": [{ \"name\": \"noldova.a\" }, { \"name\": \"noldova.b\" }] }",
     "README.md": "# Example\n",
     "src/tsconfig.json": "{}",
     "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\" }",
@@ -409,6 +410,77 @@ export class ArchiveStepTests {
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(`Commit ${commit} has no package to publish under src/.`, result.message);
+  }
+
+  @TestMethod
+  public async givesTheArchivesInTheOrderBuildJsonListsThePackagesAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "build.json": "{ \"packages\": [{ \"name\": \"noldova.b\" }, { \"name\": \"noldova.a\" }] }" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const check = await ArchiveStepTests.createStep(repository.directory).checkAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isTrue(check.result.isSuccessful, check.result.message);
+    Assert.areEqual("@noldova/b,@noldova/a", check.archives.map(t => t.packageName).join(","));
+  }
+
+  @TestMethod
+  public async failsForACommitWithoutBuildJsonAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit(Object.fromEntries(Object.entries(ArchiveStepTests.PACKAGES).filter(([filePath]) => filePath !== "build.json")));
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`Commit ${commit} has no build.json at its root.`, result.message);
+  }
+
+  @TestMethod
+  public async failsForAnInvalidBuildJsonAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "build.json": "{ \"packages\": [] }" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("build.json is invalid: it names no package.", result.message);
+  }
+
+  @TestMethod
+  public async rejectsABuildJsonThatIsNotJsonAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "build.json": "{ \"packages\"" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const exception = await Assert.throwsAsync(() => ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]), JsonException);
+
+    Assert.isTrue(exception.path.startsWith("build.json"), exception.path);
+  }
+
+  @TestMethod
+  public async failsForAPackageBuildJsonDoesNotListAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "build.json": "{ \"packages\": [{ \"name\": \"noldova.a\" }, { \"name\": \"noldova.c\" }] }" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`build.json at commit ${commit} doesn't list @noldova/b, so the order to publish it in isn't known.`, result.message);
+  }
+
+  @TestMethod
+  public async failsWithEveryPackageBuildJsonDoesNotListAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({ ...ArchiveStepTests.PACKAGES, "build.json": "{ \"packages\": [{ \"name\": \"noldova.c\" }] }" });
+    const folder = ArchiveStepTests.packArchives(repository, ArchiveStepTests.MANIFEST_A, ArchiveStepTests.MANIFEST_B);
+
+    const result = await ArchiveStepTests.createStep(repository.directory).runAsync([folder, "0.0.4", commit, "@noldova"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual(`build.json at commit ${commit} doesn't list @noldova/a, @noldova/b, so the order to publish them in isn't known.`, result.message);
   }
 
   @TestMethod

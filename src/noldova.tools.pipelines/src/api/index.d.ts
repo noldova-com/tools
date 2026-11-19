@@ -2014,7 +2014,10 @@ export declare class ArchiveStep implements IStep {
    * It fails with the first of these that is wrong: not four values, a
    * version that is not a version, a commit that is not a full id, a scope
    * that is not `@` and a lowercase name, a checkout at another commit, a
-   * folder that does not exist, and a commit without a package to publish.
+   * folder that does not exist, a commit without a package to publish, a
+   * commit without a `build.json` at its root, a `build.json` that is not
+   * valid, with what is wrong, and a package to publish that `build.json`
+   * doesn't list, since it gives the order to publish in.
    * Otherwise it fails with one line for each problem with the archives: an
    * archive missing, a file that is not an expected archive, an archive
    * `tar` cannot read the manifest of, with `tar`'s exit code and message,
@@ -2037,7 +2040,8 @@ export declare class ArchiveStep implements IStep {
    * and message, and copy the archive lacks, that is a symbolic link or under
    * one, that is not a file, or whose bytes differ. It rejects with
    * `JsonException`,
-   * from `@noldova/context.json`, if a `package.json` the step reads is not
+   * from `@noldova/context.json`, if the commit's `build.json` is not JSON, or
+   * if a `package.json` the step reads is not
    * a JSON object, lacks a `name` or `version` text where it needs one, has
    * a `gitHead` or a `license` that is not a text, or
    * has a `private` that is not `true` or `false` or `dependencies` that are
@@ -2063,7 +2067,8 @@ export declare class ArchiveStep implements IStep {
    *
    * @param values The same values as {@link ArchiveStep.runAsync}.
    * @returns A promise of the check: the result, and when it succeeded, each
-   * expected package with its archive, by package name. It rejects as
+   * expected package with its archive, in the order the commit's
+   * `build.json` lists the packages, dependencies first. It rejects as
    * {@link ArchiveStep.runAsync} does.
    * @example
    * ```ts
@@ -2199,8 +2204,10 @@ export declare class PublishStep implements IStep {
    * archive, each version not newer than the version a tag it must pass
    * points to, and each
    * read of the registry that fails, with `npm`'s exit code and message.
-   * After that, it publishes the archives in turn and stops at the first
-   * publish that fails; it still waits for the versions it published before
+   * After that, it publishes the archives in the order the commit's
+   * `build.json` lists the packages, dependencies first, and stops at the
+   * first publish that fails, so no package after it, such as one that
+   * depends on it, is published; it still waits for the versions it published before
    * it, and fails with a line for that publish, with `npm`'s exit code and
    * message without the archive's file listing, its `npm notice` lines from
    * `Tarball Contents` through `total files`, or its empty `npm notice`

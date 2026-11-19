@@ -22,6 +22,7 @@ export class PublishStepTests {
   private static readonly NIGHTLY: string = "0.0.5-nightly.20261101";
   private static readonly COMMIT: string = "0000000000000000000000000000000000000000";
   private static readonly PACKAGES: Readonly<Record<string, string>> = {
+    "build.json": "{ \"packages\": [{ \"name\": \"noldova.a\" }, { \"name\": \"noldova.b\" }] }",
     "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\" }",
     "src/noldova.b/package.json": "{ \"name\": \"@noldova/b\", \"version\": \"__VERSION__\" }"
   };
@@ -250,6 +251,24 @@ export class PublishStepTests {
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual("@noldova/a@0.0.4: npm publish exited with code 1: npm error code E403", result.message);
     Assert.areEqual("publish noldova-a-0.0.4.tgz latest public https://registry.example/", npm.calls.filter(t => t.startsWith("publish ")).join("\n"));
+  }
+
+  @TestMethod
+  public async publishesInBuildJsonOrderAndNoDependentOfAPackageWhosePublishFailedAsync(): Promise<void> {
+    using repository = GitRepositoryFixture.create();
+    const commit = repository.commit({
+      ...PublishStepTests.PACKAGES,
+      "build.json": "{ \"packages\": [{ \"name\": \"noldova.b\" }, { \"name\": \"noldova.a\" }] }",
+      "src/noldova.a/package.json": "{ \"name\": \"@noldova/a\", \"version\": \"__VERSION__\", \"dependencies\": { \"@noldova/b\": \"__VERSION__\" } }"
+    });
+    const folder = PublishStepTests.packArchives(repository);
+    const npm = new FakeNpm({}, { "noldova-b-0.0.4.tgz": new ProcessResult(1, "", "npm error code ECONNRESET\n") });
+
+    const result = await PublishStepTests.createStep(repository.directory, npm).runAsync([folder, "0.0.4", commit, "@noldova", PublishStepTests.REGISTRY, "public"]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("@noldova/b@0.0.4: npm publish exited with code 1: npm error code ECONNRESET", result.message);
+    Assert.areEqual("publish noldova-b-0.0.4.tgz latest public https://registry.example/", npm.calls.filter(t => t.startsWith("publish ")).join("\n"));
   }
 
   @TestMethod

@@ -488,6 +488,10 @@ export class Resources {
     return `Commit ${commit} has no package to publish under ${folderPath}/.`;
   }
 
+  public static formatPackagesNotBuilt(commit: string, filePath: string, packageNames: readonly string[]): string {
+    return `${filePath} at commit ${commit} doesn't list ${packageNames.join(", ")}, so the order to publish ${packageNames.length === 1 ? "it" : "them"} in isn't known.`;
+  }
+
   public static formatArchiveName(packageName: string, version: string): string {
     return `${packageName.replace(/^@/, "").replace("/", "-")}-${version}${Resources.archiveFileExtension}`;
   }

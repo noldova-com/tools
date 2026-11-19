@@ -74,6 +74,7 @@ It succeeds only when:
 
 - the version is a version, the commit is its full id, and the scope is `@` and a lowercase name, such as `@noldova`;
 - the checkout is at the commit;
+- the commit has a valid `build.json` at its root that lists every package it expects, since its order, dependencies first, is the order the publish step publishes in;
 - the folder holds one archive for each package at the version, named as `npm pack` names it, such as `noldova-tools.pipelines-0.0.4.tgz`, and nothing else;
 - each archive's `package/package.json` has the package's name, inside the scope, the version, and the commit as its `gitHead`, isn't `"private": true`, has a `license`, lists any other expected package under `dependencies` at exactly the version, and lists any under `peerDependencies` in the range from the version to the next minor one, such as `>=0.0.9 <0.1.0`, as a package that takes its siblings as peers names them;
 - each archive holds `package/LICENSE`, and no file of a kind that holds credentials: `.npmrc`, `.netrc`, `.env` or `.env.<name>`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, or a name ending in `.pem`, `.key`, `.p12` or `.pfx`, such as `.key` itself, in any folder and whatever its case;
@@ -130,7 +131,7 @@ The step:
 
 1. runs the archive step's checks, except the build's copies, and fails with their message when they fail;
 2. asks the registry about each package, and fails, publishing nothing, with one line for each version it already has from another archive and each version that isn't newer than the version a tag it must pass points to; a version it already has from the same archive is skipped;
-3. publishes the rest in turn, and stops at the first publish that fails, whose line leaves out the archive's file listing, npm's `npm notice` lines from `Tarball Contents` through `total files`, and its empty `npm notice` lines, so that npm's error shows within an annotation's length, while its other notices stay;
+3. publishes the rest in the order `build.json` lists them, dependencies first, and stops at the first publish that fails, so no package that depends on it is published, whose line leaves out the archive's file listing, npm's `npm notice` lines from `Tarball Contents` through `total files`, and its empty `npm notice` lines, so that npm's error shows within an annotation's length, while its other notices stay;
 4. waits until the registry serves each version it published with the same archive, up to 10 minutes, asking every 10 seconds, also after a failed publish, so a rerun skips the versions already published.
 
 It succeeds with one line for each package, such as `@noldova/tools.pipelines@0.0.4 published.`, and otherwise fails with one line for each problem.
