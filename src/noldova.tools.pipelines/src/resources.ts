@@ -154,6 +154,7 @@ export class Resources {
   public static readonly patchPartName: string = "patch";
   public static readonly pathSeparator: string = "/";
   public static readonly peerDependenciesField: string = "peerDependencies";
+  public static readonly peerDependenciesPattern: RegExp = /"peerDependencies"\s*:\s*\{[^{}]*\}/g;
   public static readonly privateField: string = "private";
   public static readonly processKillSignal: NodeJS.Signals = "SIGKILL";
   public static readonly processReleaseDelayMilliseconds: number = 0;
@@ -746,6 +747,10 @@ export class Resources {
 
   public static formatPinOutside(packageName: string, version: string, range: string, reason: string): string {
     return `${packageName} ${version} is outside ${range}${reason}`;
+  }
+
+  public static formatPeerRangeRefuses(filePath: string, packageName: string, range: string, version: string): string {
+    return `${packageName} ${range} in ${filePath} refuses ${version}`;
   }
 
   public static formatPeerMatchReason(peerName: string, peerVersion: string): string {

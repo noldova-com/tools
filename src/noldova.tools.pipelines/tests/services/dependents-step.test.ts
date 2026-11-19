@@ -450,6 +450,57 @@ export class DependentsStepTests {
   }
 
   @TestMethod
+  public async raisesTheLowestVersionOfAPeerRangeBelowWhatAReleasedPackagePinsAndKeepsTheVersionItRefusesAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" }, \"devDependencies\": { \"@noldova/cdk\": \"22.3.0\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/window/package.json": "{\n  \"name\": \"@noldova/local.window\",\n  \"dependencies\": { \"@noldova/cdk\": \">=22.2.6 <23.0.0\" },\n"
+        + "  \"peerDependencies\": { \"@noldova/cdk\": \">=22.2.6 <23.0.0\", \"@noldova/exceptions\": \">=0.0.8 <0.1.0\", \"@noldova/core\": \"^0.0.7\" }\n}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 2 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    Assert.areEqual(
+      "{\n  \"name\": \"@noldova/local.window\",\n  \"dependencies\": { \"@noldova/cdk\": \">=22.2.6 <23.0.0\" },\n"
+        + "  \"peerDependencies\": { \"@noldova/cdk\": \">=22.3.0 <23.0.0\", \"@noldova/exceptions\": \">=0.0.8 <0.1.0\", \"@noldova/core\": \"^0.0.7\" }\n}\n",
+      host.pushed.get("noldova-com/pinned")?.["src/window/package.json"]);
+    Assert.areEqual(
+      [
+        "- `package.json`: `@noldova/ui` from 0.0.12 to 0.0.13",
+        "- `src/window/package.json`: `@noldova/cdk` from >=22.2.6 <23.0.0 to >=22.3.0 <23.0.0, which `@noldova/ui` 0.0.13 depends on"
+      ].join("\n"),
+      host.proposals.join("").split("\n").filter(t => t.startsWith("- `") && t.includes(" from ")).join("\n"));
+  }
+
+  @TestMethod
+  public async failsADependentWhosePeerRangeRefusesWhatAReleasedPackagePinsAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/window/package.json": "{ \"name\": \"@noldova/local.window\", \"peerDependencies\": { \"@noldova/cdk\": \">=22.0.0 <22.3.0\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, which can't take what 0.0.13 moves: @noldova/cdk >=22.0.0 <22.3.0 in src/window/package.json refuses 22.3.0, "
+        + "which `@noldova/ui` 0.0.13 depends on.",
+      result.message.split("\n")[1]);
+    Assert.areEqual(0, npm.directories.length);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
   public async failsADependentWhoseOtherPinNeedsAnotherVersionOfWhatAReleasedPackageDependsOnAsync(): Promise<void> {
     using source = DependentsStepTests.createKitSource();
     using pinned = DependentsStepTests.createTarget({
