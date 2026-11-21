@@ -485,8 +485,8 @@ export class DependentsStepTests {
   public async raisesEachPeerRangeOnAReleasedPackageThatStartsBelowTheReleaseAndLeavesEveryOtherRangeAsync(): Promise<void> {
     using source = DependentsStepTests.createKitSource();
     const left = {
-      "src/caret/package.json": "{ \"name\": \"@noldova/local.caret\", \"peerDependencies\": { \"@noldova/ui\": \"^0.0.12\" } }\n",
-      "src/capped/package.json": "{ \"name\": \"@noldova/local.capped\", \"peerDependencies\": { \"@noldova/ui\": \">=0.0.12 <0.0.13\" } }\n",
+      "src/caret/package.json": "{ \"name\": \"@noldova/local.caret\", \"peerDependencies\": { \"@noldova/ui\": \"^0.0.13\" } }\n",
+      "src/tilde/package.json": "{ \"name\": \"@noldova/local.tilde\", \"peerDependencies\": { \"@noldova/ui\": \"~0.0.12\" } }\n",
       "src/held/package.json": "{ \"name\": \"@noldova/local.held\", \"dependencies\": { \"@noldova/ui\": \">=0.0.12 <0.1.0\" } }\n",
       "src/current/package.json": "{ \"name\": \"@noldova/local.current\", \"peerDependencies\": { \"@noldova/ui\": \">=0.0.13 <0.1.0\" } }\n"
     };
@@ -517,6 +517,32 @@ export class DependentsStepTests {
         "- `src/window/package.json`: `@noldova/ui.icons` from >=0.0.12 <0.1.0 to >=0.0.13 <0.1.0"
       ].join("\n"),
       host.proposals.join("").split("\n").filter(t => t.startsWith("- `") && t.includes(" from ")).join("\n"));
+  }
+
+  @TestMethod
+  public async failsADependentWhosePeerRangeOnAReleasedPackageRefusesTheReleaseAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/a/package.json": "{ \"peerDependencies\": { \"@noldova/ui\": \">=0.0.12 <0.0.13\", \"@noldova/ui.icons\": \"^0.0.12\" } }\n",
+      "src/b/package.json": "{ \"peerDependencies\": { \"@noldova/ui\": \"<0.0.13\", \"@noldova/ui.icons\": \"~0.0.12\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, which can't take what 0.0.13 moves: "
+        + "@noldova/ui >=0.0.12 <0.0.13 in src/a/package.json refuses 0.0.13; "
+        + "@noldova/ui.icons ^0.0.12 in src/a/package.json refuses 0.0.13; "
+        + "@noldova/ui <0.0.13 in src/b/package.json refuses 0.0.13.",
+      result.message.split("\n")[1]);
+    Assert.areEqual(0, npm.directories.length);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
   }
 
   @TestMethod
@@ -1264,7 +1290,7 @@ export class DependentsStepTests {
   @TestData("1.2.0", ">=0.0.1 <0.1.0", ">=1.2.0 <2.0.0")
   @TestData("0.0.3", ">=0.0.3 <0.1.0", ">=0.0.3 <0.1.0")
   @TestData("0.0.3", ">=0.0.5 <0.1.0", ">=0.0.5 <0.1.0")
-  @TestData("0.0.3", "^0.0.1", "^0.0.1")
+  @TestData("0.0.3", "^0.0.3", "^0.0.3")
   @TestMethod
   public async writesTheRangeUpToTheNextVersionThatMayBreakModulesOnlyBelowTheReleaseAsync(version: string, range: string, expected: string): Promise<void> {
     using source = DependentsStepTests.createDesktopSource();

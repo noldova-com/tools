@@ -106,9 +106,9 @@ export class DependentRelock {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockManifestsUntracked(unmanifested)));
 
     const rangeMoves = manifestPaths.flatMap(t => DependentRelock.moveRanges(path.join(directory, t), t, update.packageNames, update.packageNames, update.version));
-    const releasedRangeMoves = manifestPaths.flatMap(t => DependentRelock.moveReleasedPeerRanges(path.join(directory, t), t, update.packageNames, update.version));
-    const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const refusals: string[] = [];
+    const releasedRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, released, refusals));
+    const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const peerRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, update.peerPins, refusals));
     const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
@@ -586,10 +586,10 @@ export class DependentRelock {
     return moves;
   }
 
-  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> that names a package a released
-  // package needs or accepts as a peer at a version newer than its lowest, such as a module window part's @angular/core
-  // peer when the released window package needs a newer Angular, to start at that version, keeping the version it
-  // refuses. A range that refuses that version, in that form or as ^, ~ or < a plain version, is added to the refusals
+  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> that names a released package,
+  // or a package a released package needs or accepts as a peer, at a version newer than its lowest, such as a module's
+  // own peer on the window package it pins, or a module window part's @angular/core peer when the released window
+  // package needs a newer Angular, to start at that version, keeping the version it refuses. A range that refuses that version, in that form or as ^, ~ or < a plain version, is added to the refusals
   // instead, and stays. A version a released package only depends on gets its own copy, so it moves no peer range.
   private static movePeerRanges(fullPath: string, filePath: string, targets: readonly PinTarget[], refusals: string[]): readonly PinMove[] {
     const moves: PinMove[] = [];
@@ -614,36 +614,6 @@ export class DependentRelock {
 
           const range = Resources.formatSiblingPeerRange(version, refused);
           moves.push({ packageName, line: DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, range), reason) });
-
-          return `${prefix}${range}${suffix}`;
-        });
-      }
-
-      return replaced;
-    });
-    if (moves.length > 0)
-      fs.writeFileSync(fullPath, text);
-
-    return moves;
-  }
-
-  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> on a released package whose
-  // lowest is older than the release, such as a module's own peer range on the window package it pins, to start at the
-  // release, keeping the version it refuses, since a dependent's checks need its peer on a package it pins to start at
-  // the pin. A range that refuses the release, and any other form, such as ^ or ~, stay.
-  private static moveReleasedPeerRanges(fullPath: string, filePath: string, packageNames: readonly string[], version: string): readonly PinMove[] {
-    const target = Version.parse(version);
-    const moves: PinMove[] = [];
-    const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.peerDependenciesPattern, (field: string) => {
-      let replaced = field;
-      for (const packageName of packageNames) {
-        replaced = replaced.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
-          const [, lowest, refused] = Resources.exactRangePattern.exec(found) ?? [];
-          if (lowest === undefined || refused === undefined || Version.parse(lowest).compareTo(target) >= 0 || target.compareTo(Version.parse(refused)) >= 0)
-            return pin;
-
-          const range = Resources.formatSiblingPeerRange(version, refused);
-          moves.push({ packageName, line: Resources.formatPinMoved(filePath, packageName, found, range) });
 
           return `${prefix}${range}${suffix}`;
         });
