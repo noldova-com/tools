@@ -106,8 +106,9 @@ export class DependentRelock {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockManifestsUntracked(unmanifested)));
 
     const rangeMoves = manifestPaths.flatMap(t => DependentRelock.moveRanges(path.join(directory, t), t, update.packageNames, update.packageNames, update.version));
-    const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const refusals: string[] = [];
+    const releasedRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, released, refusals));
+    const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const peerRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, update.peerPins, refusals));
     const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
     const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
@@ -131,7 +132,7 @@ export class DependentRelock {
     if (shared.size > 0)
       return StepResult.failed(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
-    const allMoves = [...moves, ...rangeMoves, ...peerMoves, ...peerRangeMoves, ...chase.moves];
+    const allMoves = [...moves, ...rangeMoves, ...releasedRangeMoves, ...peerMoves, ...peerRangeMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
     for (const lockFilePath of [...lockFilePaths.filter(t => !lockScripts.has(t)), ...lockFilePaths.filter(t => lockScripts.has(t))]) {
       const script = lockScripts.get(lockFilePath);
@@ -585,10 +586,10 @@ export class DependentRelock {
     return moves;
   }
 
-  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> that names a package a released
-  // package needs or accepts as a peer at a version newer than its lowest, such as a module window part's @angular/core
-  // peer when the released window package needs a newer Angular, to start at that version, keeping the version it
-  // refuses. A range that refuses that version, in that form or as ^, ~ or < a plain version, is added to the refusals
+  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> that names a released package,
+  // or a package a released package needs or accepts as a peer, at a version newer than its lowest, such as a module's
+  // own peer on the window package it pins, or a module window part's @angular/core peer when the released window
+  // package needs a newer Angular, to start at that version, keeping the version it refuses. A range that refuses that version, in that form or as ^, ~ or < a plain version, is added to the refusals
   // instead, and stays. A version a released package only depends on gets its own copy, so it moves no peer range.
   private static movePeerRanges(fullPath: string, filePath: string, targets: readonly PinTarget[], refusals: string[]): readonly PinMove[] {
     const moves: PinMove[] = [];
