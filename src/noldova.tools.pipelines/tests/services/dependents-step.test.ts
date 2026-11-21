@@ -479,6 +479,46 @@ export class DependentsStepTests {
     Assert.areEqual("|node_modules/@noldova/kept", Object.keys(JSON.parse(npm.givenLocks[0] ?? "{}").packages).join("|"));
   }
 
+  // src/below is teamrun#328's case: a peer range on the released package that starts below the version the repository
+  // pins, which its checks refuse once the pin moves.
+  @TestMethod
+  public async raisesEachPeerRangeOnAReleasedPackageThatStartsBelowTheReleaseAndLeavesEveryOtherRangeAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    const left = {
+      "src/caret/package.json": "{ \"name\": \"@noldova/local.caret\", \"peerDependencies\": { \"@noldova/ui\": \"^0.0.12\" } }\n",
+      "src/capped/package.json": "{ \"name\": \"@noldova/local.capped\", \"peerDependencies\": { \"@noldova/ui\": \">=0.0.12 <0.0.13\" } }\n",
+      "src/held/package.json": "{ \"name\": \"@noldova/local.held\", \"dependencies\": { \"@noldova/ui\": \">=0.0.12 <0.1.0\" } }\n",
+      "src/current/package.json": "{ \"name\": \"@noldova/local.current\", \"peerDependencies\": { \"@noldova/ui\": \">=0.0.13 <0.1.0\" } }\n"
+    };
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/app/package.json": "{ \"name\": \"@noldova/local.app\", \"dependencies\": { \"@noldova/ui\": \"0.0.13\" } }\n",
+      "src/below/package.json": "{ \"name\": \"@noldova/local.below\", \"peerDependencies\": { \"@noldova/ui\": \">=0.0.11 <0.1.0\" } }\n",
+      "src/window/package.json": "{\n  \"name\": \"@noldova/local.window\",\n  \"peerDependencies\": { \"@noldova/ui\": \">=0.0.12 <0.1.0\", \"@noldova/ui.icons\": \">=0.0.12 <0.1.0\" }\n}\n",
+      ...left
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 4 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n")[1]);
+    Assert.areEqual("{ \"name\": \"@noldova/local.below\", \"peerDependencies\": { \"@noldova/ui\": \">=0.0.13 <0.1.0\" } }\n", host.pushed.get("noldova-com/pinned")?.["src/below/package.json"]);
+    Assert.areEqual("{\n  \"name\": \"@noldova/local.window\",\n  \"peerDependencies\": { \"@noldova/ui\": \">=0.0.13 <0.1.0\", \"@noldova/ui.icons\": \">=0.0.13 <0.1.0\" }\n}\n",
+      host.pushed.get("noldova-com/pinned")?.["src/window/package.json"]);
+    Assert.areEqual(Object.values(left).join(""), Object.entries(left).map(([t, u]) => host.pushed.get("noldova-com/pinned")?.[t] ?? u).join(""));
+    Assert.areEqual(
+      [
+        "- `package.json`: `@noldova/ui` from 0.0.12 to 0.0.13",
+        "- `src/below/package.json`: `@noldova/ui` from >=0.0.11 <0.1.0 to >=0.0.13 <0.1.0",
+        "- `src/window/package.json`: `@noldova/ui` from >=0.0.12 <0.1.0 to >=0.0.13 <0.1.0",
+        "- `src/window/package.json`: `@noldova/ui.icons` from >=0.0.12 <0.1.0 to >=0.0.13 <0.1.0"
+      ].join("\n"),
+      host.proposals.join("").split("\n").filter(t => t.startsWith("- `") && t.includes(" from ")).join("\n"));
+  }
+
   @TestMethod
   public async leavesAPeerRangeOfAVersionAReleasedPackageOnlyDependsOnAndProposesThePinsAsBeforeAsync(): Promise<void> {
     using source = DependentsStepTests.createKitSource();
@@ -1241,7 +1281,7 @@ export class DependentsStepTests {
   }
 
   @TestMethod
-  public async leavesTheRangesAloneWhenTheReleaseIsNotNoldovaDesktopsAsync(): Promise<void> {
+  public async leavesTheModuleRangeAloneButRaisesThePeerRangeWhenTheReleaseIsNotNoldovaDesktopsAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     using pinned = DependentsStepTests.createTarget({
       "package.json": "{ \"devDependencies\": { \"@noldova/a\": \"0.0.1\" } }\n",
@@ -1257,7 +1297,7 @@ export class DependentsStepTests {
     Assert.isTrue(result.isSuccessful, result.message);
     const pushed = host.pushed.get("noldova-com/pinned");
     Assert.areEqual("{ \"id\": \"m\", \"noldovaDesktop\": \">=0.0.1 <0.1.0\" }\n", pushed?.["src/m/module.json"]);
-    Assert.areEqual("{ \"name\": \"@noldova/m\", \"peerDependencies\": { \"@noldova/a\": \">=0.0.1 <0.1.0\" } }\n", pushed?.["src/m/package.json"]);
+    Assert.areEqual("{ \"name\": \"@noldova/m\", \"peerDependencies\": { \"@noldova/a\": \">=0.0.4 <0.1.0\" } }\n", pushed?.["src/m/package.json"]);
   }
 
   private static createDesktopSource(): GitRepositoryFixture {

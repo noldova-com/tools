@@ -106,6 +106,7 @@ export class DependentRelock {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockManifestsUntracked(unmanifested)));
 
     const rangeMoves = manifestPaths.flatMap(t => DependentRelock.moveRanges(path.join(directory, t), t, update.packageNames, update.packageNames, update.version));
+    const releasedRangeMoves = manifestPaths.flatMap(t => DependentRelock.moveReleasedPeerRanges(path.join(directory, t), t, update.packageNames, update.version));
     const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
     const refusals: string[] = [];
     const peerRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, update.peerPins, refusals));
@@ -131,7 +132,7 @@ export class DependentRelock {
     if (shared.size > 0)
       return StepResult.failed(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
-    const allMoves = [...moves, ...rangeMoves, ...peerMoves, ...peerRangeMoves, ...chase.moves];
+    const allMoves = [...moves, ...rangeMoves, ...releasedRangeMoves, ...peerMoves, ...peerRangeMoves, ...chase.moves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
     for (const lockFilePath of [...lockFilePaths.filter(t => !lockScripts.has(t)), ...lockFilePaths.filter(t => lockScripts.has(t))]) {
       const script = lockScripts.get(lockFilePath);
@@ -613,6 +614,36 @@ export class DependentRelock {
 
           const range = Resources.formatSiblingPeerRange(version, refused);
           moves.push({ packageName, line: DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, range), reason) });
+
+          return `${prefix}${range}${suffix}`;
+        });
+      }
+
+      return replaced;
+    });
+    if (moves.length > 0)
+      fs.writeFileSync(fullPath, text);
+
+    return moves;
+  }
+
+  // Raises, in a manifest's peerDependencies, each range of the form >=<lowest> <refused> on a released package whose
+  // lowest is older than the release, such as a module's own peer range on the window package it pins, to start at the
+  // release, keeping the version it refuses, since a dependent's checks need its peer on a package it pins to start at
+  // the pin. A range that refuses the release, and any other form, such as ^ or ~, stay.
+  private static moveReleasedPeerRanges(fullPath: string, filePath: string, packageNames: readonly string[], version: string): readonly PinMove[] {
+    const target = Version.parse(version);
+    const moves: PinMove[] = [];
+    const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.peerDependenciesPattern, (field: string) => {
+      let replaced = field;
+      for (const packageName of packageNames) {
+        replaced = replaced.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
+          const [, lowest, refused] = Resources.exactRangePattern.exec(found) ?? [];
+          if (lowest === undefined || refused === undefined || Version.parse(lowest).compareTo(target) >= 0 || target.compareTo(Version.parse(refused)) >= 0)
+            return pin;
+
+          const range = Resources.formatSiblingPeerRange(version, refused);
+          moves.push({ packageName, line: Resources.formatPinMoved(filePath, packageName, found, range) });
 
           return `${prefix}${range}${suffix}`;
         });

@@ -59,6 +59,28 @@ export class DependentsStepNpmTests {
     Assert.areEqual("@noldova/core 1.0.5, @noldova/forms 1.0.5, @noldova/ui 3.0.0, @noldova/unrelated 2.0.0, @noldova/window 0.0.71", DependentsStepNpmTests.readLocked(host));
   }
 
+  // The dependent's workspace part takes the window package it pins as a peer from that pin on, so npm locks the part's
+  // peer range in its workspace entry too.
+  @TestMethod
+  public async raisesAWorkspacesPeerRangeThatStartsAtTheOldPinAndRelocksItsCopyAsync(): Promise<void> {
+    using _ = DependentsStepNpmTests.turnOffCompileCache();
+    await using registry = await LocalRegistryFixture.startAsync();
+    registry.publish("@noldova/core", "1.0.1");
+    registry.publish("@noldova/window", "0.0.70", { peerDependencies: { "@noldova/core": "1.0.1" } });
+    using dependent = await DependentsStepNpmTests.createDependentAsync(registry, { "@noldova/core": "1.0.1", "@noldova/window": "0.0.70" }, {},
+      { "src/part/package.json": `${JSON.stringify({ name: "@noldova/local.part", version: "1.0.0", peerDependencies: { "@noldova/window": ">=0.0.70 <0.1.0" } }, null, 2)}\n` });
+    registry.publish("@noldova/core", "1.0.5");
+    registry.publish("@noldova/window", "0.0.71", { peerDependencies: { "@noldova/core": "1.0.5" } });
+
+    const { result, host } = await DependentsStepNpmTests.releaseWindowAsync(dependent, { "@noldova/core": "1.0.5" });
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    const pushed = host.pushed.get(DependentsStepNpmTests.DEPENDENT);
+    const lock: { readonly packages: Readonly<Record<string, { readonly peerDependencies?: unknown }>> } = JSON.parse(pushed?.["package-lock.json"] ?? "{}");
+    Assert.areEqual(JSON.stringify({ "@noldova/window": ">=0.0.71 <0.1.0" }), JSON.stringify(JSON.parse(pushed?.["src/part/package.json"] ?? "{}").peerDependencies));
+    Assert.areEqual(JSON.stringify({ "@noldova/window": ">=0.0.71 <0.1.0" }), JSON.stringify(lock.packages["src/part"]?.peerDependencies));
+  }
+
   // core's new version needs the new compiler as an optional peer, which the dependent pins at the old one.
   @TestMethod
   public async movesThePinThatAMovedPackageNeedsAsAnExactPeerAsync(): Promise<void> {
@@ -203,9 +225,10 @@ export class DependentsStepNpmTests {
   // A dependent whose npm reads only the local registry and keeps its cache in the checkout, locked against what the
   // registry holds now.
   private static async createDependentAsync(registry: LocalRegistryFixture, dependencies: Readonly<Record<string, string>>,
-    devDependencies: Readonly<Record<string, string>> = {}): Promise<GitRepositoryFixture> {
+    devDependencies: Readonly<Record<string, string>> = {}, workspaces: Readonly<Record<string, string>> = {}): Promise<GitRepositoryFixture> {
     const dependent = GitRepositoryFixture.create();
     dependent.write({
+      ...workspaces,
       ".gitignore": `${DependentsStepNpmTests.CACHE_FOLDER}/\n`,
       ".npmrc": [
         `registry=${registry.url}`,
@@ -214,7 +237,7 @@ export class DependentsStepNpmTests {
         "update-notifier=false",
         ""
       ].join("\n"),
-      "package.json": `${JSON.stringify({ name: "dependent", version: "1.0.0", dependencies, devDependencies }, null, 2)}\n`
+      "package.json": `${JSON.stringify({ name: "dependent", version: "1.0.0", ...Object.keys(workspaces).length > 0 ? { workspaces: Object.keys(workspaces).map(t => path.posix.dirname(t)) } : {}, dependencies, devDependencies }, null, 2)}\n`
     });
     const locked = await new Npm(new ProcessRunner(), dependent.directory).lockAsync(dependent.directory);
     Assert.isTrue(locked.isSuccessful, locked.errorOutput);
