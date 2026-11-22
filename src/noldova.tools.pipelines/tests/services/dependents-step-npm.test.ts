@@ -9,20 +9,53 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { JsonReader } from "@noldova/context.json";
 import { Assert, TestClass, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, DependentsStep, Git, Npm, ProcessRunner, type StepResult, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, DependentsStep, Git, Npm, ProcessResult, ProcessRunner, type StepResult, Tar } from "@noldova/tools.pipelines";
 
 import { FakeUpdateHost } from "./fake-update-host.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 import { LocalRegistryFixture } from "./local-registry.fixture.js";
 
-interface LockedVersion {
-  readonly version?: string;
+class DependentsRun {
+  public readonly result: StepResult;
+  public readonly host: FakeUpdateHost;
+
+  public constructor(result: StepResult, host: FakeUpdateHost) {
+    this.result = result;
+    this.host = host;
+  }
 }
 
-interface DependentsRun {
-  readonly result: StepResult;
-  readonly host: FakeUpdateHost;
+class EnvironmentValue implements Disposable {
+  private readonly name: string;
+  private readonly before: string | undefined;
+
+  public constructor(name: string, value: string) {
+    this.name = name;
+    this.before = process.env[name];
+    process.env[name] = value;
+  }
+
+  public [Symbol.dispose](): void {
+    if (Object.isUndefined(this.before))
+      delete process.env[this.name];
+    else
+      process.env[this.name] = this.before;
+  }
+}
+
+class ReleasedManifestNpm extends Npm {
+  private readonly manifest: object;
+
+  public constructor(processRunner: ProcessRunner, workingDirectory: string, manifest: object) {
+    super(processRunner, workingDirectory);
+    this.manifest = manifest;
+  }
+
+  public override viewManifestAsync(): Promise<ProcessResult> {
+    return Promise.resolve(new ProcessResult(0, JSON.stringify(this.manifest), ""));
+  }
 }
 
 // The dependents step with the real npm, against a local registry: a dependent's lock file holds the released
@@ -288,29 +321,19 @@ export class DependentsStepNpmTests {
     host.repositories.set(DependentsStepNpmTests.DEPENDENT, dependent);
     const processRunner = new ProcessRunner();
     const step = new DependentsStep(new ArchiveStep(new Git(processRunner, source.directory), new Tar(processRunner), new Npm(processRunner, source.directory)), host, processRunner,
-      new Npm(processRunner, source.directory));
+      new ReleasedManifestNpm(processRunner, source.directory, { name: "@noldova/window", version: "0.0.71", peerDependencies }));
 
-    return { result: await step.runAsync(["0.0.71", source.readHead()]), host };
+    return new DependentsRun(await step.runAsync(["0.0.71", source.readHead()]), host);
   }
 
   private static readLocked(host: FakeUpdateHost, lockFilePath: string = "package-lock.json"): string {
-    const lock: { readonly packages: Readonly<Record<string, LockedVersion>> } = JSON.parse(host.pushed.get(DependentsStepNpmTests.DEPENDENT)?.[lockFilePath] ?? "{}");
+    const packages = JsonReader.parse(host.pushed.get(DependentsStepNpmTests.DEPENDENT)?.[lockFilePath] ?? "{}", lockFilePath).readObject("packages");
 
-    return Object.entries(lock.packages).filter(([key]) => key.length > 0).map(([key, entry]) => `${key.slice("node_modules/".length)} ${entry.version}`).sort().join(", ");
+    return Object.keys(packages.toJson()).filter(t => t.length > 0).map(t => `${t.slice("node_modules/".length)} ${packages.readObject(t).readString("version")}`).sort().join(", ");
   }
 
   // npm keeps Node's compile cache in the shared temporary folder unless the environment turns it off.
   private static turnOffCompileCache(): Disposable {
-    const before = process.env[DependentsStepNpmTests.COMPILE_CACHE_OFF];
-    process.env[DependentsStepNpmTests.COMPILE_CACHE_OFF] = "1";
-
-    return {
-      [Symbol.dispose]: (): void => {
-        if (before === undefined)
-          delete process.env[DependentsStepNpmTests.COMPILE_CACHE_OFF];
-        else
-          process.env[DependentsStepNpmTests.COMPILE_CACHE_OFF] = before;
-      }
-    };
+    return new EnvironmentValue(DependentsStepNpmTests.COMPILE_CACHE_OFF, "1");
   }
 }

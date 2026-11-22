@@ -9,8 +9,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { JsonReader } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
-import { ArchiveStep, DependentsStep, Git, Npm, ProcessException, ProcessResult, ProcessRunner, RelockedFiles, StepResult, Tar } from "@noldova/tools.pipelines";
+import { ArchiveStep, DependentsStep, Git, type IStepOutput, Npm, ProcessException, ProcessResult, ProcessRunner, RelockedFiles, StepResult, Tar } from "@noldova/tools.pipelines";
 
 import { FakeUpdateHost, RecordingOutput } from "./fake-update-host.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
@@ -25,6 +26,10 @@ class LockingNpm extends Npm {
   public result: ProcessResult = new ProcessResult(0, "", "");
   public locked: object | null = null;
   public readonly lockedIn: Map<string, object> = new Map<string, object>();
+  public readonly published: Map<string, object> = new Map<string, object>();
+  public readonly manifestViews: string[] = [];
+  public readonly manifestFailures: ProcessResult[] = [];
+  public publishedFrom: string | null = null;
 
   public constructor() {
     super(new ProcessRunner(), ".");
@@ -49,6 +54,26 @@ class LockingNpm extends Npm {
 
   public answer(specifier: string, field: string, value: unknown): void {
     this.views.set(`${specifier} ${field}`, new ProcessResult(0, `${JSON.stringify(value)}\n`, ""));
+  }
+
+  public override async viewManifestAsync(specifier: string, registry: string | null): Promise<ProcessResult> {
+    this.manifestViews.push(`${specifier} ${registry ?? "configured"}`);
+    const failure = this.manifestFailures.shift();
+    if (!Object.isUndefined(failure))
+      return failure;
+    const name = specifier.slice(0, specifier.lastIndexOf("@"));
+    const manifest = this.published.get(name) ?? this.readSource(name);
+
+    return Object.isUndefined(manifest) ? new ProcessResult(1, "", "npm error code E404\n") : new ProcessResult(0, `${JSON.stringify(manifest)}\n`, "");
+  }
+
+  private readSource(name: string): object | undefined {
+    if (Object.isNull(this.publishedFrom))
+      return undefined;
+    const folder = path.join(this.publishedFrom, "src");
+
+    return fs.readdirSync(folder, { recursive: true, encoding: "utf8" }).filter(t => path.basename(t) === "package.json")
+      .map(t => JsonReader.parse(fs.readFileSync(path.join(folder, t), "utf8"), t)).find(t => t.hasField("name") && t.readString("name") === name)?.toJson();
   }
 }
 
@@ -911,7 +936,7 @@ export class DependentsStepTests {
     host.repositories.set("noldova-com/unpinned", unpinned);
     const output = new RecordingOutput(host.events);
 
-    const result = await new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), new LockingNpm(), undefined, output).runAsync(["0.0.4", source.readHead()]);
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm(), undefined, output).runAsync(["0.0.4", source.readHead()]);
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.areEqual("success: noldova-com/unpinned: pins none of them below 0.0.4.", host.events.filter(t => t.startsWith("success")).join("\n"));
@@ -929,7 +954,7 @@ export class DependentsStepTests {
     host.failures.set("push noldova-com/failed", StepResult.failed("rejected"));
     const output = new RecordingOutput(host.events);
 
-    const result = await new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), new LockingNpm(), undefined, output).runAsync(["0.0.4", source.readHead()]);
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm(), undefined, output).runAsync(["0.0.4", source.readHead()]);
 
     Assert.isFalse(result.isSuccessful);
     Assert.areEqual(
@@ -1162,7 +1187,7 @@ export class DependentsStepTests {
     host.failures.set("push noldova-com/pinned", StepResult.failed("rejected"));
     const root = fs.mkdtempSync(path.join(source.directory, "..", "tools-pipelines-root-"));
     try {
-      await new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), new LockingNpm(), root).runAsync(["0.0.4", source.readHead()]);
+      await DependentsStepTests.createStep(source, host, new LockingNpm(), root).runAsync(["0.0.4", source.readHead()]);
 
       Assert.areEqual("", fs.readdirSync(root).join());
     }
@@ -1230,6 +1255,77 @@ export class DependentsStepTests {
 
     Assert.isFalse(result.isSuccessful);
     Assert.isTrue(result.message.includes(source.readHead()), result.message);
+  }
+
+  @TestMethod
+  public async readsWhatTheReleasedPackageNeedsFromItsPublishedManifestOnItsRegistryOrTheConfiguredOneAsync(): Promise<void> {
+    using source = GitRepositoryFixture.create();
+    source.commit({
+      "src/a/package.json": JSON.stringify({ name: "@noldova/a", dependencies: { "@noldova/kit": "0.0.5" }, publishConfig: { registry: "https://registry.example/" } }),
+      "src/b/package.json": JSON.stringify({ name: "@noldova/b", publishConfig: { access: "public" } })
+    });
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": JSON.stringify({ dependencies: { "@noldova/a": "0.0.3", "@noldova/kit": "0.0.6" } }),
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.published.set("@noldova/a", { name: "@noldova/a", version: "0.0.4", peerDependencies: { "@noldova/kit": ">=0.0.5 <0.1.0" } });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 1 pins in https://example.test/noldova-com/pinned/pull/1", result.message.split("\n").slice(1).join("\n"));
+    Assert.areEqual(JSON.stringify({ dependencies: { "@noldova/a": "0.0.4", "@noldova/kit": "0.0.6" } }), host.pushed.get("noldova-com/pinned")?.["package.json"]);
+    Assert.areEqual("@noldova/a@0.0.4 https://registry.example/|@noldova/b@0.0.4 configured", npm.manifestViews.join("|"));
+  }
+
+  @TestMethod
+  public async failsNamingThePackageAndVersionTheRegistryNeverServesAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.manifestFailures.push(...[1, 2, 3].map(() => new ProcessResult(1, "", "npm error code E404\n")));
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.areEqual("The registry served no @noldova/a.b@0.0.4 after 3 tries, 0 seconds apart, so the step can't read what it needs.", result.message);
+    Assert.areEqual("@noldova/a.b@0.0.4 configured|@noldova/a.b@0.0.4 configured|@noldova/a.b@0.0.4 configured", npm.manifestViews.join("|"));
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async readsAPublishedManifestTheRegistryServesOnALaterTryAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.manifestFailures.push(new ProcessResult(1, "", "npm error code E404\n"), new ProcessResult(0, "", ""));
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(3, npm.manifestViews.filter(t => t.startsWith("@noldova/a.b@0.0.4 ")).length);
+    Assert.isTrue(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async failsAtOnceWhenViewingAPublishedManifestFailsOtherwiseAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    const npm = new LockingNpm();
+    npm.manifestFailures.push(new ProcessResult(1, "", "npm error code E401\n"));
+
+    const result = await DependentsStepTests.createStep(source, new FakeUpdateHost(), npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful);
+    Assert.isTrue(result.message.startsWith("@noldova/a.b@0.0.4: npm view exited with code 1"), result.message);
+    Assert.isTrue(result.message.includes("E401"), result.message);
+    Assert.areEqual(1, npm.manifestViews.length);
   }
 
   @TestMethod
@@ -1580,7 +1676,9 @@ export class DependentsStepTests {
     return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner), new Npm(processRunner, directory));
   }
 
-  private static createStep(source: GitRepositoryFixture, host: FakeUpdateHost, npm: Npm): DependentsStep {
-    return new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), npm);
+  private static createStep(source: GitRepositoryFixture, host: FakeUpdateHost, npm: LockingNpm, root?: string, output?: IStepOutput): DependentsStep {
+    npm.publishedFrom = source.directory;
+
+    return new DependentsStep(DependentsStepTests.createArchiveStep(source.directory), host, new ProcessRunner(), npm, root, output, 3, 0);
   }
 }

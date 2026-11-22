@@ -32,6 +32,15 @@ export class Npm {
     return await this.runAsync([...Resources.npmViewValues, specifier, field, ...Resources.npmPreferOnlineValues, ...Resources.npmRegistryValues, registry]);
   }
 
+  public async viewManifestAsync(specifier: string, registry: string | null): Promise<ProcessResult> {
+    const values = [...Resources.npmViewValues, specifier, ...Resources.npmJsonValues, ...Resources.npmPreferOnlineValues,
+      ...Object.isNull(registry) ? [] : [...Resources.npmRegistryValues, registry]];
+
+    return this.platform === Resources.windowsPlatform
+      ? await this.processRunner.runAsync(Resources.windowsShellProgram, [...Resources.windowsShellValues, [Resources.windowsNpmProgram, ...values].join(Resources.valueSeparator)], this.workingDirectory)
+      : await this.processRunner.runAsync(Resources.npmProgram, values, this.workingDirectory);
+  }
+
   public async readFieldOrEmptyAsync(specifier: string, field: string, registry: string): Promise<string | StepResult> {
     const result = await this.viewAsync(specifier, field, registry);
     if (result.isSuccessful)
@@ -116,7 +125,7 @@ export class Npm {
 
   private async runCommandLineAsync(values: readonly string[], directory: string): Promise<ProcessResult> {
     const commandLinePath = this.environment[Resources.npmCommandLineVariable];
-    if (commandLinePath === undefined || commandLinePath.length === 0)
+    if (String.isNullOrEmpty(commandLinePath))
       throw new BuildException(Resources.npmCommandLineMissing);
 
     return await this.processRunner.runAsync(process.execPath, [commandLinePath, ...values], directory);

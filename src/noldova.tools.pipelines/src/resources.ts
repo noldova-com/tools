@@ -167,10 +167,13 @@ export class Resources {
   public static readonly progressFailed: string = " Failed.";
   public static readonly pruneStepName: string = "prune";
   public static readonly pruneStepUsage: string = "<version> <commit> <scope> <registry> <keep-versions>";
+  public static readonly publishConfigField: string = "publishConfig";
   public static readonly publishRetryMilliseconds: number = 10_000;
   public static readonly publishStepName: string = "publish";
   public static readonly publishStepUsage: string = "<folder> <version> <commit> <scope> <registry> <access>";
   public static readonly publishWaitMilliseconds: number = 600_000;
+  public static readonly publishedViewAttempts: number = 6;
+  public static readonly registryField: string = "registry";
   public static readonly registryProtocol: string = "https:";
   public static readonly reproducibleFolderPrefix: string = "pipelines-reproducible-";
   public static readonly reproducibleStepName: string = "reproducible";
@@ -672,6 +675,10 @@ export class Resources {
 
   public static formatNpmFailed(specifier: string, commandValues: readonly string[], exitCode: number | null, errorOutput: string): string {
     return Resources.formatFailureLine(`${specifier}: ${Resources.npmProgram} ${commandValues.join(Resources.valueSeparator)} exited with code ${exitCode}`, errorOutput);
+  }
+
+  public static formatPublishedMissing(specifier: string, attempts: number, retryMilliseconds: number): string {
+    return `The registry served no ${specifier} after ${attempts} tries, ${retryMilliseconds / Resources.millisecondsPerSecond} seconds apart, so the step can't read what it needs.`;
   }
 
   public static formatNotServed(specifier: string, waitMilliseconds: number): string {

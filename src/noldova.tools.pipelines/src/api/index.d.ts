@@ -1621,6 +1621,29 @@ export declare class Npm {
   public viewAsync(specifier: string, field: string, registry: string): Promise<ProcessResult>;
 
   /**
+   * Reads a published version's whole manifest from the registry as JSON
+   * with `npm view <specifier> --json --prefer-online`, asking the registry
+   * rather than `npm`'s cache; on Windows, through `cmd.exe`.
+   *
+   * @param specifier The version, such as `@noldova/tools.pipelines@0.0.4`.
+   * @param registry The registry's URL, such as the package's
+   * `publishConfig.registry`; `null` asks the registry npm's configuration
+   * names.
+   * @returns A promise of how `npm view` ended: on success, its output is the
+   * manifest as JSON, empty when the version doesn't exist. It rejects with
+   * {@link ProcessException} if `npm` cannot start.
+   * @example
+   * ```ts
+   * import { Npm, ProcessRunner } from "@noldova/tools.pipelines";
+   *
+   * const npm = new Npm(new ProcessRunner(), process.cwd());
+   * const result = await npm.viewManifestAsync("@noldova/tools.pipelines@0.0.4", null);
+   * JSON.parse(result.output).peerDependencies; // the peers that version was published with
+   * ```
+   */
+  public viewManifestAsync(specifier: string, registry: string | null): Promise<ProcessResult>;
+
+  /**
    * Reads a field of a package or a version from the registry, as
    * {@link Npm.viewAsync} does, and gives its value.
    *
@@ -2722,7 +2745,11 @@ export declare class ReproducibleStep implements IStep {
  * without the host's credential variables, so a package the old lock keeps
  * at an older version can't hold the moved pins back; it then commits,
  * pushes the branch `pipelines/update-<source>` and proposes it, with the
- * moved pins and the release's notes in its description. When a released
+ * moved pins and the release's notes in its description. It reads what
+ * each released package depends on and needs as a peer from the package as
+ * the registry serves it at the release, with {@link Npm.viewManifestAsync},
+ * since a published package can take as a peer range what its source pins
+ * exactly. When a released
  * package needs another package as a peer at an exact version, it moves the
  * repository's exact pins of that package too, when older, and names in the
  * description the released package that needs each. It then follows the
@@ -2810,6 +2837,11 @@ export declare class DependentsStep implements IStep {
    * repository is done, as a success or a failure, so a run stopped partway
    * still shows the repositories it finished; the result's message then holds
    * only the summary. Omitted, the lines are in the result's message.
+   * @param viewAttempts How many times the step asks the registry for a
+   * released package's manifest while it answers that it doesn't have the
+   * version yet, before it fails naming the package and version. Omitted, 6.
+   * @param retryMilliseconds How long the step waits between those tries.
+   * Omitted, 10 seconds.
    * @example
    * ```ts
    * import { ArchiveStep, DependentsStep, Git, type IUpdateHost, Npm, ProcessRunner, Tar } from "@noldova/tools.pipelines";
@@ -2821,7 +2853,7 @@ export declare class DependentsStep implements IStep {
    * step.name; // "dependents"
    * ```
    */
-  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string, output?: IStepOutput);
+  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string, output?: IStepOutput, viewAttempts?: number, retryMilliseconds?: number);
 
   /**
    * Moves the pins in every repository that has them.

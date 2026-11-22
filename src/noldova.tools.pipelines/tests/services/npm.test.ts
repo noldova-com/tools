@@ -44,6 +44,19 @@ export class NpmTests {
     Assert.areEqual("release: npm view @noldova/a@0.0.4 dist.integrity --prefer-online --registry https://registry.example/", processRunner.calls.join("\n"));
   }
 
+  @TestData("linux", null, "release: npm view @noldova/a@0.0.4 --json --prefer-online")
+  @TestData("linux", "https://registry.example/", "release: npm view @noldova/a@0.0.4 --json --prefer-online --registry https://registry.example/")
+  @TestData("win32", "https://registry.example/", "release: cmd.exe /d /s /c npm.cmd view @noldova/a@0.0.4 --json --prefer-online --registry https://registry.example/")
+  @TestMethod
+  public async viewsAPublishedManifestAsJsonWithoutTheCacheFromItsRegistryOrTheConfiguredOneAsync(platform: string, registry: string | null, expected: string): Promise<void> {
+    const processRunner = new RecordingProcessRunner(new ProcessResult(0, "{}\n", ""));
+
+    const result = await new Npm(processRunner, "release", platform).viewManifestAsync("@noldova/a@0.0.4", registry);
+
+    Assert.areEqual("{}\n", result.output);
+    Assert.areEqual(expected, processRunner.calls.join("\n"));
+  }
+
   @TestData("linux", "dependent: npm view @noldova/a@0.0.4 peerDependencies --json --prefer-online")
   @TestData("win32", "dependent: cmd.exe /d /s /c npm.cmd view @noldova/a@0.0.4 peerDependencies --json --prefer-online")
   @TestMethod
@@ -142,7 +155,7 @@ export class NpmTests {
     await new Npm(processRunner, "release", platform).lockAsync("locked", ["GITHUB_TOKEN", "OTHER_TOKEN"]);
 
     Assert.areEqual("GITHUB_TOKEN,OTHER_TOKEN", Object.keys(processRunner.environments[0] ?? {}).join(","));
-    Assert.isTrue(Object.values(processRunner.environments[0] ?? {}).every(t => t === undefined));
+    Assert.isTrue(Object.values(processRunner.environments[0] ?? {}).every(t => Object.isUndefined(t)));
   }
 
   @TestData("linux", "checkout: npm run lock:app")
@@ -156,7 +169,7 @@ export class NpmTests {
     Assert.areEqual(1, result.exitCode);
     Assert.areEqual(expected, processRunner.calls.join("\n"));
     Assert.areEqual("GITHUB_TOKEN", Object.keys(processRunner.environments[0] ?? {}).join(","));
-    Assert.isTrue(Object.values(processRunner.environments[0] ?? {}).every(t => t === undefined));
+    Assert.isTrue(Object.values(processRunner.environments[0] ?? {}).every(t => Object.isUndefined(t)));
     Assert.areEqual(300000, processRunner.timeouts[0]);
   }
 

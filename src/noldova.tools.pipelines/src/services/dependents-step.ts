@@ -10,9 +10,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delayAsync } from "node:timers/promises";
 
 import "@noldova/context.core";
-import type { JsonReader } from "@noldova/context.json";
+import { JsonReader } from "@noldova/context.json";
 
 import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
@@ -36,14 +37,21 @@ export class DependentsStep implements IStep {
   private readonly updateHost: IUpdateHost;
   private readonly processRunner: ProcessRunner;
   private readonly relock: DependentRelock;
+  private readonly npm: Npm;
+  private readonly viewAttempts: number;
+  private readonly retryMilliseconds: number;
   private readonly temporaryRoot: string;
   private readonly output: IStepOutput | undefined;
 
   public readonly name: string = Resources.dependentsStepName;
   public readonly usage: string = Resources.dependentsStepUsage;
 
-  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string, output?: IStepOutput) {
+  public constructor(archiveStep: ArchiveStep, updateHost: IUpdateHost, processRunner: ProcessRunner, npm: Npm, temporaryRoot?: string, output?: IStepOutput,
+    viewAttempts: number = Resources.publishedViewAttempts, retryMilliseconds: number = Resources.publishRetryMilliseconds) {
     this.archiveStep = archiveStep;
+    this.npm = npm;
+    this.viewAttempts = viewAttempts;
+    this.retryMilliseconds = retryMilliseconds;
     this.updateHost = updateHost;
     this.processRunner = processRunner;
     this.relock = new DependentRelock(processRunner, npm, updateHost.credentialVariables);
@@ -82,7 +90,11 @@ export class DependentsStep implements IStep {
     if (notes instanceof StepResult)
       return notes;
 
-    const update = new DependentsUpdate(source, version, commit, packageNames, DependentsStep.readOutsidePins(manifests, packageNames, version), notes);
+    const published = await this.readPublishedAsync(manifests, version);
+    if (published instanceof StepResult)
+      return published;
+
+    const update = new DependentsUpdate(source, version, commit, packageNames, DependentsStep.readOutsidePins(published, packageNames, version), notes);
     const lines: string[] = [];
     const left: string[] = [];
     const root = fs.mkdtempSync(path.join(this.temporaryRoot, Resources.dependentsFolderPrefix));
@@ -206,6 +218,39 @@ export class DependentsStep implements IStep {
         ...targets.length === 0 ? [] : DependentRelock.moveModulePins(path.join(directory, t), t, targets),
         ...DependentRelock.moveModuleRange(path.join(directory, t), t, update.packageNames, update.version)
       ]);
+  }
+
+  private async readPublishedAsync(manifests: readonly JsonReader[], version: string): Promise<readonly JsonReader[] | StepResult> {
+    const published: JsonReader[] = [];
+    for (const manifest of manifests) {
+      const found = await this.viewPublishedAsync(Resources.formatSpecifier(manifest.readString(Resources.nameField), version), DependentsStep.readRegistry(manifest));
+      if (found instanceof StepResult)
+        return found;
+      published.push(found);
+    }
+
+    return published;
+  }
+
+  private async viewPublishedAsync(specifier: string, registry: string | null): Promise<JsonReader | StepResult> {
+    for (let attempt = 1; ; attempt++) {
+      const result = await this.npm.viewManifestAsync(specifier, registry);
+      if (result.isSuccessful && result.output.trim().length > 0)
+        return JsonReader.parse(result.output, specifier);
+      if (!result.isSuccessful && !result.output.includes(Resources.npmNotFoundCode) && !result.errorOutput.includes(Resources.npmNotFoundCode))
+        return StepResult.failed(Resources.formatNpmFailed(specifier, Resources.npmViewValues, result.exitCode, result.errorOutput));
+      if (attempt >= this.viewAttempts)
+        return StepResult.failed(Resources.formatPublishedMissing(specifier, this.viewAttempts, this.retryMilliseconds));
+      await delayAsync(this.retryMilliseconds);
+    }
+  }
+
+  private static readRegistry(manifest: JsonReader): string | null {
+    if (!manifest.hasField(Resources.publishConfigField))
+      return null;
+    const config = manifest.readObject(Resources.publishConfigField);
+
+    return config.hasField(Resources.registryField) ? config.readString(Resources.registryField) : null;
   }
 
   // Reads the outside packages the released packages name: each exact peer, each exact dependency, which the
