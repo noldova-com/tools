@@ -9,13 +9,7 @@
 import { JsonReader } from "@noldova/context.json";
 
 import { Resources } from "../resources.js";
-
-export interface PinTarget {
-  readonly packageName: string;
-  readonly version: string;
-  readonly reason: string | null;
-  readonly range: string | null;
-}
+import { PinTarget } from "./pin-target.js";
 
 export class DependentsUpdate {
   public readonly source: string;
@@ -36,12 +30,12 @@ export class DependentsUpdate {
 
   public static parseRequest(text: string): DependentsUpdate {
     const reader = JsonReader.parse(text);
-    const peerPins = reader.readObjectArray(Resources.relockPeerPinsField).map(t => ({
-      packageName: t.readString(Resources.relockPackageNameField),
-      version: t.readString(Resources.relockVersionField),
-      reason: t.readNullableString(Resources.relockReasonField),
-      range: t.hasField(Resources.relockRangeField) ? t.readNullableString(Resources.relockRangeField) : null
-    }));
+    const peerPins = reader.readObjectArray(Resources.relockPeerPinsField).map(t => new PinTarget(
+      t.readString(Resources.relockPackageNameField),
+      t.readString(Resources.relockVersionField),
+      t.readNullableString(Resources.relockReasonField),
+      t.hasField(Resources.relockRangeField) ? t.readNullableString(Resources.relockRangeField) : null,
+      t.hasField(Resources.relockRequiredByField) ? t.readStringArray(Resources.relockRequiredByField) : []));
 
     return new DependentsUpdate(reader.readString(Resources.relockSourceField), reader.readString(Resources.relockVersionField), reader.readString(Resources.relockCommitField),
       reader.readStringArray(Resources.relockPackageNamesField), peerPins, "");
@@ -53,7 +47,7 @@ export class DependentsUpdate {
       [Resources.relockVersionField]: this.version,
       [Resources.relockCommitField]: this.commit,
       [Resources.relockPackageNamesField]: this.packageNames,
-      [Resources.relockPeerPinsField]: this.peerPins.map(t => ({ [Resources.relockPackageNameField]: t.packageName, [Resources.relockVersionField]: t.version, [Resources.relockReasonField]: t.reason, [Resources.relockRangeField]: t.range }))
+      [Resources.relockPeerPinsField]: this.peerPins.map(t => ({ [Resources.relockPackageNameField]: t.packageName, [Resources.relockVersionField]: t.version, [Resources.relockReasonField]: t.reason, [Resources.relockRangeField]: t.range, [Resources.relockRequiredByField]: t.requiredBy }))
     });
   }
 }

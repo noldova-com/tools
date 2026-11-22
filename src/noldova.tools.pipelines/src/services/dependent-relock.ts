@@ -11,8 +11,12 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 
+import "@noldova/context.core";
+
 import { ProcessException } from "../exceptions/process.exception.js";
-import type { DependentsUpdate, PinTarget } from "../models/dependents-update.js";
+import type { DependentsUpdate } from "../models/dependents-update.js";
+import { LockScope } from "../models/lock-scope.js";
+import { PinTarget } from "../models/pin-target.js";
 import type { ProcessResult } from "../models/process-result.js";
 import { RelockedFiles } from "../models/relocked-files.js";
 import { StepResult } from "../models/step-result.js";
@@ -48,6 +52,7 @@ interface Manifest {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
   readonly optionalDependencies?: Readonly<Record<string, string>>;
+  readonly peerDependencies?: Readonly<Record<string, string>>;
 }
 
 interface OwnPin {
@@ -92,8 +97,9 @@ export class DependentRelock {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatLockScriptsUntracked(unknown)));
 
     const before = DependentRelock.readFiles(directory, [...manifestPaths, ...lockFilePaths]);
-    const released = update.packageNames.map(t => ({ packageName: t, version: update.version, reason: null, range: null }));
-    const moves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, released));
+    const released = update.packageNames.map(t => new PinTarget(t, update.version, null, null, []));
+    const releasedMoves = new Map(manifestPaths.map(t => [t, DependentRelock.movePins(path.join(directory, t), t, released)]));
+    const moves = [...releasedMoves.values()].flat();
     if (moves.length === 0)
       return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
 
@@ -108,20 +114,35 @@ export class DependentRelock {
     const rangeMoves = manifestPaths.flatMap(t => DependentRelock.moveRanges(path.join(directory, t), t, update.packageNames, update.packageNames, update.version));
     const refusals: string[] = [];
     const releasedRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, released, refusals));
-    const peerMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, update.peerPins));
-    const peerRangeMoves = manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, update.peerPins, refusals));
-    const expected = new Map([...released, ...update.peerPins.filter(t => peerMoves.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
-    const moved = new Map([...expected].filter(([t]) => [...moves, ...peerMoves].some(m => m.packageName === t)));
-    for (const { packageName, version } of update.peerPins.filter(t => t.range === t.version && !moved.has(t.packageName)))
-      moved.set(packageName, version);
-    const outside = DependentRelock.findOutside(directory, manifestPaths, update.peerPins);
-    const chase = await this.chasePeersAsync(directory, manifestPaths, moved);
-    for (const [packageName, version] of moved)
-      expected.set(packageName, version);
-    if (outside.length + refusals.length + chase.misses.length > 0)
-      return StepResult.failed(Resources.formatRepositoryUnmatched(repository, update.version, [...outside, ...refusals, ...chase.misses]));
+    const peerMoves: PinMove[] = [];
+    const peerRangeMoves: PinMove[] = [];
+    const outside: string[] = [];
+    const chaseMoves: PinMove[] = [];
+    const misses: string[] = [];
+    const expectedScopes = new Map<LockScope, ReadonlyMap<string, string>>();
+    for (const scope of LockScope.read(manifestPaths, lockFilePaths)) {
+      const scopeMoves = [...releasedMoves].flatMap(([t, m]) => scope.manifestPaths.includes(t) ? m : []);
+      const installed = new Set([...scopeMoves.map(t => t.packageName), ...scope.lockFilePaths.flatMap(t => DependentRelock.readLockedNames(path.join(directory, t)))]);
+      const targets = update.peerPins.filter(t => t.appliesTo(installed));
+      const pinned = scope.manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, targets));
+      peerMoves.push(...pinned);
+      peerRangeMoves.push(...scope.manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, targets, refusals)));
+      const expected = new Map([...released, ...targets.filter(t => pinned.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
+      const moved = new Map([...expected].filter(([t]) => [...scopeMoves, ...pinned].some(m => m.packageName === t)));
+      for (const target of targets.filter(t => t.range === t.version && !moved.has(t.packageName)))
+        moved.set(target.packageName, target.version);
+      outside.push(...DependentRelock.findOutside(directory, scope.manifestPaths, targets));
+      const chase = await this.chasePeersAsync(directory, scope.manifestPaths, manifestPaths, moved);
+      chaseMoves.push(...chase.moves);
+      misses.push(...chase.misses);
+      for (const [packageName, version] of moved)
+        expected.set(packageName, version);
+      expectedScopes.set(scope, expected);
+    }
+    if (outside.length + refusals.length + misses.length > 0)
+      return StepResult.failed(Resources.formatRepositoryUnmatched(repository, update.version, [...outside, ...refusals, ...misses]));
 
-    const blockers = lockFilePaths.flatMap(t => DependentRelock.findConflicts(path.join(directory, t), t, expected));
+    const blockers = [...expectedScopes].flatMap(([scope, expected]) => scope.lockFilePaths.flatMap(t => DependentRelock.findConflicts(path.join(directory, t), t, expected)));
     if (blockers.length > 0)
       return StepResult.failed(Resources.formatRepositoryBlocked(repository, update.version, blockers));
 
@@ -132,20 +153,20 @@ export class DependentRelock {
     if (shared.size > 0)
       return StepResult.failed(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
-    const allMoves = [...moves, ...rangeMoves, ...releasedRangeMoves, ...peerMoves, ...peerRangeMoves, ...chase.moves];
+    const allMoves = [...moves, ...rangeMoves, ...releasedRangeMoves, ...peerMoves, ...peerRangeMoves, ...chaseMoves];
     const movedNames = new Set(allMoves.map(t => t.packageName));
     for (const lockFilePath of [...lockFilePaths.filter(t => !lockScripts.has(t)), ...lockFilePaths.filter(t => lockScripts.has(t))]) {
       const script = lockScripts.get(lockFilePath);
       const ownLock = ownLocks.find(t => t.lockFilePath === lockFilePath);
-      const keptPeers = ownLock === undefined ? [] : DependentRelock.readKeptPeers(path.join(directory, lockFilePath), movedNames);
+      const keptPeers = Object.isUndefined(ownLock) ? [] : DependentRelock.readKeptPeers(path.join(directory, lockFilePath), movedNames);
       DependentRelock.unlockMoved(path.join(directory, lockFilePath), movedNames);
-      const result = script !== undefined
+      const result = !Object.isUndefined(script)
         ? await this.npm.runScriptAsync(directory, script, this.credentialVariables)
-        : ownLock === undefined
+        : Object.isUndefined(ownLock)
           ? await this.npm.lockAsync(path.join(directory, path.dirname(lockFilePath)), this.credentialVariables)
           : await this.lockOwnAsync(directory, ownLock, owners);
       if (!result.isSuccessful)
-        return StepResult.failed(Resources.formatRepositoryFailed(repository, script === undefined
+        return StepResult.failed(Resources.formatRepositoryFailed(repository, Object.isUndefined(script)
           ? Resources.formatLockFailed(lockFilePath, result.exitCode, result.errorOutput)
           : Resources.formatLockScriptFailed(lockFilePath, script, result.exitCode, result.errorOutput.trim().length > 0 ? result.errorOutput : Resources.keepLastOutputLines(result.output))));
 
@@ -158,7 +179,11 @@ export class DependentRelock {
     if (conflicts.length > 0)
       return StepResult.failed(Resources.formatRepositoryConflicted(repository, update.version, conflicts));
 
-    const nested = lockFilePaths.flatMap(t => DependentRelock.findNested(path.join(directory, t), t, expected));
+    const nested = [...expectedScopes].flatMap(([scope, expected]) => {
+      const named = DependentRelock.readNamed(directory, scope.manifestPaths);
+
+      return scope.lockFilePaths.flatMap(t => DependentRelock.findNested(path.join(directory, t), t, expected, named));
+    });
     if (nested.length > 0)
       return StepResult.failed(Resources.formatRepositoryNested(repository, update.version, nested));
 
@@ -166,7 +191,7 @@ export class DependentRelock {
     const lockLines = lockFilePaths.map(t => {
       const script = lockScripts.get(t);
 
-      return script === undefined ? Resources.formatLocked(t) : Resources.formatScriptLocked(t, script);
+      return Object.isUndefined(script) ? Resources.formatLocked(t) : Resources.formatScriptLocked(t, script);
     });
 
     return new RelockedFiles(await git.readHeadAsync(), allMoves.map(t => t.line), [...lockLines, ...ownLocks.map(t => Resources.formatOwnLocked(t.lockFilePath, [...t.pins.keys()]))],
@@ -219,14 +244,14 @@ export class DependentRelock {
   // packages, which its own next release moves. A pin newer than an exact peer a moved package needs, a moved package
   // another one needs at another exact version, or a pin with no later version that needs the moved versions, is a
   // miss.
-  private async chasePeersAsync(directory: string, manifestPaths: readonly string[], moved: Map<string, string>): Promise<PeerChase> {
+  private async chasePeersAsync(directory: string, manifestPaths: readonly string[], ownPaths: readonly string[], moved: Map<string, string>): Promise<PeerChase> {
     const peers = new Map<string, ReadonlyMap<string, string>>();
     const moves: PinMove[] = [];
     const queue = [...moved];
-    const own = new Set(manifestPaths.flatMap(t => DependentRelock.readManifest(directory, t).name ?? []));
+    const own = new Set(ownPaths.flatMap(t => DependentRelock.readManifest(directory, t).name ?? []));
     const isSettled = (packageName: string): boolean => moved.has(packageName) || own.has(packageName);
     const move = (packageName: string, version: string, reason: string): void => {
-      const pinMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, [{ packageName, version, reason, range: null }]));
+      const pinMoves = manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, [new PinTarget(packageName, version, reason, null, [])]));
       if (pinMoves.length === 0)
         return;
 
@@ -236,11 +261,11 @@ export class DependentRelock {
     };
     for (;;) {
       const misses: string[] = [];
-      for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+      for (let next = queue.shift(); !Object.isUndefined(next); next = queue.shift()) {
         const [packageName, version] = next;
         for (const [peerName, peerVersion] of await this.readPeersAsync(directory, packageName, version, peers)) {
           const movedVersion = moved.get(peerName);
-          if (movedVersion !== undefined && movedVersion !== peerVersion)
+          if (!Object.isUndefined(movedVersion) && movedVersion !== peerVersion)
             misses.push(Resources.formatPeerMovedElsewhere(peerName, movedVersion, peerVersion, packageName, version));
           if (isSettled(peerName))
             continue;
@@ -257,11 +282,11 @@ export class DependentRelock {
       for (const [packageName, version] of DependentRelock.readExactPins(directory, manifestPaths).filter(([t]) => !isSettled(t))) {
         const needed = DependentRelock.findNeeded(await this.readPeersAsync(directory, packageName, version, peers), moved);
         const [first] = needed;
-        if (first === undefined)
+        if (Object.isUndefined(first))
           continue;
 
         const match = await this.findMatchingAsync(directory, packageName, version, needed, moved, peers);
-        if (match === null)
+        if (Object.isNull(match))
           misses.push(...needed.map(t => Resources.formatPeerUnmatched(packageName, version, t.peerName, t.peerVersion, t.movedVersion)));
         else
           move(packageName, match, Resources.formatPeerMatchReason(first.peerName, first.movedVersion));
@@ -360,6 +385,11 @@ export class DependentRelock {
     return [...pins.values()];
   }
 
+  private static readNamed(directory: string, manifestPaths: readonly string[]): ReadonlySet<string> {
+    return new Set(manifestPaths.map(t => DependentRelock.readManifest(directory, t))
+      .flatMap(t => [t.dependencies, t.devDependencies, t.optionalDependencies, t.peerDependencies].flatMap(f => Object.keys(f ?? {}))));
+  }
+
   private static readOwners(directory: string, manifestPaths: readonly string[]): ReadonlyMap<string, readonly string[]> {
     const owners = new Map<string, readonly string[]>();
     for (const manifestPath of manifestPaths) {
@@ -412,6 +442,12 @@ export class DependentRelock {
     const lock: LockedPackages = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
 
     return keptPeers.filter(t => !Object.hasOwn(lock.packages, t));
+  }
+
+  private static readLockedNames(lockPath: string): readonly string[] {
+    const lock: LockFile = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
+
+    return Object.keys(lock.packages ?? {}).filter(t => t.includes(Resources.nodeModulesSegment)).map(t => DependentRelock.readLockedName(t));
   }
 
   private static readLockedName(key: string): string {
@@ -501,17 +537,25 @@ export class DependentRelock {
     return [...conflicts];
   }
 
-  private static findNested(fullPath: string, filePath: string, expected: ReadonlyMap<string, string>): readonly string[] {
+  // Names each copy of a moved package that a lock nests under one of the repository's own folders, or under a parent its
+  // own manifests name. npm nests a copy only for a parent whose range excludes the hoisted version; a parent the
+  // repository names, it can move, while one only a dependency brings, such as app-builder-lib, which takes resedit 1
+  // beside the resedit 3 of the released desktop.build, it can't, and the release's own lock holds the same two copies.
+  private static findNested(fullPath: string, filePath: string, expected: ReadonlyMap<string, string>, named: ReadonlySet<string>): readonly string[] {
     const lock: LockFile = JSON.parse(fs.readFileSync(fullPath, Resources.textEncoding));
     return Object.entries(lock.packages ?? {}).flatMap(([key, entry]) => {
       const index = key.lastIndexOf(Resources.nestedNodeModulesSegment);
       const name = key.slice(index + Resources.nestedNodeModulesSegment.length);
       const movedVersion = expected.get(name);
-      if (index < 0 || movedVersion === undefined || movedVersion === entry.version)
+      if (index < 0 || Object.isUndefined(movedVersion) || movedVersion === entry.version || !DependentRelock.isNamedParent(key.slice(0, index), named))
         return [];
 
       return [Resources.formatNestedCopy(filePath, key.slice(0, index), name, entry.version, movedVersion)];
     });
+  }
+
+  private static isNamedParent(parentKey: string, named: ReadonlySet<string>): boolean {
+    return !parentKey.includes(Resources.nodeModulesSegment) || named.has(DependentRelock.readLockedName(parentKey));
   }
 
   private static unlockMoved(fullPath: string, packageNames: ReadonlySet<string>): void {

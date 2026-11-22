@@ -24,6 +24,7 @@ class LockingNpm extends Npm {
   public readonly viewed: string[] = [];
   public result: ProcessResult = new ProcessResult(0, "", "");
   public locked: object | null = null;
+  public readonly lockedIn: Map<string, object> = new Map<string, object>();
 
   public constructor() {
     super(new ProcessRunner(), ".");
@@ -34,7 +35,7 @@ class LockingNpm extends Npm {
     this.hiddenVariables.push(...hiddenVariables);
     this.givenLocks.push(fs.readFileSync(path.join(directory, "package-lock.json"), "utf8"));
     this.givenManifests.push(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
-    const locked = this.locked ?? { lockedFrom: fs.readFileSync(path.join(directory, "package.json"), "utf8") };
+    const locked = this.lockedIn.get(path.basename(directory)) ?? this.locked ?? { lockedFrom: fs.readFileSync(path.join(directory, "package.json"), "utf8") };
     fs.writeFileSync(path.join(directory, "package-lock.json"), `${JSON.stringify(locked)}\n`);
 
     return this.result;
@@ -675,6 +676,111 @@ export class DependentsStepTests {
   }
 
   @TestMethod
+  public async movesTheProposalPastAnotherCopyNestedUnderAPackageOnlyADependencyBringsAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.locked = {
+      packages: {
+        "": { dependencies: { "@noldova/ui": "0.0.13" } },
+        "node_modules/@noldova/ui": { version: "0.0.13", dependencies: { "@noldova/builder": "26.16.1", "@noldova/cdk": "22.3.0" } },
+        "node_modules/@noldova/cdk": { version: "22.3.0" },
+        "node_modules/@noldova/builder": { version: "26.16.1", dependencies: { "@noldova/cdk": "~22.2.0" } },
+        "node_modules/@noldova/builder/node_modules/@noldova/cdk": { version: "22.2.7" }
+      }
+    };
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/ui\": \"0.0.13\" } }\n", host.pushed.get("noldova-com/pinned")?.["package.json"]);
+    Assert.isTrue(host.pushed.get("noldova-com/pinned")?.["package-lock.json"]?.includes("node_modules/@noldova/builder/node_modules/@noldova/cdk") === true);
+  }
+
+  @TestMethod
+  public async movesTheProposalPastAnotherCopyNestedUnderAPackageOnlyAnotherLockFolderNamesAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"devDependencies\": { \"@noldova/builder\": \"26.16.1\" } }\n",
+      "package-lock.json": "{}\n",
+      "e2e/app/package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" } }\n",
+      "e2e/app/package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.lockedIn.set("app", {
+      packages: {
+        "": { dependencies: { "@noldova/ui": "0.0.13" } },
+        "node_modules/@noldova/ui": { version: "0.0.13", dependencies: { "@noldova/builder": "26.16.1", "@noldova/cdk": "22.3.0" } },
+        "node_modules/@noldova/cdk": { version: "22.3.0" },
+        "node_modules/@noldova/builder": { version: "26.16.1", dependencies: { "@noldova/cdk": "~22.2.0" } },
+        "node_modules/@noldova/builder/node_modules/@noldova/cdk": { version: "22.2.7" }
+      }
+    });
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/ui\": \"0.0.13\" } }\n", host.pushed.get("noldova-com/pinned")?.["e2e/app/package.json"]);
+  }
+
+  @TestMethod
+  public async movesAPinWhatAReleasedPackageReachesOnlyThroughAnotherReleasedPackageNeedsAsync(): Promise<void> {
+    using source = GitRepositoryFixture.create();
+    source.commit({
+      "src/runtime/package.json": JSON.stringify({ name: "@noldova/runtime", dependencies: { "@noldova/window": "0.0.13" } }),
+      "src/window/package.json": JSON.stringify({ name: "@noldova/window", peerDependencies: { "@noldova/cdk": "22.3.0" } })
+    });
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/runtime\": \"0.0.12\", \"@noldova/cdk\": \"22.2.7\" } }\n",
+      "package-lock.json": "{ \"packages\": { \"node_modules/@noldova/runtime\": { \"version\": \"0.0.12\" }, \"node_modules/@noldova/cdk\": { \"version\": \"22.2.7\" } } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/runtime\": \"0.0.13\", \"@noldova/cdk\": \"22.3.0\" } }\n", host.pushed.get("noldova-com/pinned")?.["package.json"]);
+  }
+
+  @TestMethod
+  public async failsADependentWhoseRelockedLockNestsAnotherCopyUnderOneOfItsOwnFoldersAsync(): Promise<void> {
+    using source = DependentsStepTests.createKitSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/ui\": \"0.0.12\" } }\n",
+      "package-lock.json": "{}\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.locked = {
+      packages: {
+        "": { dependencies: { "@noldova/ui": "0.0.13" } },
+        "node_modules/@noldova/ui": { version: "0.0.13", dependencies: { "@noldova/cdk": "22.3.0" } },
+        "node_modules/@noldova/cdk": { version: "22.3.0" },
+        "tools/own": { version: "1.0.0", dependencies: { "@noldova/cdk": "~22.2.0" } },
+        "tools/own/node_modules/@noldova/cdk": { version: "22.2.7" }
+      }
+    };
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.13", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/pinned: left at its pins, since the lock files relocked for 0.0.13 still hold another copy of a package the pins moved: "
+        + "package-lock.json holds @noldova/cdk 22.2.7 under tools/own, beside the 22.3.0 the pins moved to.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
   public async leavesARepositoryWhoseLockedPackagesNeedAnotherVersionOfAMovedPeerAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     const lock = { packages: { "node_modules/@noldova/panel": { version: "0.0.7", peerDependencies: { "@noldova/kit": "0.0.4" } } } };
@@ -1072,7 +1178,7 @@ export class DependentsStepTests {
       version: "0.0.4",
       commit: source.readHead(),
       packageNames: ["@noldova/a", "@noldova/a.b", "@noldova/b"],
-      peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: ", which `@noldova/a.b` 0.0.4 needs as a peer", range: null }]
+      peerPins: [{ packageName: "@noldova/kit", version: "0.0.5", reason: ", which `@noldova/a.b` 0.0.4 needs as a peer", range: null, requiredBy: ["@noldova/a.b", "@noldova/a"] }]
     };
     Assert.areEqual(`noldova-com/pinned ${pinned.readHead()} ${JSON.stringify(request)}`, host.relockRequests.join("\n"));
     const pushed = host.pushed.get("noldova-com/pinned");

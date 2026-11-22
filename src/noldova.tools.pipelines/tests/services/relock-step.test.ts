@@ -47,7 +47,7 @@ class ScriptNpm extends Npm {
   }
 
   public override async viewInAsync(): Promise<ProcessResult> {
-    if (this.thrown !== null)
+    if (!Object.isNull(this.thrown))
       throw this.thrown;
 
     return this.viewResult;
@@ -171,6 +171,59 @@ export class RelockStepTests {
     const written = RelockStepTests.readResult(target);
     Assert.isTrue(written instanceof StepResult && !written.isSuccessful);
     Assert.areEqual(line, written instanceof StepResult ? written.message : "");
+    Assert.areEqual(0, npm.locked.length);
+  }
+
+  @TestData("{}\n")
+  @TestData("{ \"packages\": { \"node_modules/@noldova/c\": { \"version\": \"0.0.3\" } } }\n")
+  @TestMethod
+  public async movesThePinsPastAPinOutsideWhatOnlyAPackageItDoesntInstallDependsOnAsync(lock: string): Promise<void> {
+    using target = GitRepositoryFixture.create();
+    target.commit({ "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/cdk\": \"23.0.0\" } }\n", "package-lock.json": lock });
+    const npm = new ScriptNpm(target.directory);
+    const request = RelockStepTests.createOutsideRequest(["@noldova/b"]);
+
+    const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, request, "relock.json"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("noldova-com/pinned: moved 1 pins and wrote the 2 files that changed into the result.", result.message);
+    Assert.areEqual(1, npm.locked.length);
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@noldova/cdk\": \"23.0.0\" } }\n", fs.readFileSync(path.join(target.directory, "package.json"), "utf8"));
+  }
+
+  @TestMethod
+  public async checksAPinOutsideWhatAReleasedPackageDependsOnOnlyInTheLockFolderThatInstallsItAsync(): Promise<void> {
+    using target = GitRepositoryFixture.create();
+    target.commit({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/cdk\": \"23.0.0\" } }\n",
+      "package-lock.json": "{}\n",
+      "e2e/app/package.json": "{ \"dependencies\": { \"@noldova/b\": \"0.0.3\", \"@noldova/cdk\": \"22.2.7\" } }\n",
+      "e2e/app/package-lock.json": "{}\n",
+      "docs/site/package.json": "{ \"dependencies\": { \"@noldova/cdk\": \"22.2.7\" } }\n"
+    });
+    const npm = new ScriptNpm(target.directory);
+
+    const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createOutsideRequest(["@noldova/b"]), "relock.json"]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/a\": \"0.0.4\", \"@noldova/cdk\": \"23.0.0\" } }\n", fs.readFileSync(path.join(target.directory, "package.json"), "utf8"));
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/b\": \"0.0.4\", \"@noldova/cdk\": \"22.3.0\" } }\n", fs.readFileSync(path.join(target.directory, "e2e", "app", "package.json"), "utf8"));
+    Assert.areEqual("{ \"dependencies\": { \"@noldova/cdk\": \"22.2.7\" } }\n", fs.readFileSync(path.join(target.directory, "docs", "site", "package.json"), "utf8"));
+    Assert.areEqual(`${path.join("e2e", "app")} |. `, npm.locked.join("|"));
+  }
+
+  @TestData("{}\n", "@noldova/a")
+  @TestData("{ \"packages\": { \"node_modules/@noldova/b\": { \"version\": \"0.0.3\" } } }\n", "@noldova/b")
+  @TestData("{ \"packages\": { \"node_modules/@noldova/x/node_modules/@noldova/b\": { \"version\": \"0.0.3\" } } }\n", "@noldova/b")
+  @TestMethod
+  public async writesAPinOutsideWhatAPackageItInstallsDependsOnAsAFailedResultAsync(lock: string, requiredBy: string): Promise<void> {
+    using target = GitRepositoryFixture.create();
+    target.commit({ "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/cdk\": \"23.0.0\" } }\n", "package-lock.json": lock });
+    const npm = new ScriptNpm(target.directory);
+
+    const result = await new RelockStep(new ProcessRunner(), npm, target.directory).runAsync([RelockStepTests.REPOSITORY, RelockStepTests.createOutsideRequest([requiredBy]), "relock.json"]);
+
+    Assert.areEqual("noldova-com/pinned: left at its pins, which can't take what 0.0.4 moves: @noldova/cdk 23.0.0 is outside 22.3.0, which `@noldova/a` 0.0.4 depends on.", result.message);
     Assert.areEqual(0, npm.locked.length);
   }
 
@@ -323,6 +376,16 @@ export class RelockStepTests {
     target.commit(RelockStepTests.FILES);
 
     return target;
+  }
+
+  private static createOutsideRequest(requiredBy: readonly string[]): string {
+    return JSON.stringify({
+      source: "source",
+      version: "0.0.4",
+      commit: "225059f4c1e6a3b2d8f7e9a0b1c2d3e4f5a6b7c8",
+      packageNames: ["@noldova/a", "@noldova/b"],
+      peerPins: [{ packageName: "@noldova/cdk", version: "22.3.0", reason: ", which `@noldova/a` 0.0.4 depends on", range: "22.3.0", requiredBy }]
+    });
   }
 
   private static readResult(target: GitRepositoryFixture): StepResult | RelockedFiles {

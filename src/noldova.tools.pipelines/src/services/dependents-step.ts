@@ -11,14 +11,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import "@noldova/context.core";
 import type { JsonReader } from "@noldova/context.json";
 
 import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import type { IUpdateHost } from "../interfaces/i-update-host.js";
-import { DependentsUpdate, type PinTarget } from "../models/dependents-update.js";
+import { DependentsUpdate } from "../models/dependents-update.js";
 import { HandledFailure } from "../models/handled-failure.js";
+import { PinTarget } from "../models/pin-target.js";
 import { RelockedFiles } from "../models/relocked-files.js";
+import { StartedUpdate } from "../models/started-update.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -27,14 +30,6 @@ import { DependentRelock } from "./dependent-relock.js";
 import { Git } from "./git.js";
 import type { Npm } from "./npm.js";
 import type { ProcessRunner } from "./process-runner.js";
-
-interface StartedUpdate {
-  readonly repository: string;
-  readonly directory: string;
-  readonly git: Git;
-  readonly head: string;
-  readonly run: string | null;
-}
 
 export class DependentsStep implements IStep {
   private readonly archiveStep: ArchiveStep;
@@ -52,19 +47,19 @@ export class DependentsStep implements IStep {
     this.updateHost = updateHost;
     this.processRunner = processRunner;
     this.relock = new DependentRelock(processRunner, npm, updateHost.credentialVariables);
-    this.temporaryRoot = temporaryRoot === undefined || temporaryRoot.length === 0 ? os.tmpdir() : temporaryRoot;
+    this.temporaryRoot = String.isNullOrEmpty(temporaryRoot) ? os.tmpdir() : temporaryRoot;
     this.output = output;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [version, commit, ...rest] = values;
-    if (version === undefined || commit === undefined || rest.length !== 0)
+    if (Object.isUndefined(version) || Object.isUndefined(commit) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const versionProblem = Version.validate(version);
-    if (versionProblem !== null)
+    if (!Object.isNull(versionProblem))
       return StepResult.failed(versionProblem);
-    if (Version.parse(version).nightlyDate !== null)
+    if (!Object.isNull(Version.parse(version).nightlyDate))
       return StepResult.failed(Resources.formatDependentsVersionNotRelease(version));
     if (!Resources.commitPattern.test(commit))
       return StepResult.failed(Resources.formatCommitInvalid(commit));
@@ -99,7 +94,7 @@ export class DependentsStep implements IStep {
         const result = start instanceof StepResult ? start : await DependentsStep.tryAsync(start.repository, async () => await this.finishAsync(update, moduleIds, start));
         if (!result.isSuccessful)
           left.push(result.message);
-        if (this.output === undefined)
+        if (Object.isUndefined(this.output))
           lines.push(result.message);
         else if (result.isSuccessful)
           this.output.writeSuccess(result.message);
@@ -112,10 +107,10 @@ export class DependentsStep implements IStep {
     }
 
     if (left.length > 0)
-      return StepResult.failed([Resources.formatDependentsPublished(packageNames, version, left.length, repositories.length), ...this.output === undefined ? lines : left]
+      return StepResult.failed([Resources.formatDependentsPublished(packageNames, version, left.length, repositories.length), ...Object.isUndefined(this.output) ? lines : left]
         .join(Resources.lineSeparator));
 
-    return StepResult.succeeded(this.output === undefined
+    return StepResult.succeeded(Object.isUndefined(this.output)
       ? [Resources.formatDependentsSummary(packageNames, version, repositories.length), ...lines].join(Resources.lineSeparator)
       : Resources.formatDependentsWritten(packageNames, version, repositories.length));
   }
@@ -136,7 +131,7 @@ export class DependentsStep implements IStep {
   // runs while the step waits for the first.
   private async startAsync(update: DependentsUpdate, repository: string, directory: string): Promise<StepResult | StartedUpdate> {
     const checkout = await this.updateHost.checkOutAsync(repository, directory);
-    if (checkout !== null)
+    if (!Object.isNull(checkout))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, checkout.message));
 
     const git = new Git(this.processRunner, directory);
@@ -145,12 +140,12 @@ export class DependentsStep implements IStep {
     if (run instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, run.message));
 
-    return { repository, directory, git, head, run };
+    return new StartedUpdate(repository, directory, git, head, run);
   }
 
   private async finishAsync(update: DependentsUpdate, moduleIds: readonly string[], started: StartedUpdate): Promise<StepResult> {
     const { repository, directory, git } = started;
-    const relocked = started.run === null ? await this.relock.relockAsync(update, repository, directory, new Map()) : await this.readRelockAsync(started, started.run);
+    const relocked = Object.isNull(started.run) ? await this.relock.relockAsync(update, repository, directory, new Map()) : await this.readRelockAsync(started, started.run);
     if (relocked instanceof StepResult)
       return relocked;
 
@@ -162,11 +157,11 @@ export class DependentsStep implements IStep {
     const replaced = await this.updateHost.fetchBranchAsync(repository, directory, branch);
     if (replaced instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, replaced.message));
-    if (replaced !== null && !await DependentsStep.isOwnCommitAsync(git, replaced, update.source))
+    if (!Object.isNull(replaced) && !await DependentsStep.isOwnCommitAsync(git, replaced, update.source))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatBranchNotOwn(branch, replaced)));
 
     const push = await this.updateHost.pushAsync(repository, directory, branch, replaced);
-    if (push !== null)
+    if (!Object.isNull(push))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
     const body = Resources.formatUpdateBody(update.source, update.version, update.commit, moves, relocked.lockLines, update.notes);
@@ -204,7 +199,7 @@ export class DependentsStep implements IStep {
   }
 
   private static async moveModulePinsAsync(git: Git, directory: string, moduleIds: readonly string[], update: DependentsUpdate): Promise<readonly string[]> {
-    const targets = moduleIds.map(t => ({ packageName: t, version: update.version, reason: null, range: null }));
+    const targets = moduleIds.map(t => new PinTarget(t, update.version, null, null, []));
 
     return (await git.listTrackedFilesAsync()).map(t => t.filePath).filter(t => path.posix.basename(t) === Resources.moduleFileName)
       .flatMap(t => [
@@ -215,7 +210,8 @@ export class DependentsStep implements IStep {
 
   // Reads the outside packages the released packages name: each exact peer, each exact dependency, which the
   // dependent's own exact pin must match so its lock holds one copy, and each peer range of the form >=<lowest> <refused>,
-  // whose lowest version an older exact pin moves to; the first package to name one decides its target.
+  // whose lowest version an older exact pin moves to; the first package to name one decides its target, and each
+  // target keeps every released package that names it, so a dependent checks only the targets of what it installs.
   private static readOutsidePins(manifests: readonly JsonReader[], packageNames: readonly string[], releasedVersion: string): readonly PinTarget[] {
     const pins = new Map<string, PinTarget>();
     const read = (field: string, toTarget: (packageName: string, value: string, releasedName: string) => PinTarget | null): void => {
@@ -223,24 +219,43 @@ export class DependentsStep implements IStep {
         const releasedName = manifest.readString(Resources.nameField);
         for (const [packageName, value] of Object.entries(manifest.readObject(field).toJson())) {
           const target = packageNames.includes(packageName) || pins.has(packageName) ? null : toTarget(packageName, String(value), releasedName);
-          if (target !== null)
+          if (!Object.isNull(target))
             pins.set(packageName, target);
         }
       }
     };
     read(Resources.peerDependenciesField, (packageName, value, releasedName) => Resources.exactVersionPattern.test(value)
-      ? { packageName, version: value, reason: Resources.formatPeerReason(releasedName, releasedVersion), range: null }
+      ? new PinTarget(packageName, value, Resources.formatPeerReason(releasedName, releasedVersion), null, [])
       : null);
     read(Resources.dependenciesField, (packageName, value, releasedName) => Resources.exactVersionPattern.test(value)
-      ? { packageName, version: value, reason: Resources.formatDependencyReason(releasedName, releasedVersion), range: value }
+      ? new PinTarget(packageName, value, Resources.formatDependencyReason(releasedName, releasedVersion), value, [])
       : null);
     read(Resources.peerDependenciesField, (packageName, value, releasedName) => {
       const lowest = Resources.exactRangePattern.exec(value)?.[1];
 
-      return lowest === undefined ? null : { packageName, version: lowest, reason: Resources.formatRangePeerReason(releasedName, releasedVersion), range: value };
+      return Object.isUndefined(lowest) ? null : new PinTarget(packageName, lowest, Resources.formatRangePeerReason(releasedName, releasedVersion), value, []);
     });
 
-    return [...pins.values()];
+    return [...pins.values()].map(t => new PinTarget(t.packageName, t.version, t.reason, t.range, DependentsStep.readRequiredBy(manifests, t.packageName)));
+  }
+
+  // Names every released package that names the package as a dependency or a peer, then every one that reaches those
+  // through its own dependencies or peers, so a dependent that installs any of them takes the target.
+  private static readRequiredBy(manifests: readonly JsonReader[], packageName: string): readonly string[] {
+    const required: string[] = [];
+    let reached: readonly string[] = [packageName];
+    while (reached.length > 0) {
+      const previous = reached;
+      reached = manifests.filter(t => !required.includes(t.readString(Resources.nameField)) && DependentsStep.readNamed(t).some(n => previous.includes(n)))
+        .map(t => t.readString(Resources.nameField));
+      required.push(...reached);
+    }
+
+    return required;
+  }
+
+  private static readNamed(manifest: JsonReader): readonly string[] {
+    return [Resources.dependenciesField, Resources.peerDependenciesField].flatMap(t => manifest.hasField(t) ? Object.keys(manifest.readObject(t).toJson()) : []);
   }
 
   private static async isOwnCommitAsync(git: Git, commit: string, source: string): Promise<boolean> {

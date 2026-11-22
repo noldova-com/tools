@@ -47,6 +47,7 @@ export class Resources {
   public static readonly relockPeerPinsField: string = "peerPins";
   public static readonly relockRangeField: string = "range";
   public static readonly relockReasonField: string = "reason";
+  public static readonly relockRequiredByField: string = "requiredBy";
   public static readonly relockSourceField: string = "source";
   public static readonly relockStepName: string = "relock";
   public static readonly relockStepUsage: string = "<repository> <request> <result file> [<lock file>=<npm script>...]";
