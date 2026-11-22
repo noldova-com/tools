@@ -23,7 +23,7 @@ concurrency:
 jobs:
   build-and-test:
     name: Build and test
-    uses: noldova-com/.github/.github/workflows/build-and-test.yml@17213c40842a4f4ae78cdb072582c686e72c57c9 # v2.41.5
+    uses: noldova-com/.github/.github/workflows/build-and-test.yml@a1478e51ced58ce0f7cb6cdb30d5b175ae1e7c73 # v2.42.0
     permissions:
       contents: read
       packages: read
@@ -34,7 +34,7 @@ jobs:
 
   versions:
     name: Versions
-    uses: noldova-com/.github/.github/workflows/versions.yml@17213c40842a4f4ae78cdb072582c686e72c57c9 # v2.41.5
+    uses: noldova-com/.github/.github/workflows/versions.yml@a1478e51ced58ce0f7cb6cdb30d5b175ae1e7c73 # v2.42.0
     permissions: {}
     with:
       targets: linux-x64
