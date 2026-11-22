@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { StepResult, TagStep } from "@noldova/tools.pipelines";
@@ -21,6 +22,8 @@ export class GitHubTagsTests {
   private static readonly REFERENCE: string = "GET /repos/noldova-com/tools/git/ref/tags/v0.0.4";
   private static readonly CREATE: string = "POST /repos/noldova-com/tools/git/refs";
   private static readonly TOKEN: string = "test-token-value";
+  // Every test server listens on port 0, which each system answers from its ephemeral range, above 1023, so none can hold port 2, which fetch, unlike port 1, doesn't block.
+  private static readonly REFUSED_URL: string = "http://127.0.0.1:2";
 
   @TestMethod
   public async readsTheCommitALightweightTagPointsToAsync(): Promise<void> {
@@ -393,9 +396,11 @@ export class GitHubTagsTests {
   @TestMethod
   public async failsNamingTheRequestWhenGitHubCannotBeReachedAsync(): Promise<void> {
     const waits: number[] = [];
-    const api = await GitHubApiFixture.startAsync({});
-    const tags = GitHubTagsTests.createTags(api, waits);
-    await api[Symbol.asyncDispose]();
+    await using api = await GitHubApiFixture.startAsync({});
+    const environment = { GITHUB_API_URL: GitHubTagsTests.REFUSED_URL, GITHUB_REPOSITORY: "noldova-com/tools", GITHUB_TOKEN: GitHubTagsTests.TOKEN };
+    const tags = new GitHubTags(environment, undefined, async milliseconds => {
+      waits.push(milliseconds);
+    }, () => api.createAttemptSignal());
 
     const result = await tags.readTagAsync("v0.0.4");
 
@@ -403,6 +408,7 @@ export class GitHubTagsTests {
     Assert.isTrue(failure.startsWith("GitHub gave no answer to GET repos/noldova-com/tools/git/ref/tags/v0.0.4: "), failure);
     Assert.isTrue(failure.includes("ECONNREFUSED"), failure);
     Assert.areEqual("5000,15000", waits.join(","));
+    Assert.areEqual(0, api.requests.length);
   }
 
   @TestMethod
@@ -476,8 +482,8 @@ export class GitHubTagsTests {
   }
 
   private static readFailure(result: string | boolean | StepResult): string {
-    if (!(result instanceof StepResult) || result.isSuccessful)
-      throw new Error(`Expected a failed result, not ${String(result)}.`);
+    if (Object.isString(result) || Object.isBoolean(result) || result.isSuccessful)
+      Assert.fail(`Expected a failed result, not ${String(result)}.`);
 
     return result.message;
   }
