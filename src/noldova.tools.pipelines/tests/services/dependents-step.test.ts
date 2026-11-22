@@ -802,6 +802,54 @@ export class DependentsStepTests {
   }
 
   @TestMethod
+  public async holdsARepositoryForARegistryPackageButNotForItsOwnArchiveThatNeedsAnotherVersionOfAMovedPeerAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    const lock = { packages: {
+      "node_modules/@noldova/panel": { version: "0.0.7", resolved: "file:../_packages/noldova-panel-0.0.7.tgz", peerDependencies: { "@noldova/kit": "0.0.4" } },
+      "node_modules/@noldova/gauge": { version: "1.2.0", peerDependencies: { "@noldova/kit": "0.0.4" } }
+    } };
+    using blocked = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\" } }\n",
+      "package-lock.json": `${JSON.stringify(lock)}\n`,
+      "src/panel/package.json": "{ \"name\": \"@noldova/panel\", \"peerDependencies\": { \"@noldova/kit\": \"0.0.4\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/blocked", blocked);
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/blocked: left at its pins until these accept 0.0.4: package-lock.json locks @noldova/gauge 1.2.0, which needs @noldova/kit 0.0.4.",
+      result.message.split("\n")[1]);
+  }
+
+  @TestMethod
+  public async holdsARepositoryForItsOwnArchiveWhoseManifestTheStepDoesNotMoveAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    const lock = { packages: {
+      "node_modules/@noldova/panel": { version: "0.0.7", resolved: "file:../_packages/noldova-panel-0.0.7.tgz", peerDependencies: { "@noldova/kit": "0.0.5" } }
+    } };
+    using blocked = DependentsStepTests.createTarget({
+      "app/package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\" } }\n",
+      "app/package-lock.json": `${JSON.stringify(lock)}\n`,
+      "src/panel/package.json": "{ \"name\": \"@noldova/panel\", \"peerDependencies\": { \"@noldova/kit\": \"0.0.4\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/blocked", blocked);
+    const npm = new LockingNpm();
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isFalse(result.isSuccessful, result.message);
+    Assert.areEqual(
+      "noldova-com/blocked: left at its pins until these accept 0.0.4: app/package-lock.json locks @noldova/panel 0.0.7, which needs @noldova/kit 0.0.4.",
+      result.message.split("\n")[1]);
+    Assert.isFalse(host.pushed.has("noldova-com/blocked"));
+  }
+
+  @TestMethod
   public async leavesARepositoryWhoseRefreshedLockStillHoldsAPeerConflictAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     using pinned = DependentsStepTests.createTarget({
@@ -828,6 +876,31 @@ export class DependentsStepTests {
       "noldova-com/pinned: left at its pins, since the lock files relocked for 0.0.4 still hold packages whose exact peers differ from what they lock: package-lock.json locks @noldova/kit 0.0.5, which needs @noldova/z 2.0.0.",
       result.message.split("\n")[1]);
     Assert.isFalse(host.pushed.has("noldova-com/pinned"));
+  }
+
+  @TestMethod
+  public async movesARepositoryWhoseRefreshedLockHoldsItsOwnArchiveNeedingAnotherVersionOfAPeerAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using pinned = DependentsStepTests.createTarget({
+      "package.json": "{ \"dependencies\": { \"@noldova/a\": \"0.0.3\", \"@noldova/kit\": \"0.0.4\" } }\n",
+      "package-lock.json": "{}\n",
+      "src/panel/package.json": "{ \"name\": \"@noldova/panel\", \"peerDependencies\": { \"@noldova/kit\": \"0.0.4\" } }\n"
+    });
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/pinned", pinned);
+    const npm = new LockingNpm();
+    npm.locked = {
+      packages: {
+        "": { name: "pinned" },
+        "node_modules/@noldova/kit": { version: "0.0.5" },
+        "node_modules/@noldova/panel": { version: "0.0.7", resolved: "file:../_packages/noldova-panel-0.0.7.tgz", peerDependencies: { "@noldova/kit": "0.0.4" } }
+      }
+    };
+
+    const result = await DependentsStepTests.createStep(source, host, npm).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.isTrue(host.pushed.has("noldova-com/pinned"));
   }
 
   @TestMethod
