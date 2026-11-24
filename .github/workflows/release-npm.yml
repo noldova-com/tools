@@ -81,8 +81,6 @@ jobs:
         with:
           node-version: ${{ needs.versions.outputs.node-version }}
           package-manager-cache: false
-          registry-url: ${{ needs.versions.outputs.install-registry-url }}
-          scope: ${{ needs.versions.outputs.install-scope }}
 
       - name: Verify the toolchain
         env:
