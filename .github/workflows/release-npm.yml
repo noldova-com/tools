@@ -201,7 +201,6 @@ jobs:
     uses: noldova-com/.github/.github/workflows/update-dependents.yml@aded76d5bd26adfaace92fe98adf4890a969c4ca # v2.44.0
     permissions:
       contents: read
-      packages: read
     with:
       version: ${{ inputs.version }}
       commit: ${{ inputs.commit }}
