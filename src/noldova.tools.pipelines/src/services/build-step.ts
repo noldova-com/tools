@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { JsonReader } from "@noldova/context.json";
 
 import { BuildException } from "../exceptions/build.exception.js";
@@ -17,6 +18,8 @@ import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import { BuildConfig } from "../models/build-config.js";
 import type { BuildPackage } from "../models/build-package.js";
+import { BuildValues } from "../models/build-values.js";
+import { PackageCopy } from "../models/package-copy.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -49,7 +52,7 @@ export class BuildStep implements IStep {
       if (values.includes(Resources.listCopiesOption))
         return values.length === 1 ? StepResult.succeeded(this.listCopies(config)) : StepResult.failed(Resources.formatOptionAlone(Resources.listCopiesOption));
 
-      const [versionOption, names] = BuildStep.readValues(values);
+      const { version: versionOption, names } = BuildStep.readValues(values);
       const packages = BuildStep.selectPackages(config, names);
       if ((await this.git.readPrefixAsync()).length !== 0)
         return StepResult.failed(Resources.formatCheckoutRootMissing(this.git.workingDirectory));
@@ -82,21 +85,26 @@ export class BuildStep implements IStep {
   private listCopies(config: BuildConfig): string {
     const lines: string[] = [];
     for (const buildPackage of config.packages) {
-      const copies = BuildStep.listPackageCopies(buildPackage).filter(([source, , isRequired]) => isRequired || this.isFile(source));
-      lines.push(...copies.map(([source, filePath]) => [source, buildPackage.packageName, filePath].join(Resources.copyFieldSeparator)));
+      const copies = BuildStep.listPackageCopies(buildPackage).filter(t => t.isRequired || this.isFile(t.source));
+      lines.push(...copies.map(t => [t.source, buildPackage.packageName, t.filePath].join(Resources.copyFieldSeparator)));
     }
 
     return [...lines, Resources.copiesEndLine].join(Resources.lineSeparator);
   }
 
   private listUnbuiltArchives(config: BuildConfig, packages: readonly BuildPackage[], version: string, manifest: Buffer | null): void {
-    const archives = config.packages.filter(t => !packages.includes(t)).map(t => [t.packageName, Resources.formatPath(Resources.packagesFolder, t.archiveName(version))] as const).filter(([, archive]) => this.isFile(archive));
-    if (archives.length === 0)
+    const archives = new Map<string, string>();
+    for (const buildPackage of config.packages.filter(t => !packages.includes(t))) {
+      const archive = Resources.formatPath(Resources.packagesFolder, buildPackage.archiveName(version));
+      if (this.isFile(archive))
+        archives.set(buildPackage.packageName, `${Resources.archiveSpecifierPrefix}${archive}`);
+    }
+    if (archives.size === 0)
       return;
 
-    const reader = JsonReader.parse(manifest === null ? Resources.emptyJsonObject : manifest.toString(Resources.textEncoding), Resources.manifestFileName);
+    const reader = JsonReader.parse(Object.isNull(manifest) ? Resources.emptyJsonObject : manifest.toString(Resources.textEncoding), Resources.manifestFileName);
     const listed = reader.hasField(Resources.dependenciesField) ? reader.readObject(Resources.dependenciesField).toJson() : {};
-    const dependencies = { ...listed, ...Object.fromEntries(archives.map(([name, archive]) => [name, `${Resources.archiveSpecifierPrefix}${archive}`])) };
+    const dependencies = { ...listed, ...Object.fromEntries(archives) };
     fs.writeFileSync(this.resolve(Resources.manifestFileName), `${JSON.stringify({ ...reader.toJson(), [Resources.dependenciesField]: dependencies }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
   }
 
@@ -118,7 +126,7 @@ export class BuildStep implements IStep {
     fs.rmSync(buildFolder, { recursive: true, force: true });
     fs.mkdirSync(buildFolder, { recursive: true });
     this.writeManifest(buildPackage, version, commit);
-    for (const [source, filePath, isRequired] of BuildStep.listPackageCopies(buildPackage)) {
+    for (const { source, filePath, isRequired } of BuildStep.listPackageCopies(buildPackage)) {
       if (!this.isFile(source)) {
         if (isRequired)
           throw new BuildException(Resources.formatBuildFileMissing(buildPackage.packageName, source));
@@ -131,7 +139,7 @@ export class BuildStep implements IStep {
     }
 
     await this.runScriptAsync(buildPackage, buildPackage.pre);
-    if (buildPackage.compile === null)
+    if (Object.isNull(buildPackage.compile))
       await this.compileAsync(buildPackage);
     else
       await this.runScriptAsync(buildPackage, buildPackage.compile);
@@ -164,7 +172,7 @@ export class BuildStep implements IStep {
   }
 
   private async runScriptAsync(buildPackage: BuildPackage, script: string | null): Promise<void> {
-    if (script === null)
+    if (Object.isNull(script))
       return;
 
     const result = await this.processRunner.runAsync(process.execPath, [script, buildPackage.sourceFolder, buildPackage.buildFolder], this.git.workingDirectory);
@@ -189,7 +197,7 @@ export class BuildStep implements IStep {
     fs.mkdirSync(staging, { recursive: true });
     for (const fileName of Resources.installFileNames) {
       const content = this.readFile(fileName);
-      if (content !== null)
+      if (!Object.isNull(content))
         fs.writeFileSync(path.join(staging, fileName), content);
     }
 
@@ -223,30 +231,30 @@ export class BuildStep implements IStep {
     return path.join(this.git.workingDirectory, filePath);
   }
 
-  private static listPackageCopies(buildPackage: BuildPackage): readonly (readonly [source: string, filePath: string, isRequired: boolean])[] {
+  private static listPackageCopies(buildPackage: BuildPackage): readonly PackageCopy[] {
     return [
-      [Resources.licenseFileName, Resources.licenseFileName, true],
-      [Resources.formatPath(buildPackage.sourceFolder, Resources.declarationFilePath), Resources.packageDeclarationFilePath, false],
-      [Resources.formatPath(buildPackage.sourceFolder, Resources.readmeFileName), Resources.readmeFileName, true],
-      [Resources.formatPath(buildPackage.sourceFolder, Resources.noticesFileName), Resources.noticesFileName, false]
+      new PackageCopy(Resources.licenseFileName, Resources.licenseFileName, true),
+      new PackageCopy(Resources.formatPath(buildPackage.sourceFolder, Resources.declarationFilePath), Resources.packageDeclarationFilePath, false),
+      new PackageCopy(Resources.formatPath(buildPackage.sourceFolder, Resources.readmeFileName), Resources.readmeFileName, true),
+      new PackageCopy(Resources.formatPath(buildPackage.sourceFolder, Resources.noticesFileName), Resources.noticesFileName, false)
     ];
   }
 
-  private static readValues(values: readonly string[]): readonly [version: string | null, names: readonly string[]] {
+  private static readValues(values: readonly string[]): BuildValues {
     const names: string[] = [];
     let version: string | null = null;
     let isVersionNext = false;
     for (const value of values) {
       if (isVersionNext) {
         const problem = Version.validate(value);
-        if (problem !== null)
+        if (!Object.isNull(problem))
           throw new BuildException(problem);
 
         version = value;
         isVersionNext = false;
       }
       else if (value === Resources.versionOption) {
-        if (version !== null)
+        if (!Object.isNull(version))
           throw new BuildException(Resources.formatOptionDuplicated(Resources.versionOption));
 
         isVersionNext = true;
@@ -260,7 +268,7 @@ export class BuildStep implements IStep {
     if (isVersionNext)
       throw new BuildException(Resources.formatVersionOptionMissing(Resources.versionOption));
 
-    return [version, names];
+    return new BuildValues(version, names);
   }
 
   private static selectPackages(config: BuildConfig, names: readonly string[]): readonly BuildPackage[] {

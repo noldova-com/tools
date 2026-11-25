@@ -10,11 +10,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { JsonReader } from "@noldova/context.json";
 
 import type { IStep } from "../interfaces/i-step.js";
 import { ArchiveCheck } from "../models/archive-check.js";
+import { ArchiveCopy } from "../models/archive-copy.js";
+import { DependencyOrder } from "../models/dependency-order.js";
 import { PackageArchive } from "../models/package-archive.js";
+import { PendingPackage } from "../models/pending-package.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -48,11 +52,11 @@ export class ArchiveStep implements IStep {
 
   public async checkAsync(values: readonly string[]): Promise<ArchiveCheck> {
     const [folder, version, commit, scope, ...rest] = values;
-    if (folder === undefined || version === undefined || commit === undefined || scope === undefined || rest.length !== 0)
+    if (Object.isUndefined(folder) || Object.isUndefined(version) || Object.isUndefined(commit) || Object.isUndefined(scope) || rest.length !== 0)
       return ArchiveStep.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const versionProblem = Version.validate(version);
-    if (versionProblem !== null)
+    if (!Object.isNull(versionProblem))
       return ArchiveStep.failed(versionProblem);
     if (!Resources.commitPattern.test(commit))
       return ArchiveStep.failed(Resources.formatCommitInvalid(commit));
@@ -70,7 +74,7 @@ export class ArchiveStep implements IStep {
     if (packageNames.length === 0)
       return ArchiveStep.failed(Resources.formatPackagesMissing(commit, Resources.packagesFolderPath));
 
-    const [order, unordered] = ArchiveStep.orderByDependencies(manifests, packageNames);
+    const { order, unordered } = ArchiveStep.orderByDependencies(manifests, packageNames);
     if (unordered.length > 0)
       return ArchiveStep.failed(Resources.formatDependencyCycle(commit, unordered));
 
@@ -179,22 +183,22 @@ export class ArchiveStep implements IStep {
       return StepResult.succeeded(Resources.copiesNone);
 
     const findings: string[] = [];
-    const copies: (readonly [archive: PackageArchive, source: string, filePath: string])[] = [];
+    const copies: ArchiveCopy[] = [];
     for (const line of lines) {
       const [source, packageName, filePath, ...rest] = line.split(Resources.copyFieldSeparator);
-      if (source === undefined || packageName === undefined || filePath === undefined || rest.length !== 0) {
+      if (Object.isUndefined(source) || Object.isUndefined(packageName) || Object.isUndefined(filePath) || rest.length !== 0) {
         findings.push(Resources.formatCopyLineInvalid(line));
         continue;
       }
 
       const invalidPath = [source, filePath].find(t => !ArchiveStep.isInsideFolder(t));
       const archive = archives.find(t => t.packageName === packageName);
-      if (invalidPath !== undefined)
+      if (!Object.isUndefined(invalidPath))
         findings.push(Resources.formatCopyPathInvalid(line, invalidPath));
-      else if (archive === undefined)
+      else if (Object.isUndefined(archive))
         findings.push(Resources.formatCopyPackageUnknown(line, packageName));
       else
-        copies.push([archive, source, filePath]);
+        copies.push(new ArchiveCopy(archive, source, filePath));
     }
     if (findings.length > 0)
       return StepResult.failed(findings.join(Resources.lineSeparator));
@@ -210,10 +214,10 @@ export class ArchiveStep implements IStep {
     return findings.length > 0 ? StepResult.failed(findings.join(Resources.lineSeparator)) : StepResult.succeeded(Resources.formatCopiesMatched(copies.length));
   }
 
-  private async compareCopiesAsync(copies: readonly (readonly [archive: PackageArchive, source: string, filePath: string])[], directory: string): Promise<readonly string[]> {
+  private async compareCopiesAsync(copies: readonly ArchiveCopy[], directory: string): Promise<readonly string[]> {
     const findings: string[] = [];
     const targets = new Map<PackageArchive, string>();
-    for (const [index, archive] of [...new Set(copies.map(([t]) => t))].entries()) {
+    for (const [index, archive] of [...new Set(copies.map(t => t.archive))].entries()) {
       const target = path.join(directory, String(index));
       const archivePath = path.join(target, path.basename(archive.filePath));
       fs.mkdirSync(target);
@@ -225,11 +229,11 @@ export class ArchiveStep implements IStep {
         findings.push(Resources.formatArchiveUnextracted(path.basename(archive.filePath), result.exitCode, result.errorOutput));
     }
 
-    for (const [archive, source, filePath] of copies) {
+    for (const { archive, source, filePath } of copies) {
       const archiveName = path.basename(archive.filePath);
       const sourceStats = fs.lstatSync(path.join(this.npm.workingDirectory, source), { throwIfNoEntry: false });
       const target = targets.get(archive);
-      if (sourceStats !== undefined && ArchiveStep.isLinked(this.npm.workingDirectory, source, sourceStats)) {
+      if (!Object.isUndefined(sourceStats) && ArchiveStep.isLinked(this.npm.workingDirectory, source, sourceStats)) {
         findings.push(Resources.formatCopySourceLinked(source));
         continue;
       }
@@ -237,12 +241,12 @@ export class ArchiveStep implements IStep {
         findings.push(Resources.formatCopySourceMissing(source));
         continue;
       }
-      if (target === undefined)
+      if (Object.isUndefined(target))
         continue;
 
       const packagePath = path.join(target, Resources.archivePackageFolder);
       const copyStats = fs.lstatSync(path.join(packagePath, filePath), { throwIfNoEntry: false });
-      if (copyStats === undefined)
+      if (Object.isUndefined(copyStats))
         findings.push(Resources.formatCopyMissing(archiveName, filePath, source));
       else if (ArchiveStep.isLinked(packagePath, filePath, copyStats))
         findings.push(Resources.formatCopyLinked(archiveName, filePath));
@@ -290,18 +294,18 @@ export class ArchiveStep implements IStep {
     return manifest.hasField(Resources.privateField) && manifest.readBoolean(Resources.privateField);
   }
 
-  private static orderByDependencies(manifests: readonly JsonReader[], packageNames: readonly string[]): [readonly string[], readonly string[]] {
-    const pending = packageNames.map((name): [string, readonly string[]] =>
-      [name, manifests.filter(t => t.readString(Resources.nameField) === name).flatMap(t => ArchiveStep.readDependencyNames(t, packageNames))]);
+  private static orderByDependencies(manifests: readonly JsonReader[], packageNames: readonly string[]): DependencyOrder {
+    const pending = packageNames.map(name =>
+      new PendingPackage(name, manifests.filter(t => t.readString(Resources.nameField) === name).flatMap(t => ArchiveStep.readDependencyNames(t, packageNames))));
     const order: string[] = [];
     for (let index = ArchiveStep.findReady(pending, order); index !== -1; index = ArchiveStep.findReady(pending, order))
-      order.push(...pending.splice(index, 1).map(([name]) => name));
+      order.push(...pending.splice(index, 1).map(t => t.name));
 
-    return [order, pending.map(([name]) => name)];
+    return new DependencyOrder(order, pending.map(t => t.name));
   }
 
-  private static findReady(pending: readonly [string, readonly string[]][], order: readonly string[]): number {
-    return pending.findIndex(([, dependencies]) => dependencies.every(t => order.includes(t)));
+  private static findReady(pending: readonly PendingPackage[], order: readonly string[]): number {
+    return pending.findIndex(t => t.dependencies.every(u => order.includes(u)));
   }
 
   private static readDependencyNames(manifest: JsonReader, packageNames: readonly string[]): readonly string[] {

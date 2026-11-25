@@ -6,9 +6,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
+
 import type { IRegistryHost } from "../interfaces/i-registry-host.js";
 import type { IStep } from "../interfaces/i-step.js";
 import { HandledFailure } from "../models/handled-failure.js";
+import { PrunedVersion } from "../models/pruned-version.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
 import { Resources } from "../resources.js";
@@ -32,15 +35,15 @@ export class PruneStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [version, commit, scope, registry, keepText, ...rest] = values;
-    if (version === undefined || commit === undefined || scope === undefined || registry === undefined || keepText === undefined || rest.length !== 0)
+    if (Object.isUndefined(version) || Object.isUndefined(commit) || Object.isUndefined(scope) || Object.isUndefined(registry) || Object.isUndefined(keepText) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const versionProblem = Version.validate(version);
-    if (versionProblem !== null)
+    if (!Object.isNull(versionProblem))
       return StepResult.failed(versionProblem);
 
     const release = Version.parse(version);
-    if (release.nightlyDate !== null)
+    if (!Object.isNull(release.nightlyDate))
       return StepResult.failed(Resources.formatPruneVersionNotRelease(version));
     if (!Resources.commitPattern.test(commit))
       return StepResult.failed(Resources.formatCommitInvalid(commit));
@@ -68,7 +71,7 @@ export class PruneStep implements IStep {
       return StepResult.failed(outside.map(t => Resources.formatPackageOutsideScope(t, scope)).join(Resources.lineSeparator));
 
     const findings: string[] = [];
-    const deletions: (readonly [packageName: string, version: string])[] = [];
+    const deletions: PrunedVersion[] = [];
     for (const packageName of packageNames) {
       const found = await this.registryHost.readVersionsAsync(packageName);
       if (found instanceof StepResult) {
@@ -78,12 +81,12 @@ export class PruneStep implements IStep {
 
       const releases = PruneStep.sortReleases(found);
       const newest = releases[0];
-      if (newest === undefined || !newest.equals(release)) {
+      if (Object.isUndefined(newest) || !newest.equals(release)) {
         findings.push(Resources.formatPruneNotNewest(packageName, version, newest?.toString() ?? null));
         continue;
       }
 
-      deletions.push(...releases.slice(keepVersions).map(t => [packageName, t.toString()] as const));
+      deletions.push(...releases.slice(keepVersions).map(t => new PrunedVersion(packageName, t.toString())));
     }
 
     if (findings.length > 0)
@@ -100,10 +103,10 @@ export class PruneStep implements IStep {
       return locked;
 
     const lines: string[] = [];
-    for (const [packageName, old] of deletions) {
+    for (const { packageName, version: old } of deletions) {
       const specifier = Resources.formatSpecifier(packageName, old);
       const lockFilePaths = locked.get(specifier);
-      if (lockFilePaths !== undefined) {
+      if (!Object.isUndefined(lockFilePaths)) {
         lines.push(Resources.formatVersionKept(specifier, lockFilePaths));
         continue;
       }
@@ -134,7 +137,7 @@ export class PruneStep implements IStep {
     const locked = new Map<string, string[]>();
     for (const [filePath, text] of lockFiles) {
       const packages = PruneStep.readLockedPackages(text);
-      if (packages === null)
+      if (Object.isNull(packages))
         return StepResult.failed(Resources.formatPruneLockInvalid(filePath));
 
       for (const [key, entry] of Object.entries(packages)) {
@@ -142,8 +145,8 @@ export class PruneStep implements IStep {
         const fields = PruneStep.isObject(entry) ? entry : {};
         const version = fields[Resources.versionField];
         const alias = fields[Resources.nameField];
-        const name = typeof alias === "string" ? alias : key.slice(index + Resources.nodeModulesSegment.length);
-        if (index === -1 || typeof version !== "string" || !packageNames.includes(name))
+        const name = Object.isString(alias) ? alias : key.slice(index + Resources.nodeModulesSegment.length);
+        if (index === -1 || !Object.isString(version) || !packageNames.includes(name))
           continue;
 
         const specifier = Resources.formatSpecifier(name, version);
@@ -171,14 +174,14 @@ export class PruneStep implements IStep {
   }
 
   private static isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+    return Object.isPlainObject(value);
   }
 
   private static sortReleases(versions: readonly string[]): readonly Version[] {
     return versions
-      .filter(t => Version.validate(t) === null)
+      .filter(t => Object.isNull(Version.validate(t)))
       .map(t => Version.parse(t))
-      .filter(t => t.nightlyDate === null)
+      .filter(t => Object.isNull(t.nightlyDate))
       .sort((t, u) => u.compareTo(t));
   }
 }

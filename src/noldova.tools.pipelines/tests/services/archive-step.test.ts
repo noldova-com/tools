@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { ArchiveStep, Git, Npm, ProcessResult, ProcessRunner, Tar } from "@noldova/tools.pipelines";
@@ -765,7 +766,7 @@ export class ArchiveStepTests {
 
   private static createStep(directory: string, copies: string | ProcessResult = ""): ArchiveStep {
     const processRunner = new ProcessRunner();
-    const listed = typeof copies === "string" ? new ProcessResult(0, `${copies}\nend of copies\n`, "") : copies;
+    const listed = Object.isString(copies) ? new ProcessResult(0, `${copies}\nend of copies\n`, "") : copies;
 
     return new ArchiveStep(new Git(processRunner, directory), new Tar(processRunner), new ListingNpm(directory, listed));
   }

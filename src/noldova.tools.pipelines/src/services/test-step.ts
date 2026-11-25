@@ -10,6 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import "@noldova/context.core";
+
 import { BuildException } from "../exceptions/build.exception.js";
 import { PipelineException } from "../exceptions/pipeline.exception.js";
 import type { IStep } from "../interfaces/i-step.js";
@@ -62,7 +64,7 @@ export class TestStep implements IStep {
   }
 
   private async testAsync(config: BuildConfig, options: ReadonlySet<string>, filters: readonly string[]): Promise<StepResult> {
-    if (config.testTimeoutMilliseconds === undefined)
+    if (Object.isUndefined(config.testTimeoutMilliseconds))
       return StepResult.failed(Resources.testTimeoutMissing);
 
     const projectValues: string[] = [];
