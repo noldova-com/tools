@@ -10,36 +10,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import type { IUpdateHost } from "../interfaces/i-update-host.js";
+import { ActionPin } from "../models/action-pin.js";
 import { HandledFailure } from "../models/handled-failure.js";
+import { PinsUpdate } from "../models/pins-update.js";
 import { StepResult } from "../models/step-result.js";
 import { Version } from "../models/version.js";
+import { WorkflowChanges } from "../models/workflow-changes.js";
 import { Resources } from "../resources.js";
 import { Git } from "./git.js";
 import type { ProcessRunner } from "./process-runner.js";
-
-interface ActionPin {
-  readonly commit: string;
-  readonly tag: string;
-  readonly version: Version;
-}
-
-interface PinsUpdate {
-  readonly source: string;
-  readonly version: Version;
-  readonly tag: string;
-  readonly commit: string;
-  readonly actions: ReadonlyMap<string, ActionPin>;
-  readonly notes: string;
-}
-
-interface WorkflowChanges {
-  readonly moves: readonly string[];
-  readonly majors: readonly string[];
-  readonly left: readonly string[];
-}
 
 export class PinsStep implements IStep {
   private readonly git: Git;
@@ -55,19 +39,19 @@ export class PinsStep implements IStep {
     this.git = git;
     this.updateHost = updateHost;
     this.processRunner = processRunner;
-    this.temporaryRoot = temporaryRoot === undefined || temporaryRoot.length === 0 ? os.tmpdir() : temporaryRoot;
+    this.temporaryRoot = String.isNullOrEmpty(temporaryRoot) ? os.tmpdir() : temporaryRoot;
     this.output = output;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [version, commit, ...rest] = values;
-    if (version === undefined || commit === undefined || rest.length !== 0)
+    if (Object.isUndefined(version) || Object.isUndefined(commit) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const versionProblem = Version.validate(version);
-    if (versionProblem !== null)
+    if (!Object.isNull(versionProblem))
       return StepResult.failed(versionProblem);
-    if (Version.parse(version).nightlyDate !== null)
+    if (!Object.isNull(Version.parse(version).nightlyDate))
       return StepResult.failed(Resources.formatPinsVersionNotRelease(version));
     if (!Resources.commitPattern.test(commit))
       return StepResult.failed(Resources.formatCommitInvalid(commit));
@@ -85,7 +69,7 @@ export class PinsStep implements IStep {
     if (notes instanceof StepResult)
       return notes;
 
-    const update: PinsUpdate = { source, version: Version.parse(version), tag: Resources.formatTagName(version), commit, actions, notes };
+    const update = new PinsUpdate(source, Version.parse(version), Resources.formatTagName(version), commit, actions, notes);
     const lines: string[] = [];
     let isSuccessful = true;
     const root = fs.mkdtempSync(path.join(this.temporaryRoot, Resources.pinsFolderPrefix));
@@ -93,7 +77,7 @@ export class PinsStep implements IStep {
       for (const [index, repository] of repositories.entries()) {
         const result = await this.tryUpdateAsync(update, repository, path.join(root, String(index)));
         isSuccessful &&= result.isSuccessful;
-        if (this.output === undefined)
+        if (Object.isUndefined(this.output))
           lines.push(result.message);
         else if (result.isSuccessful)
           this.output.writeSuccess(result.message);
@@ -105,7 +89,7 @@ export class PinsStep implements IStep {
       fs.rmSync(root, { recursive: true, force: true });
     }
 
-    const message = this.output === undefined
+    const message = Object.isUndefined(this.output)
       ? [Resources.formatPinsSummary(source, update.tag, repositories.length), ...lines].join(Resources.lineSeparator)
       : Resources.formatPinsWritten(source, update.tag, repositories.length);
 
@@ -118,12 +102,12 @@ export class PinsStep implements IStep {
       for (const match of (await this.git.readFileAsync(commit, filePath)).matchAll(Resources.usesPattern)) {
         const [, , action, found, tag] = match;
         const version = PinsStep.readTagVersion(tag);
-        if (version === null || tag === undefined || action === undefined || found === undefined || PinsStep.readSharedOwner(action, source) !== null)
+        if (Object.isNull(version) || Object.isUndefined(tag) || Object.isUndefined(action) || Object.isUndefined(found) || !Object.isNull(PinsStep.readSharedOwner(action, source)))
           continue;
 
         const known = actions.get(action);
-        if (known === undefined || version.compareTo(known.version) > 0)
-          actions.set(action, { commit: found, tag, version });
+        if (Object.isUndefined(known) || version.compareTo(known.version) > 0)
+          actions.set(action, new ActionPin(found, tag, version));
       }
     }
 
@@ -144,7 +128,7 @@ export class PinsStep implements IStep {
 
   private async updateAsync(update: PinsUpdate, repository: string, directory: string): Promise<StepResult> {
     const checkout = await this.updateHost.checkOutAsync(repository, directory);
-    if (checkout !== null)
+    if (!Object.isNull(checkout))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, checkout.message));
 
     const git = new Git(this.processRunner, directory);
@@ -166,11 +150,11 @@ export class PinsStep implements IStep {
     const replaced = await this.updateHost.fetchBranchAsync(repository, directory, branch);
     if (replaced instanceof StepResult)
       return StepResult.failed(Resources.formatRepositoryFailed(repository, replaced.message));
-    if (replaced !== null && !await PinsStep.isOwnCommitAsync(git, replaced, update.source))
+    if (!Object.isNull(replaced) && !await PinsStep.isOwnCommitAsync(git, replaced, update.source))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatBranchNotOwn(branch, replaced)));
 
     const push = await this.updateHost.pushAsync(repository, directory, branch, replaced);
-    if (push !== null)
+    if (!Object.isNull(push))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
 
     const body = Resources.formatPinsBody(update.source, update.tag, update.commit, moves, majors, left, update.notes);
@@ -186,7 +170,7 @@ export class PinsStep implements IStep {
     for (const fullPath of fullPaths) {
       for (const match of fs.readFileSync(fullPath, Resources.textEncoding).matchAll(Resources.usesPattern)) {
         const [, , action, found, tag] = match;
-        if (action !== undefined && found !== undefined && PinsStep.readSharedOwner(action, update.source) === owner.toLowerCase() && PinsStep.readTagVersion(tag) === null
+        if (!Object.isUndefined(action) && !Object.isUndefined(found) && PinsStep.readSharedOwner(action, update.source) === owner.toLowerCase() && Object.isNull(PinsStep.readTagVersion(tag))
           && await this.git.hasCommitAsync(found) && await this.git.isAncestorAsync(found, update.commit))
           ancestors.add(found);
       }
@@ -202,13 +186,13 @@ export class PinsStep implements IStep {
     const text = fs.readFileSync(fullPath, Resources.textEncoding).replace(Resources.usesPattern, (pin: string, prefix: string, action: string, found: string, tag: string | undefined) => {
       const version = PinsStep.readTagVersion(tag);
       if (PinsStep.readSharedOwner(action, update.source) === owner.toLowerCase()) {
-        if (found === update.commit || version !== null && version.compareTo(update.version) >= 0)
+        if (found === update.commit || !Object.isNull(version) && version.compareTo(update.version) >= 0)
           return pin;
-        if (version === null && !ancestors.has(found)) {
+        if (Object.isNull(version) && !ancestors.has(found)) {
           left.push(Resources.formatWorkflowPinNotTagged(filePath, action, found, update.tag));
           return pin;
         }
-        if (version !== null && version.major !== update.version.major) {
+        if (!Object.isNull(version) && version.major !== update.version.major) {
           left.push(Resources.formatWorkflowPinLeft(filePath, action, tag as string, update.tag));
           return pin;
         }
@@ -218,7 +202,7 @@ export class PinsStep implements IStep {
       }
 
       const target = actions.get(action);
-      if (target === undefined || version === null || version.compareTo(target.version) >= 0)
+      if (Object.isUndefined(target) || Object.isNull(version) || version.compareTo(target.version) >= 0)
         return pin;
 
       (target.version.major === version.major ? moves : majors).push(Resources.formatWorkflowPinMoved(filePath, action, tag as string, target.tag));
@@ -227,7 +211,7 @@ export class PinsStep implements IStep {
     if (moves.length + majors.length > 0)
       fs.writeFileSync(fullPath, text);
 
-    return { moves, majors, left };
+    return new WorkflowChanges(moves, majors, left);
   }
 
   private static isWorkflow(filePath: string): boolean {
@@ -246,7 +230,7 @@ export class PinsStep implements IStep {
 
     const text = tag.slice(Resources.tagPrefix.length);
 
-    return Version.validate(text) === null ? Version.parse(text) : null;
+    return Object.isNull(Version.validate(text)) ? Version.parse(text) : null;
   }
 
   private static async isOwnCommitAsync(git: Git, commit: string, source: string): Promise<boolean> {

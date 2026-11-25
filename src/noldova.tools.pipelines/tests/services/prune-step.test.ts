@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { ArchiveStep, Git, type IRegistryHost, Npm, ProcessRunner, PruneStep, StepResult, Tar } from "@noldova/tools.pipelines";
@@ -36,7 +37,7 @@ class FakeRegistryHost implements IRegistryHost {
   public async deleteVersionAsync(packageName: string, version: string): Promise<boolean | StepResult> {
     this.calls.push(`delete ${packageName}@${version}`);
     const rejection = this.rejections[`${packageName}@${version}`];
-    if (rejection !== undefined)
+    if (!Object.isUndefined(rejection))
       return await Promise.reject(rejection as Error);
 
     return this.deletes[`${packageName}@${version}`] ?? true;
@@ -220,8 +221,8 @@ export class PruneStepTests {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PruneStepTests.FILES);
     const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3", "0.0.2", "0.0.1"], "@noldova/b": ["0.0.4", "0.0.3", "0.0.2"] });
-    host.lockFiles = new Map([
-      ["one/package-lock.json", JSON.stringify({
+    host.lockFiles = new Map<string, string>()
+      .set("one/package-lock.json", JSON.stringify({
         packages: {
           "": { name: "one", version: "1.0.0" },
           "src/noldova.a": { name: "@noldova/a", version: "0.0.1" },
@@ -232,9 +233,8 @@ export class PruneStepTests {
           "node_modules/@noldova/linked": { name: "@noldova/a", link: true },
           "node_modules/odd": "0.0.1"
         }
-      })],
-      ["two/src/package-lock.json", JSON.stringify({ packages: { "node_modules/@noldova/a": { version: "0.0.3" } } })]
-    ]);
+      }))
+      .set("two/src/package-lock.json", JSON.stringify({ packages: { "node_modules/@noldova/a": { version: "0.0.3" } } }));
 
     const result = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]);
 
@@ -277,7 +277,7 @@ export class PruneStepTests {
     using repository = GitRepositoryFixture.create();
     const commit = repository.commit(PruneStepTests.FILES);
     const host = new FakeRegistryHost({ "@noldova/a": ["0.0.4", "0.0.3"], "@noldova/b": ["0.0.4"] });
-    host.lockFiles = new Map([["one/package-lock.json", "{ \"packages\": {} }"], ["two/package-lock.json", text]]);
+    host.lockFiles = new Map<string, string>().set("one/package-lock.json", "{ \"packages\": {} }").set("two/package-lock.json", text);
 
     const result = await PruneStepTests.createStep(repository.directory, host).runAsync(["0.0.4", commit, "@noldova", PruneStepTests.REGISTRY, "1"]);
 

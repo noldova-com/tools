@@ -10,6 +10,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { setTimeout as delayAsync } from "node:timers/promises";
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import type { PackageArchive } from "../models/package-archive.js";
 import { StepResult } from "../models/step-result.js";
@@ -36,7 +38,7 @@ export class PublishStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [folder, version, commit, scope, registry, access, ...rest] = values;
-    if (folder === undefined || version === undefined || commit === undefined || scope === undefined || registry === undefined || access === undefined || rest.length !== 0)
+    if (Object.isUndefined(folder) || Object.isUndefined(version) || Object.isUndefined(commit) || Object.isUndefined(scope) || Object.isUndefined(registry) || Object.isUndefined(access) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
     if (!Npm.isRegistry(registry))
       return StepResult.failed(Resources.formatRegistryInvalid());
@@ -47,7 +49,7 @@ export class PublishStep implements IStep {
     if (!check.result.isSuccessful)
       return check.result;
 
-    const tag = Version.parse(version).nightlyDate === null ? Resources.latestTag : Resources.nightlyTag;
+    const tag = Object.isNull(Version.parse(version).nightlyDate) ? Resources.latestTag : Resources.nightlyTag;
     const comparedTags = tag === Resources.latestTag ? [tag] : [Resources.latestTag, tag];
     const reports: string[] = [];
     const findings: string[] = [];
@@ -63,7 +65,7 @@ export class PublishStep implements IStep {
         findings.push(Resources.formatPublishedOtherwise(specifier));
       else {
         const finding = await this.checkNewerAsync(archive.packageName, version, comparedTags, registry);
-        if (finding === null)
+        if (Object.isNull(finding))
           pending.push(archive);
         else
           findings.push(finding);
@@ -87,7 +89,7 @@ export class PublishStep implements IStep {
     const deadline = performance.now() + this.waitMilliseconds;
     for (const archive of published) {
       const finding = await this.waitUntilServedAsync(archive, version, registry, deadline);
-      if (finding === null)
+      if (Object.isNull(finding))
         reports.push(Resources.formatPublished(Resources.formatSpecifier(archive.packageName, version)));
       else
         findings.push(finding);
@@ -101,7 +103,7 @@ export class PublishStep implements IStep {
   private async checkNewerAsync(packageName: string, version: string, tags: readonly string[], registry: string): Promise<string | null> {
     for (const tag of tags) {
       const finding = await this.checkNewerThanTagAsync(packageName, version, tag, registry);
-      if (finding !== null)
+      if (!Object.isNull(finding))
         return finding;
     }
 
@@ -114,7 +116,7 @@ export class PublishStep implements IStep {
       return tagged.message;
     if (tagged.length === 0)
       return null;
-    if (Version.validate(tagged) !== null)
+    if (!Object.isNull(Version.validate(tagged)))
       return Resources.formatTaggedInvalid(packageName, tag, tagged);
 
     return Version.parse(version).compareTo(Version.parse(tagged)) > 0 ? null : Resources.formatNotNewer(Resources.formatSpecifier(packageName, version), tag, tagged);
