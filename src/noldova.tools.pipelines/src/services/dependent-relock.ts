@@ -15,7 +15,13 @@ import "@noldova/context.core";
 
 import { ProcessException } from "../exceptions/process.exception.js";
 import type { DependentsUpdate } from "../models/dependents-update.js";
+import { ExactPin } from "../models/exact-pin.js";
 import { LockScope } from "../models/lock-scope.js";
+import { NeededPeer } from "../models/needed-peer.js";
+import { OwnLock } from "../models/own-lock.js";
+import { OwnPin } from "../models/own-pin.js";
+import { PeerChase } from "../models/peer-chase.js";
+import { PinMove } from "../models/pin-move.js";
 import { PinTarget } from "../models/pin-target.js";
 import type { ProcessResult } from "../models/process-result.js";
 import { RelockedFiles } from "../models/relocked-files.js";
@@ -44,38 +50,12 @@ interface LockedPackage {
   readonly peerDependencies?: Readonly<Record<string, string>>;
 }
 
-interface PinMove {
-  readonly packageName: string;
-  readonly line: string;
-}
-
 interface Manifest {
   readonly name?: string;
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
   readonly optionalDependencies?: Readonly<Record<string, string>>;
   readonly peerDependencies?: Readonly<Record<string, string>>;
-}
-
-interface OwnPin {
-  readonly field: string;
-  readonly manifestPaths: readonly string[];
-}
-
-interface OwnLock {
-  readonly lockFilePath: string;
-  readonly pins: ReadonlyMap<string, OwnPin>;
-}
-
-interface PeerChase {
-  readonly moves: readonly PinMove[];
-  readonly misses: readonly string[];
-}
-
-interface NeededPeer {
-  readonly peerName: string;
-  readonly peerVersion: string;
-  readonly movedVersion: string;
 }
 
 export class DependentRelock {
@@ -100,7 +80,9 @@ export class DependentRelock {
 
     const before = DependentRelock.readFiles(directory, [...manifestPaths, ...lockFilePaths]);
     const released = update.packageNames.map(t => new PinTarget(t, update.version, null, null, []));
-    const releasedMoves = new Map(manifestPaths.map(t => [t, DependentRelock.movePins(path.join(directory, t), t, released)]));
+    const releasedMoves = new Map<string, readonly PinMove[]>();
+    for (const manifestPath of manifestPaths)
+      releasedMoves.set(manifestPath, DependentRelock.movePins(path.join(directory, manifestPath), manifestPath, released));
     const moves = [...releasedMoves.values()].flat();
     if (moves.length === 0)
       return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
@@ -123,22 +105,33 @@ export class DependentRelock {
     const misses: string[] = [];
     const expectedScopes: ScopeExpectation[] = [];
     for (const scope of LockScope.read(manifestPaths, lockFilePaths)) {
-      const scopeMoves = [...releasedMoves].flatMap(([t, m]) => scope.manifestPaths.includes(t) ? m : []);
+      const scopeMoves: PinMove[] = [];
+      releasedMoves.forEach((pinMoves, manifestPath) => {
+        if (scope.manifestPaths.includes(manifestPath))
+          scopeMoves.push(...pinMoves);
+      });
       const installed = new Set([...scopeMoves.map(t => t.packageName), ...scope.lockFilePaths.flatMap(t => DependentRelock.readLockedNames(path.join(directory, t)))]);
       const targets = update.peerPins.filter(t => t.appliesTo(installed));
       const pinned = scope.manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, targets));
       peerMoves.push(...pinned);
       peerRangeMoves.push(...scope.manifestPaths.flatMap(t => DependentRelock.movePeerRanges(path.join(directory, t), t, targets, refusals)));
-      const expected = new Map([...released, ...targets.filter(t => pinned.some(m => m.packageName === t.packageName))].map(t => [t.packageName, t.version]));
-      const moved = new Map([...expected].filter(([t]) => [...scopeMoves, ...pinned].some(m => m.packageName === t)));
+      const expected = new Map<string, string>();
+      for (const target of [...released, ...targets.filter(t => pinned.some(m => m.packageName === t.packageName))])
+        expected.set(target.packageName, target.version);
+      const moved = new Map<string, string>();
+      expected.forEach((version, packageName) => {
+        if ([...scopeMoves, ...pinned].some(m => m.packageName === packageName))
+          moved.set(packageName, version);
+      });
       for (const target of targets.filter(t => t.range === t.version && !moved.has(t.packageName)))
         moved.set(target.packageName, target.version);
       outside.push(...DependentRelock.findOutside(directory, scope.manifestPaths, targets));
       const chase = await this.chasePeersAsync(directory, scope.manifestPaths, manifestPaths, moved);
       chaseMoves.push(...chase.moves);
       misses.push(...chase.misses);
-      for (const [packageName, version] of moved)
+      moved.forEach((version, packageName) => {
         expected.set(packageName, version);
+      });
       expectedScopes.push(new ScopeExpectation(scope, expected));
     }
     if (outside.length + refusals.length + misses.length > 0)
@@ -151,8 +144,12 @@ export class DependentRelock {
       return StepResult.failed(Resources.formatRepositoryBlocked(repository, update.version, blockers));
 
     const ownLocks = lockFilePaths.filter(t => !lockScripts.has(t)).flatMap(t => DependentRelock.findOwnLock(directory, t, owners));
-    const shared = new Map(ownLocks.flatMap(t => [...t.pins]).filter(([, t]) => t.manifestPaths.length > 1)
-      .map(([packageName, t]) => [packageName, Resources.formatOwnManifests(packageName, t.manifestPaths)]));
+    const shared = new Map<string, string>();
+    for (const ownLock of ownLocks)
+      ownLock.pins.forEach((pin, packageName) => {
+        if (pin.manifestPaths.length > 1)
+          shared.set(packageName, Resources.formatOwnManifests(packageName, pin.manifestPaths));
+      });
     if (shared.size > 0)
       return StepResult.failed(Resources.formatRepositoryOwnShared(repository, update.version, [...shared.values()]));
 
@@ -191,6 +188,11 @@ export class DependentRelock {
       return StepResult.failed(Resources.formatRepositoryNested(repository, update.version, nested));
 
     const after = DependentRelock.readFiles(directory, [...manifestPaths, ...lockFilePaths]);
+    const changed = new Map<string, string>();
+    after.forEach((text, filePath) => {
+      if (before.get(filePath) !== text)
+        changed.set(filePath, text);
+    });
     const lockLines = lockFilePaths.map(t => {
       const script = lockScripts.get(t);
 
@@ -198,7 +200,7 @@ export class DependentRelock {
     });
 
     return new RelockedFiles(await git.readHeadAsync(), allMoves.map(t => t.line), [...lockLines, ...ownLocks.map(t => Resources.formatOwnLocked(t.lockFilePath, [...t.pins.keys()]))],
-      Object.fromEntries([...after].filter(([t, text]) => before.get(t) !== text)));
+      Object.fromEntries(changed));
   }
 
   // Relocks a folder that pins the repository's own unpublished packages: each one, and each own package it reaches,
@@ -212,8 +214,10 @@ export class DependentRelock {
     fs.mkdirSync(standIns, { recursive: true });
     const text = fs.readFileSync(manifestPath, Resources.textEncoding);
     const manifest: Record<string, unknown> = JSON.parse(text);
-    for (const [index, [packageName, pin]] of [...ownLock.pins].entries()) {
+    let index = 0;
+    ownLock.pins.forEach((pin, packageName) => {
       const archive = path.join(standIns, `${index}${Resources.archiveFileExtension}`);
+      index += 1;
       DependentRelock.writeStandIn(archive, DependentRelock.createStandIn(packageName, pin.manifestPaths.map(t => DependentRelock.readManifest(directory, t)), owners));
       for (const name of Resources.lockedDependencyFields) {
         const specifiers = DependentRelock.readField(manifest, name);
@@ -226,7 +230,7 @@ export class DependentRelock {
         else
           delete manifest[name];
       }
-    }
+    });
 
     fs.writeFileSync(manifestPath, JSON.stringify(manifest));
     try {
@@ -250,7 +254,10 @@ export class DependentRelock {
   private async chasePeersAsync(directory: string, manifestPaths: readonly string[], ownPaths: readonly string[], moved: Map<string, string>): Promise<PeerChase> {
     const peers = new Map<string, ReadonlyMap<string, string>>();
     const moves: PinMove[] = [];
-    const queue = [...moved];
+    const queue: ExactPin[] = [];
+    moved.forEach((version, packageName) => {
+      queue.push(new ExactPin(packageName, version));
+    });
     const own = new Set(ownPaths.flatMap(t => DependentRelock.readManifest(directory, t).name ?? []));
     const isSettled = (packageName: string): boolean => moved.has(packageName) || own.has(packageName);
     const move = (packageName: string, version: string, reason: string): void => {
@@ -259,30 +266,30 @@ export class DependentRelock {
         return;
 
       moved.set(packageName, version);
-      queue.push([packageName, version]);
+      queue.push(new ExactPin(packageName, version));
       moves.push(...pinMoves);
     };
     for (;;) {
       const misses: string[] = [];
       for (let next = queue.shift(); !Object.isUndefined(next); next = queue.shift()) {
-        const [packageName, version] = next;
-        for (const [peerName, peerVersion] of await this.readPeersAsync(directory, packageName, version, peers)) {
+        const { packageName, version } = next;
+        (await this.readPeersAsync(directory, packageName, version, peers)).forEach((peerVersion, peerName) => {
           const movedVersion = moved.get(peerName);
           if (!Object.isUndefined(movedVersion) && movedVersion !== peerVersion)
             misses.push(Resources.formatPeerMovedElsewhere(peerName, movedVersion, peerVersion, packageName, version));
           if (isSettled(peerName))
-            continue;
+            return;
 
           const needed = Version.parse(peerVersion);
-          const newer = DependentRelock.readExactPins(directory, manifestPaths).filter(([t, pinned]) => t === peerName && Version.parse(pinned).compareTo(needed) > 0);
+          const newer = DependentRelock.readExactPins(directory, manifestPaths).filter(t => t.packageName === peerName && Version.parse(t.version).compareTo(needed) > 0);
           if (newer.length > 0)
-            misses.push(...newer.map(([, pinned]) => Resources.formatPeerNewer(peerName, pinned, peerVersion, packageName, version)));
+            misses.push(...newer.map(t => Resources.formatPeerNewer(peerName, t.version, peerVersion, packageName, version)));
           else
             move(peerName, peerVersion, Resources.formatPeerReason(packageName, version));
-        }
+        });
       }
 
-      for (const [packageName, version] of DependentRelock.readExactPins(directory, manifestPaths).filter(([t]) => !isSettled(t))) {
+      for (const { packageName, version } of DependentRelock.readExactPins(directory, manifestPaths).filter(t => !isSettled(t.packageName))) {
         const needed = DependentRelock.findNeeded(await this.readPeersAsync(directory, packageName, version, peers), moved);
         const [first] = needed;
         if (Object.isUndefined(first))
@@ -295,7 +302,7 @@ export class DependentRelock {
           move(packageName, match, Resources.formatPeerMatchReason(first.peerName, first.movedVersion));
       }
       if (misses.length > 0 || queue.length === 0)
-        return { moves, misses };
+        return new PeerChase(moves, misses);
     }
   }
 
@@ -319,13 +326,15 @@ export class DependentRelock {
   private async readPeersAsync(directory: string, packageName: string, version: string, peers: Map<string, ReadonlyMap<string, string>>): Promise<ReadonlyMap<string, string>> {
     const specifier = Resources.formatSpecifier(packageName, version);
     const known = peers.get(specifier);
-    if (known !== undefined)
+    if (!Object.isUndefined(known))
       return known;
 
     const value = await this.viewAsync(directory, specifier, Resources.peerDependenciesField);
-    const found = new Map(typeof value === "object" && value !== null && !Array.isArray(value)
-      ? Object.entries(value).filter((t: [string, unknown]): t is [string, string] => typeof t[1] === "string" && Resources.exactVersionPattern.test(t[1]))
-      : []);
+    const found = new Map<string, string>();
+    if (DependentRelock.isObject(value))
+      for (const [peerName, range] of Object.entries(value))
+        if (Object.isString(range) && Resources.exactVersionPattern.test(range))
+          found.set(peerName, range);
     peers.set(specifier, found);
 
     return found;
@@ -342,18 +351,21 @@ export class DependentRelock {
   }
 
   private static readVersions(value: unknown): readonly string[] {
-    if (typeof value === "string")
+    if (Object.isString(value))
       return [value];
 
-    return Array.isArray(value) ? value.filter((t: unknown): t is string => typeof t === "string") : [];
+    return Array.isArray(value) ? value.filter((t: unknown): t is string => Object.isString(t)) : [];
   }
 
   private static findNeeded(peers: ReadonlyMap<string, string>, moved: ReadonlyMap<string, string>): readonly NeededPeer[] {
-    return [...peers].flatMap(([peerName, peerVersion]) => {
+    const needed: NeededPeer[] = [];
+    peers.forEach((peerVersion, peerName) => {
       const movedVersion = moved.get(peerName);
-
-      return movedVersion === undefined || movedVersion === peerVersion ? [] : [{ peerName, peerVersion, movedVersion }];
+      if (!Object.isUndefined(movedVersion) && movedVersion !== peerVersion)
+        needed.push(new NeededPeer(peerName, peerVersion, movedVersion));
     });
+
+    return needed;
   }
 
   // Names each exact pin of a target the released packages accept only within a range, or at one version, that stays
@@ -361,14 +373,14 @@ export class DependentRelock {
   private static findOutside(directory: string, manifestPaths: readonly string[], targets: readonly PinTarget[]): readonly string[] {
     const pins = DependentRelock.readExactPins(directory, manifestPaths);
 
-    return targets.flatMap(({ packageName, reason, range }) => range === null || reason === null ? [] : pins
-      .filter(([name, pinned]) => name === packageName && !DependentRelock.accepts(range, pinned))
-      .map(([, pinned]) => Resources.formatPinOutside(packageName, pinned, range, reason)));
+    return targets.flatMap(({ packageName, reason, range }) => Object.isNull(range) || Object.isNull(reason) ? [] : pins
+      .filter(t => t.packageName === packageName && !DependentRelock.accepts(range, t.version))
+      .map(t => Resources.formatPinOutside(packageName, t.version, range, reason)));
   }
 
   private static accepts(range: string, version: string): boolean {
     const [, lowest, refused] = Resources.exactRangePattern.exec(range) ?? [];
-    if (lowest === undefined || refused === undefined)
+    if (Object.isUndefined(lowest) || Object.isUndefined(refused))
       return range === version;
 
     const pinned = Version.parse(version);
@@ -376,13 +388,13 @@ export class DependentRelock {
     return pinned.compareTo(Version.parse(lowest)) >= 0 && pinned.compareTo(Version.parse(refused)) < 0;
   }
 
-  private static readExactPins(directory: string, manifestPaths: readonly string[]): readonly (readonly [string, string])[] {
-    const pins = new Map<string, readonly [string, string]>();
+  private static readExactPins(directory: string, manifestPaths: readonly string[]): readonly ExactPin[] {
+    const pins = new Map<string, ExactPin>();
     for (const manifestPath of manifestPaths) {
       const manifest = DependentRelock.readManifest(directory, manifestPath);
       for (const [packageName, version] of [...Object.entries(manifest.dependencies ?? {}), ...Object.entries(manifest.devDependencies ?? {})])
         if (Resources.exactVersionPattern.test(version))
-          pins.set(Resources.formatSpecifier(packageName, version), [packageName, version]);
+          pins.set(Resources.formatSpecifier(packageName, version), new ExactPin(packageName, version));
     }
 
     return [...pins.values()];
@@ -397,7 +409,7 @@ export class DependentRelock {
     const owners = new Map<string, readonly string[]>();
     for (const manifestPath of manifestPaths) {
       const { name } = DependentRelock.readManifest(directory, manifestPath);
-      if (name !== undefined)
+      if (!Object.isUndefined(name))
         owners.set(name, [...owners.get(name) ?? [], manifestPath]);
     }
 
@@ -421,23 +433,32 @@ export class DependentRelock {
     const manifest: Record<string, unknown> = JSON.parse(fs.readFileSync(path.join(directory, path.dirname(lockFilePath), Resources.manifestFileName), Resources.textEncoding));
     const lock: LockFile = JSON.parse(fs.readFileSync(path.join(directory, lockFilePath), Resources.textEncoding));
     const locked = new Set(Object.keys(lock.packages ?? {}).map(t => t.slice(t.lastIndexOf(Resources.nodeModulesSegment) + Resources.nodeModulesSegment.length)));
-    const findOwn = (packageNames: readonly string[]): readonly (readonly [string, readonly string[]])[] =>
-      [...owners].filter(([t]) => packageNames.includes(t) && !locked.has(t));
+    const findOwn = (packageNames: readonly string[]): ReadonlyMap<string, readonly string[]> => {
+      const found = new Map<string, readonly string[]>();
+      owners.forEach((paths, name) => {
+        if (packageNames.includes(name) && !locked.has(name))
+          found.set(name, paths);
+      });
+
+      return found;
+    };
     const pins = new Map<string, OwnPin>();
     const visit = (packageName: string, manifestPaths: readonly string[], field: string): void => {
       if (pins.has(packageName))
         return;
 
-      pins.set(packageName, { field, manifestPaths });
+      pins.set(packageName, new OwnPin(field, manifestPaths));
       for (const reached of manifestPaths.map(t => DependentRelock.readManifest(directory, t)))
-        for (const [name, paths] of findOwn([reached.dependencies, reached.optionalDependencies].flatMap(t => Object.keys(t ?? {}))))
+        findOwn([reached.dependencies, reached.optionalDependencies].flatMap(t => Object.keys(t ?? {}))).forEach((paths, name) => {
           visit(name, paths, field);
+        });
     };
     for (const field of Resources.lockedDependencyFields)
-      for (const [name, paths] of findOwn(Object.entries(DependentRelock.readField(manifest, field)).filter(([, t]) => Resources.exactVersionPattern.test(t)).map(([t]) => t)))
+      findOwn(Object.entries(DependentRelock.readField(manifest, field)).filter(([, t]) => Resources.exactVersionPattern.test(t)).map(([t]) => t)).forEach((paths, name) => {
         visit(name, paths, field);
+      });
 
-    return pins.size === 0 ? [] : [{ lockFilePath, pins }];
+    return pins.size === 0 ? [] : [new OwnLock(lockFilePath, pins)];
   }
 
   // Reads the entries a lock marks as peers that no moved package's locked entry names, so the relock keeps them unless
@@ -485,7 +506,7 @@ export class DependentRelock {
     const content = Buffer.from(JSON.stringify(manifest), Resources.textEncoding);
     const block = Resources.tarBlockSize;
     const header = Buffer.alloc(block);
-    for (const [offset, value] of Resources.formatTarHeaderFields(Resources.archiveManifestPath, content.length))
+    for (const { offset, value } of Resources.formatTarHeaderFields(Resources.archiveManifestPath, content.length))
       header.write(value, offset, Resources.tarHeaderEncoding);
     header.write(Resources.formatTarChecksum(header.reduce((sum, t) => sum + t, 0)), Resources.tarChecksumOffset, Resources.tarHeaderEncoding);
     const body = Buffer.alloc(Math.ceil(content.length / block) * block);
@@ -496,17 +517,18 @@ export class DependentRelock {
   private static leaveOutOwn(lockPath: string, ownNames: ReadonlySet<string>, manifest: Readonly<Record<string, unknown>>): void {
     const lock: LockedPackages = JSON.parse(fs.readFileSync(lockPath, Resources.textEncoding));
     const isOwn = (key: string): boolean => key.split(Resources.nodeModulesSegment).slice(1).some(t => ownNames.has(t.replace(Resources.trailingSlashPattern, "")));
-    const entries = Object.entries(lock.packages)
-      .filter(([key]) => !isOwn(key))
-      .map(([key, entry]): [string, unknown] => [key, key.length === 0 ? DependentRelock.restoreRoot(entry, manifest) : entry]);
-    fs.writeFileSync(lockPath, `${JSON.stringify({ ...lock, [Resources.lockPackagesField]: Object.fromEntries(entries) }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
+    const packages = new Map<string, unknown>();
+    for (const [key, entry] of Object.entries(lock.packages))
+      if (!isOwn(key))
+        packages.set(key, key.length === 0 ? DependentRelock.restoreRoot(entry, manifest) : entry);
+    fs.writeFileSync(lockPath, `${JSON.stringify({ ...lock, [Resources.lockPackagesField]: Object.fromEntries(packages) }, null, Resources.manifestIndentation)}${Resources.lineSeparator}`);
   }
 
   private static restoreRoot(entry: LockedPackage, manifest: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
     const restored: Record<string, unknown> = { ...entry };
     for (const field of Resources.lockedDependencyFields) {
       const specifiers = manifest[field];
-      if (specifiers === undefined)
+      if (Object.isUndefined(specifiers))
         delete restored[field];
       else
         restored[field] = specifiers;
@@ -516,15 +538,18 @@ export class DependentRelock {
   }
 
   private static isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+    return Object.isPlainObject(value);
   }
 
   private static readField(manifest: Readonly<Record<string, unknown>>, field: string): Record<string, string> {
     const value = manifest[field];
+    const specifiers = new Map<string, string>();
+    if (DependentRelock.isObject(value))
+      for (const [name, specifier] of Object.entries(value))
+        if (Object.isString(specifier))
+          specifiers.set(name, specifier);
 
-    return DependentRelock.isObject(value)
-      ? Object.fromEntries(Object.entries(value).filter((t: [string, unknown]): t is [string, string] => typeof t[1] === "string"))
-      : {};
+    return Object.fromEntries(specifiers);
   }
 
   private static readManifest(directory: string, manifestPath: string): Manifest {
@@ -547,7 +572,7 @@ export class DependentRelock {
       for (const peers of own ?? [entry.peerDependencies ?? {}])
         for (const peerName of Object.keys(peers)) {
           const range = peers[peerName];
-          const found = expected === null ? DependentRelock.findLocked(packages, key, peerName)?.version : expected.get(peerName);
+          const found = Object.isNull(expected) ? DependentRelock.findLocked(packages, key, peerName)?.version : expected.get(peerName);
           if (!Object.isUndefined(range) && !Object.isUndefined(found) && found !== range && Resources.exactVersionPattern.test(range))
             conflicts.add(Resources.formatPeerBlocker(filePath, name, entry.version, peerName, range));
         }
@@ -579,7 +604,7 @@ export class DependentRelock {
 
   private static unlockMoved(fullPath: string, packageNames: ReadonlySet<string>): void {
     const lock: LockFile = JSON.parse(fs.readFileSync(fullPath, Resources.textEncoding));
-    if (lock.packages === undefined)
+    if (Object.isUndefined(lock.packages))
       return;
 
     const entries = Object.entries(lock.packages);
@@ -602,7 +627,7 @@ export class DependentRelock {
     for (;;) {
       const found = packages[Resources.formatNestedLockKey(base, name)];
       const index = base.lastIndexOf(Resources.nestedNodeModulesSegment);
-      if (found !== undefined || index < 0)
+      if (!Object.isUndefined(found) || index < 0)
         return found ?? packages[`${Resources.nodeModulesSegment}${name}`];
 
       base = base.slice(0, index);
@@ -635,10 +660,10 @@ export class DependentRelock {
     for (const fieldName of fieldNames) {
       text = text.replace(Resources.createPinPattern(fieldName), (pin: string, prefix: string, found: string, suffix: string) => {
         const lowest = Resources.exactRangePattern.exec(found)?.[1];
-        if (lowest === undefined || Version.parse(lowest).compareTo(target) >= 0)
+        if (Object.isUndefined(lowest) || Version.parse(lowest).compareTo(target) >= 0)
           return pin;
 
-        moves.push({ packageName: fieldName, line: Resources.formatPinMoved(filePath, fieldName, found, range) });
+        moves.push(new PinMove(fieldName, Resources.formatPinMoved(filePath, fieldName, found, range)));
 
         return `${prefix}${range}${suffix}`;
       });
@@ -662,7 +687,7 @@ export class DependentRelock {
         const target = Version.parse(version);
         replaced = replaced.replace(Resources.createPinPattern(packageName), (pin: string, prefix: string, found: string, suffix: string) => {
           const [, lowest, refused] = Resources.exactRangePattern.exec(found) ?? [];
-          if (lowest === undefined || refused === undefined) {
+          if (Object.isUndefined(lowest) || Object.isUndefined(refused)) {
             if (DependentRelock.refusesAbove(found, target))
               refusals.push(DependentRelock.withReason(Resources.formatPeerRangeRefuses(filePath, packageName, found, version), reason));
             return pin;
@@ -676,7 +701,7 @@ export class DependentRelock {
           }
 
           const range = Resources.formatSiblingPeerRange(version, refused);
-          moves.push({ packageName, line: DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, range), reason) });
+          moves.push(new PinMove(packageName, DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, range), reason)));
 
           return `${prefix}${range}${suffix}`;
         });
@@ -707,7 +732,7 @@ export class DependentRelock {
         if (!Resources.exactVersionPattern.test(found) || Version.parse(found).compareTo(target) >= 0)
           return pin;
 
-        moves.push({ packageName, line: DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, version), reason) });
+        moves.push(new PinMove(packageName, DependentRelock.withReason(Resources.formatPinMoved(filePath, packageName, found, version), reason)));
 
         return `${prefix}${version}${suffix}`;
       });
@@ -721,7 +746,7 @@ export class DependentRelock {
   // range of any other form isn't read.
   private static refusesAbove(range: string, target: Version): boolean {
     const [, operator, text] = Resources.boundedRangePattern.exec(range) ?? [];
-    if (operator === undefined || text === undefined)
+    if (Object.isUndefined(operator) || Object.isUndefined(text))
       return false;
 
     const bound = Version.parse(text);
@@ -735,10 +760,14 @@ export class DependentRelock {
   }
 
   private static withReason(line: string, reason: string | null): string {
-    return reason === null ? line : `${line}${reason}`;
+    return Object.isNull(reason) ? line : `${line}${reason}`;
   }
 
   private static readFiles(directory: string, filePaths: readonly string[]): ReadonlyMap<string, string> {
-    return new Map(filePaths.map(t => [t, fs.readFileSync(path.join(directory, t), Resources.textEncoding)]));
+    const files = new Map<string, string>();
+    for (const filePath of filePaths)
+      files.set(filePath, fs.readFileSync(path.join(directory, filePath), Resources.textEncoding));
+
+    return files;
   }
 }

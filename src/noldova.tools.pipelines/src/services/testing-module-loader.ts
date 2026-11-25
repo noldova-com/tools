@@ -12,7 +12,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { ITestingModule } from "../interfaces/i-testing-module.js";
-import { Resources } from "../resources.js";
+import { TestingResources } from "../testing-resources.js";
 
 // Loads the checkout's own @noldova/context.testing, the version its tests run with, rather than one of the build tool's.
 export class TestingModuleLoader {
@@ -20,13 +20,13 @@ export class TestingModuleLoader {
   public static async loadAsync(): Promise<ITestingModule | null> {
     let modulePath: string;
     try {
-      modulePath = createRequire(path.resolve(Resources.manifestFileName)).resolve(Resources.testingPackageName);
+      modulePath = createRequire(path.resolve(TestingResources.manifestFileName)).resolve(TestingResources.testingPackageName);
     }
     catch (error: unknown) {
-      if (!(error instanceof Error && Resources.codeField in error && error.code === Resources.moduleNotFoundCode))
+      if (!(error instanceof Error && TestingResources.codeField in error && error.code === TestingResources.moduleNotFoundCode))
         throw error;
 
-      process.stderr.write(`${Resources.testingMissing}${Resources.lineSeparator}`);
+      process.stderr.write(`${TestingResources.testingMissing}${TestingResources.lineSeparator}`);
       return null;
     }
 

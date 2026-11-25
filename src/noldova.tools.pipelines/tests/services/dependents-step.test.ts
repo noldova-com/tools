@@ -13,6 +13,7 @@ import { JsonReader } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { ArchiveStep, DependentsStep, Git, type IStepOutput, Npm, ProcessException, ProcessResult, ProcessRunner, RelockedFiles, StepResult, Tar } from "@noldova/tools.pipelines";
 
+import { BranchHeadFixture } from "./branch-head.fixture.js";
 import { FakeUpdateHost, RecordingOutput } from "./fake-update-host.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 
@@ -1020,7 +1021,7 @@ export class DependentsStepTests {
     using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/pinned", pinned);
-    host.branches.set("noldova-com/pinned", ["pipelines-tests@example.com", "Move the pins of source's packages to 0.0.3"]);
+    host.branches.set("noldova-com/pinned", new BranchHeadFixture("pipelines-tests@example.com", "Move the pins of source's packages to 0.0.3"));
 
     const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
 
@@ -1039,7 +1040,7 @@ export class DependentsStepTests {
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/taken", taken);
     host.repositories.set("noldova-com/works", works);
-    host.branches.set("noldova-com/taken", [committer, subject]);
+    host.branches.set("noldova-com/taken", new BranchHeadFixture(committer, subject));
 
     const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
 

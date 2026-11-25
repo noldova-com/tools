@@ -10,13 +10,15 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { type IStepOutput, type IUpdateHost, StepResult } from "@noldova/tools.pipelines";
 
+import type { BranchHeadFixture } from "./branch-head.fixture.js";
 import type { GitRepositoryFixture } from "./git-repository.fixture.js";
 
 export class FakeUpdateHost implements IUpdateHost {
   public readonly credentialVariables: readonly string[] = ["SECRET_TOKEN"];
-  public readonly branches: Map<string, readonly [string, string]> = new Map();
+  public readonly branches: Map<string, BranchHeadFixture> = new Map();
   public readonly thrown: Map<string, unknown> = new Map();
   public readonly repositories: Map<string, GitRepositoryFixture> = new Map();
   public readonly failures: Map<string, StepResult> = new Map();
@@ -45,7 +47,7 @@ export class FakeUpdateHost implements IUpdateHost {
   public async startRelockAsync(repository: string, commit: string, request: string): Promise<string | null | StepResult> {
     this.relockRequests.push(`${repository} ${commit} ${request}`);
     const failure = this.starts.get(repository);
-    if (failure !== undefined)
+    if (!Object.isUndefined(failure))
       return failure;
     if (!this.relocks.has(repository))
       return null;
@@ -64,7 +66,7 @@ export class FakeUpdateHost implements IUpdateHost {
   public async checkOutAsync(repository: string, directory: string): Promise<StepResult | null> {
     this.events.push(`check out ${repository}`);
     const failure = this.failures.get(`checkOut ${repository}`);
-    if (failure !== undefined)
+    if (!Object.isUndefined(failure))
       return failure;
 
     execFileSync("git", ["-c", "core.autocrlf=false", "clone", "--quiet", "--", this.repositories.get(repository)?.directory ?? "", directory]);
@@ -79,14 +81,14 @@ export class FakeUpdateHost implements IUpdateHost {
     if (this.thrown.has(repository))
       throw this.thrown.get(repository);
     const failure = this.failures.get(`fetch ${repository}`);
-    if (failure !== undefined)
+    if (!Object.isUndefined(failure))
       return failure;
 
     const branch = this.branches.get(repository);
-    if (branch === undefined)
+    if (Object.isUndefined(branch))
       return null;
 
-    const [committer, subject] = branch;
+    const { committer, subject } = branch;
     const tree = execFileSync("git", ["rev-parse", "HEAD~1^{tree}"], { cwd: directory, encoding: "utf8" }).trim();
 
     return execFileSync("git", ["commit-tree", tree, "-p", "HEAD~1", "-m", subject], { cwd: directory, encoding: "utf8", env: { ...process.env, GIT_COMMITTER_EMAIL: committer } }).trim();
@@ -94,7 +96,7 @@ export class FakeUpdateHost implements IUpdateHost {
 
   public async pushAsync(repository: string, directory: string, branch: string, replaced: string | null): Promise<StepResult | null> {
     const failure = this.failures.get(`push ${repository}`);
-    if (failure !== undefined)
+    if (!Object.isUndefined(failure))
       return failure;
 
     const files: Record<string, string> = { branch, replaced: String(replaced), message: execFileSync("git", ["log", "-1", "--format=%s"], { cwd: directory, encoding: "utf8" }).trim() };
@@ -107,7 +109,7 @@ export class FakeUpdateHost implements IUpdateHost {
 
   public async proposeAsync(repository: string, branch: string, title: string, body: string, summary: string): Promise<string | StepResult> {
     const failure = this.failures.get(`propose ${repository}`);
-    if (failure !== undefined)
+    if (!Object.isUndefined(failure))
       return failure;
 
     this.proposals.push([repository, branch, title, summary, body].join("\n---\n"));

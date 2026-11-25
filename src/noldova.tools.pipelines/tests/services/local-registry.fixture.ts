@@ -10,6 +10,8 @@ import { once } from "node:events";
 import http from "node:http";
 import { setImmediate } from "node:timers/promises";
 
+import "@noldova/context.core";
+
 interface PublishedVersion {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly peerDependencies?: Readonly<Record<string, string>>;
@@ -36,7 +38,7 @@ export class LocalRegistryFixture implements AsyncDisposable {
     server.listen(0, LocalRegistryFixture.HOST);
     await once(server, "listening");
     const address = server.address();
-    if (address === null || typeof address === "string")
+    if (Object.isNull(address) || Object.isString(address))
       throw new Error("The local registry has no port.");
 
     registry = new LocalRegistryFixture(server, `http://${LocalRegistryFixture.HOST}:${address.port}/`);
@@ -62,19 +64,18 @@ export class LocalRegistryFixture implements AsyncDisposable {
   private answer(request: http.IncomingMessage, response: http.ServerResponse): void {
     const name = decodeURIComponent((request.url ?? "/").slice(1));
     const versions = this.packages.get(name);
-    if (versions === undefined) {
+    if (Object.isUndefined(versions)) {
       response.writeHead(404, { "content-type": "application/json" });
       response.end("{}");
       return;
     }
 
     const latest = [...versions.keys()].at(-1);
-    const packument = {
-      name,
-      "dist-tags": { latest },
-      versions: Object.fromEntries([...versions].map(([version, published]) =>
-        [version, { name, version, ...published, dist: { tarball: `${this.url}${name}/-/${name.split("/").at(-1)}-${version}.tgz` } }]))
-    };
+    const documents = new Map<string, unknown>();
+    versions.forEach((published, version) => {
+      documents.set(version, { name, version, ...published, dist: { tarball: `${this.url}${name}/-/${name.split("/").at(-1)}-${version}.tgz` } });
+    });
+    const packument = { name, "dist-tags": { latest }, versions: Object.fromEntries(documents) };
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(packument));
   }
