@@ -10,7 +10,7 @@ import { TestingResources } from "../testing-resources.js";
 import { TestingModuleLoader } from "./testing-module-loader.js";
 
 // Imports no @noldova/context package of the tool's own: the checkout's @noldova/context.testing brings its own @noldova/context.core, whose Object extensions can be defined only once in a process.
-// So this file, test-times-entry-point.ts, testing-module-loader.ts and testing-resources.ts write their type and absence checks out, the standard's exception for code loaded beside another copy of @noldova/context.core.
+// So this file, test-times-entry-point.ts and testing-resources.ts write their type and absence checks out, the standard's exception for code loaded beside another copy of @noldova/context.core.
 const values = process.argv.slice(2);
 const projectValues = values.slice(TestingResources.coverageProjectValuesStart);
 if (projectValues.length % TestingResources.coverageProjectValueCount !== 0) {

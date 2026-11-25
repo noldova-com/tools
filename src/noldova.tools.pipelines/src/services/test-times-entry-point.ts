@@ -15,8 +15,8 @@ import { TestingModuleLoader } from "./testing-module-loader.js";
 
 // Reads the test times a run wrote through the checkout's @noldova/context.testing: "slowest <results file> <count>" prints the slowest tests,
 // and "judge <budget> <margin> <README> <results file>..." judges each test file's median time over the runs, exiting with timesOverExitCode when one is over and timesUnreadExitCode when a results file is missing or isn't test times.
-// Imports no @noldova/context package of the tool's own, since the checkout's @noldova/context.core is loaded beside it, so this file, coverage-entry-point.ts,
-// testing-module-loader.ts and testing-resources.ts write their type and absence checks out, the standard's exception for code loaded beside another copy of it.
+// Imports no @noldova/context package of the tool's own, since the checkout's @noldova/context.core is loaded beside it, so this file, coverage-entry-point.ts
+// and testing-resources.ts write their type and absence checks out, the standard's exception for code loaded beside another copy of it.
 const [mode, ...values] = process.argv.slice(2);
 const testing = await TestingModuleLoader.loadAsync();
 if (testing === null)
