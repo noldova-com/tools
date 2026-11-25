@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { BuildConfig, BuildException, BuildPackage } from "@noldova/tools.pipelines";
@@ -128,6 +129,6 @@ export class BuildConfigTests {
   }
 
   private static describe(buildPackage: BuildPackage | undefined): string {
-    return JSON.stringify(buildPackage === undefined ? null : [buildPackage.name, buildPackage.path, buildPackage.pre, buildPackage.compile, buildPackage.post]);
+    return JSON.stringify(Object.isUndefined(buildPackage) ? null : [buildPackage.name, buildPackage.path, buildPackage.pre, buildPackage.compile, buildPackage.post]);
   }
 }

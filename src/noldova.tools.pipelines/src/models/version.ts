@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
+
 import { VersionException } from "../exceptions/version.exception.js";
 import { Resources } from "../resources.js";
 
@@ -19,7 +21,7 @@ export class Version {
     Version.checkPart(Resources.majorPartName, major);
     Version.checkPart(Resources.minorPartName, minor);
     Version.checkPart(Resources.patchPartName, patch);
-    if (nightlyDate !== null)
+    if (!Object.isNull(nightlyDate))
       Version.checkNightlyDate(nightlyDate);
 
     this.major = major;
@@ -30,10 +32,10 @@ export class Version {
 
   public static parse(text: string): Version {
     const match = Resources.versionPattern.exec(text);
-    if (match === null)
+    if (Object.isNull(match))
       throw new VersionException(Resources.formatVersionInvalid(text));
     const problem = Version.validateMatch(match);
-    if (problem !== null)
+    if (!Object.isNull(problem))
       throw new VersionException(problem);
 
     return new Version(Number(match[1]), Number(match[2]), Number(match[3]), match[4] ?? null);
@@ -42,16 +44,16 @@ export class Version {
   public static validate(text: string): string | null {
     const match = Resources.versionPattern.exec(text);
 
-    return match === null ? Resources.formatVersionInvalid(text) : Version.validateMatch(match);
+    return Object.isNull(match) ? Resources.formatVersionInvalid(text) : Version.validateMatch(match);
   }
 
   public compareTo(other: Version): number {
     const order = Math.sign(this.major - other.major || this.minor - other.minor || this.patch - other.patch);
     if (order !== 0 || this.nightlyDate === other.nightlyDate)
       return order;
-    if (this.nightlyDate === null)
+    if (Object.isNull(this.nightlyDate))
       return 1;
-    if (other.nightlyDate === null)
+    if (Object.isNull(other.nightlyDate))
       return -1;
 
     return this.nightlyDate < other.nightlyDate ? -1 : 1;
@@ -68,7 +70,7 @@ export class Version {
   public toString(): string {
     const release = [this.major, this.minor, this.patch].join(Resources.versionPartSeparator);
 
-    return this.nightlyDate === null ? release : `${release}${Resources.nightlySeparator}${this.nightlyDate}`;
+    return Object.isNull(this.nightlyDate) ? release : `${release}${Resources.nightlySeparator}${this.nightlyDate}`;
   }
 
   private static checkPart(partName: string, value: number): void {
@@ -80,7 +82,7 @@ export class Version {
     return Version.validatePart(Resources.majorPartName, match[1])
       ?? Version.validatePart(Resources.minorPartName, match[2])
       ?? Version.validatePart(Resources.patchPartName, match[3])
-      ?? (match[4] === undefined ? null : Version.validateNightlyDate(match[4]));
+      ?? (Object.isUndefined(match[4]) ? null : Version.validateNightlyDate(match[4]));
   }
 
   private static validatePart(partName: string, text: string | undefined): string | null {
@@ -89,13 +91,13 @@ export class Version {
 
   private static checkNightlyDate(value: string): void {
     const problem = Version.validateNightlyDate(value);
-    if (problem !== null)
+    if (!Object.isNull(problem))
       throw new VersionException(problem);
   }
 
   private static validateNightlyDate(value: string): string | null {
     const match = Resources.nightlyDatePattern.exec(value);
-    if (match === null || !Version.isCalendarDate(Number(match[1]), Number(match[2]), Number(match[3])))
+    if (Object.isNull(match) || !Version.isCalendarDate(Number(match[1]), Number(match[2]), Number(match[3])))
       return Resources.formatNightlyDateInvalid(value);
 
     return null;

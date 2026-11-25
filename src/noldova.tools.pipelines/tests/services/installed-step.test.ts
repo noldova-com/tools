@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { JsonException } from "@noldova/context.json";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { InstalledStep, type StepResult } from "@noldova/tools.pipelines";
@@ -22,9 +23,9 @@ class Checkout implements Disposable {
 
   public constructor(locked: object | null, installed: object | null, folder: string = ".") {
     this.write("build.json", "{\"packages\":[{\"name\":\"noldova.example\"}]}");
-    if (locked !== null)
+    if (!Object.isNull(locked))
       this.write(path.join(folder, "package-lock.json"), JSON.stringify({ name: "example", lockfileVersion: 3, packages: { "": { name: "example" }, ...locked } }));
-    if (installed !== null)
+    if (!Object.isNull(installed))
       this.write(path.join(folder, "node_modules/.package-lock.json"), JSON.stringify({ name: "example", lockfileVersion: 3, packages: installed }));
   }
 

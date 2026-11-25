@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { JsonReader } from "@noldova/context.json";
 
 import { BuildException } from "../exceptions/build.exception.js";
@@ -58,10 +59,10 @@ export class BuildConfig {
     }
 
     const testTimeoutMilliseconds = reader.hasField(Resources.testTimeoutField) ? reader.readInteger(Resources.testTimeoutField) : undefined;
-    if (testTimeoutMilliseconds !== undefined && testTimeoutMilliseconds <= 0)
+    if (!Object.isUndefined(testTimeoutMilliseconds) && testTimeoutMilliseconds <= 0)
       throw new BuildException(Resources.formatBuildConfigInvalid(Resources.formatTestTimeoutInvalid(testTimeoutMilliseconds)));
 
-    return testTimeoutMilliseconds === undefined ? new BuildConfig(scope, packages) : new BuildConfig(scope, packages, testTimeoutMilliseconds);
+    return Object.isUndefined(testTimeoutMilliseconds) ? new BuildConfig(scope, packages) : new BuildConfig(scope, packages, testTimeoutMilliseconds);
   }
 
   private static readPackage(entry: JsonReader, scope: string): BuildPackage {
@@ -75,7 +76,7 @@ export class BuildConfig {
 
     const [pre = null, compile = null, post = null] = Resources.buildScriptFields.map(field => {
       const script = entry.readOptionalString(field) ?? null;
-      if (script !== null && !BuildConfig.isInsideFolder(script))
+      if (!Object.isNull(script) && !BuildConfig.isInsideFolder(script))
         throw new BuildException(Resources.formatBuildConfigInvalid(Resources.formatBuildScriptInvalid(name, field, script)));
 
       return script;

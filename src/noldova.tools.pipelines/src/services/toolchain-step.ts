@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import { StepResult } from "../models/step-result.js";
 import { Resources } from "../resources.js";
@@ -25,7 +27,7 @@ export class ToolchainStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [nodeVersion, npmVersion = "", ...rest] = values;
-    if (nodeVersion === undefined || rest.length !== 0)
+    if (Object.isUndefined(nodeVersion) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     if (!Resources.exactVersionPattern.test(nodeVersion))
@@ -38,7 +40,7 @@ export class ToolchainStep implements IStep {
       findings.push(Resources.formatNodeVersionDiffers(this.nodeVersion, nodeVersion));
 
     const foundNpmVersion = npmVersion.length === 0 ? null : await this.npm.readVersionAsync();
-    if (foundNpmVersion !== null && foundNpmVersion !== npmVersion)
+    if (!Object.isNull(foundNpmVersion) && foundNpmVersion !== npmVersion)
       findings.push(Resources.formatNpmVersionDiffers(foundNpmVersion, npmVersion));
 
     if (findings.length > 0)

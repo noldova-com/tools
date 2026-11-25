@@ -11,6 +11,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import "@noldova/context.core";
+
 import { PipelineException } from "../exceptions/pipeline.exception.js";
 import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
@@ -51,7 +53,7 @@ export class TimingStep implements IStep {
   }
 
   private async timeAsync(config: BuildConfig): Promise<StepResult> {
-    if (config.testTimeoutMilliseconds === undefined)
+    if (Object.isUndefined(config.testTimeoutMilliseconds))
       return StepResult.failed(Resources.testTimeoutMissing);
 
     const tested = config.packages.filter(t => fs.statSync(this.resolve(Resources.formatPath(t.sourceFolder, Resources.testsProjectPath)), { throwIfNoEntry: false })?.isFile() === true);

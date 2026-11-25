@@ -8,6 +8,7 @@
 
 import { spawn } from "node:child_process";
 
+import "@noldova/context.core";
 import { ExceptionOptions } from "@noldova/context.exceptions";
 
 import { ProcessException } from "../exceptions/process.exception.js";
@@ -17,13 +18,13 @@ import { Resources } from "../resources.js";
 export class ProcessRunner {
   public async runAsync(program: string, values: readonly string[], workingDirectory: string, environment?: Readonly<Record<string, string | undefined>>, timeoutMilliseconds?: number): Promise<ProcessResult> {
     return await new Promise((resolve, reject) => {
-      const env = environment === undefined ? undefined : Object.fromEntries(Object.entries({ ...process.env, ...environment }).filter(([, value]) => value !== undefined));
-      const child = spawn(program, values, { cwd: workingDirectory, shell: false, stdio: Resources.pipedProcessStreams, ...(env === undefined ? {} : { env }) });
+      const env = Object.isUndefined(environment) ? undefined : Object.fromEntries(Object.entries({ ...process.env, ...environment }).filter(([, value]) => !Object.isUndefined(value)));
+      const child = spawn(program, values, { cwd: workingDirectory, shell: false, stdio: Resources.pipedProcessStreams, ...(Object.isUndefined(env) ? {} : { env }) });
       const output: Buffer[] = [];
       const errorOutput: Buffer[] = [];
       let startError: Error | undefined;
       let stopReason: string | null = null;
-      const timer = timeoutMilliseconds === undefined ? undefined : setTimeout(() => {
+      const timer = Object.isUndefined(timeoutMilliseconds) ? undefined : setTimeout(() => {
         stopReason = Resources.formatProcessTimedOut(program, timeoutMilliseconds);
         child.kill(Resources.processKillSignal);
       }, timeoutMilliseconds);
@@ -34,8 +35,8 @@ export class ProcessRunner {
       child.on("close", exitCode => {
         clearTimeout(timer);
         setTimeout(() => {
-          if (startError === undefined)
-            resolve(new ProcessResult(stopReason === null ? exitCode : null, Buffer.concat(output).toString(Resources.textEncoding), `${Buffer.concat(errorOutput).toString(Resources.textEncoding)}${stopReason ?? ""}`));
+          if (Object.isUndefined(startError))
+            resolve(new ProcessResult(Object.isNull(stopReason) ? exitCode : null, Buffer.concat(output).toString(Resources.textEncoding), `${Buffer.concat(errorOutput).toString(Resources.textEncoding)}${stopReason ?? ""}`));
           else
             reject(new ProcessException(program, Resources.formatProcessNotStarted(program, startError.message), new ExceptionOptions(startError)));
         }, Resources.processReleaseDelayMilliseconds);
