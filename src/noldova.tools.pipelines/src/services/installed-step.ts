@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import "@noldova/context.core";
 import { JsonReader, type JsonValue } from "@noldova/context.json";
 
 import { PipelineException } from "../exceptions/pipeline.exception.js";
@@ -40,11 +41,11 @@ export class InstalledStep implements IStep {
       const ownNames = new Set(InstalledStep.hasFile(path.join(directory, Resources.buildConfigFilePath)) ? BuildConfig.read(directory).packageNames : []);
       const lockFilePath = path.posix.join(folder, Resources.lockFileName);
       const locked = InstalledStep.readPackages(directory, Resources.lockFileName);
-      if (locked === null)
+      if (Object.isNull(locked))
         return StepResult.failed(Resources.formatLockFileMissing(lockFilePath));
 
       const installed = InstalledStep.readPackages(directory, Resources.installedLockFilePath);
-      if (installed === null)
+      if (Object.isNull(installed))
         return this.differ(Resources.formatPackagesNotInstalled(path.posix.join(folder, Resources.nodeModulesFolder)));
 
       const differences = InstalledStep.compare(locked, installed, ownNames);
@@ -86,7 +87,7 @@ export class InstalledStep implements IStep {
         continue;
 
       const found = installed.get(entryPath);
-      if (found === undefined) {
+      if (Object.isUndefined(found)) {
         if (InstalledStep.readField(entry, Resources.optionalField) !== true)
           differences.push(entryPath);
       }

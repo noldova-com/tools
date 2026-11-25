@@ -11,6 +11,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import { StepResult } from "../models/step-result.js";
 import { Resources } from "../resources.js";
@@ -28,12 +30,12 @@ export class ReproducibleStep implements IStep {
   public constructor(git: Git, npm: Npm, temporaryRoot?: string) {
     this.git = git;
     this.npm = npm;
-    this.temporaryRoot = temporaryRoot === undefined || temporaryRoot.length === 0 ? os.tmpdir() : temporaryRoot;
+    this.temporaryRoot = String.isNullOrEmpty(temporaryRoot) ? os.tmpdir() : temporaryRoot;
   }
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [folder, ...rest] = values;
-    if (folder === undefined || rest.length !== 0)
+    if (Object.isUndefined(folder) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const folderPath = path.join(this.git.workingDirectory, folder);
@@ -71,7 +73,7 @@ export class ReproducibleStep implements IStep {
     const findings: string[] = [];
     for (const [name, integrity] of first) {
       const other = second.get(name);
-      if (other === undefined)
+      if (Object.isUndefined(other))
         findings.push(Resources.formatArchiveOnlyInFirstBuild(name));
       else if (other !== integrity)
         findings.push(Resources.formatArchiveDiffers(name, integrity, other));

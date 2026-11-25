@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import type { ITagHost } from "../interfaces/i-tag-host.js";
 import { StepResult } from "../models/step-result.js";
@@ -24,13 +26,13 @@ export class TagStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [version, commit, ...rest] = values;
-    if (version === undefined || commit === undefined || rest.length !== 0)
+    if (Object.isUndefined(version) || Object.isUndefined(commit) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const versionProblem = Version.validate(version);
-    if (versionProblem !== null)
+    if (!Object.isNull(versionProblem))
       return StepResult.failed(versionProblem);
-    if (Version.parse(version).nightlyDate !== null)
+    if (!Object.isNull(Version.parse(version).nightlyDate))
       return StepResult.failed(Resources.formatTagVersionNotRelease(version));
     if (!Resources.commitPattern.test(commit))
       return StepResult.failed(Resources.formatCommitInvalid(commit));

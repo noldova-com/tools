@@ -10,6 +10,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import { DependentsUpdate } from "../models/dependents-update.js";
 import { HandledFailure } from "../models/handled-failure.js";
@@ -34,7 +36,7 @@ export class RelockStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [repository, request, resultPath, ...scriptValues] = values;
-    if (repository === undefined || request === undefined || resultPath === undefined)
+    if (Object.isUndefined(repository) || Object.isUndefined(request) || Object.isUndefined(resultPath))
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const lockScripts = new Map<string, string>();

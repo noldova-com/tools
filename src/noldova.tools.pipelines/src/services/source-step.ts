@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
 import { JsonReader } from "@noldova/context.json";
 
 import type { IStep } from "../interfaces/i-step.js";
@@ -26,11 +27,11 @@ export class SourceStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [version, commit, ...rest] = values;
-    if (version === undefined || commit === undefined || rest.length !== 0)
+    if (Object.isUndefined(version) || Object.isUndefined(commit) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
 
     const versionProblem = Version.validate(version);
-    if (versionProblem !== null)
+    if (!Object.isNull(versionProblem))
       return StepResult.failed(versionProblem);
     if (!Resources.commitPattern.test(commit))
       return StepResult.failed(Resources.formatCommitInvalid(commit));

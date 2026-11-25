@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
 import { JsonReader } from "@noldova/context.json";
 
 import type { IStep } from "../interfaces/i-step.js";
@@ -34,7 +35,7 @@ export class NightlyStep implements IStep {
 
   public async runAsync(values: readonly string[]): Promise<StepResult> {
     const [commit, registry, ...rest] = values;
-    if (commit === undefined || registry === undefined || rest.length !== 0)
+    if (Object.isUndefined(commit) || Object.isUndefined(registry) || rest.length !== 0)
       return StepResult.failed(Resources.formatStepValuesInvalid(this.name, this.usage));
     if (!Resources.commitPattern.test(commit))
       return StepResult.failed(Resources.formatCommitInvalid(commit));
@@ -51,11 +52,11 @@ export class NightlyStep implements IStep {
 
     const found = JsonReader.parse(await this.git.readFileAsync(commit, Resources.versionFilePath), Resources.versionFilePath).readString(Resources.versionField);
     const versionProblem = Version.validate(found);
-    if (versionProblem !== null)
+    if (!Object.isNull(versionProblem))
       return StepResult.failed(versionProblem);
 
     const release = Version.parse(found);
-    if (release.nightlyDate !== null)
+    if (!Object.isNull(release.nightlyDate))
       return StepResult.failed(Resources.formatVersionNotRelease(commit, Resources.versionFilePath, found));
 
     const packageNames = await this.archiveStep.readPackageNamesAsync(commit);
@@ -70,7 +71,7 @@ export class NightlyStep implements IStep {
       const nightly = await this.npm.readFieldOrEmptyAsync(packageName, Resources.formatDistTagField(Resources.nightlyTag), registry);
       if (nightly instanceof StepResult)
         findings.push(nightly.message);
-      else if (nightly.length > 0 && Version.validate(nightly) !== null)
+      else if (nightly.length > 0 && !Object.isNull(Version.validate(nightly)))
         findings.push(Resources.formatTaggedInvalid(packageName, Resources.nightlyTag, nightly));
       else if (nightly.length > 0) {
         const specifier = Resources.formatSpecifier(packageName, nightly);

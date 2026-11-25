@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import type { IStepOutput } from "../interfaces/i-step-output.js";
 import { Resources } from "../resources.js";
@@ -24,7 +26,7 @@ export class CommandLine {
   public async runAsync(values: readonly string[]): Promise<number> {
     const [name, ...stepValues] = values;
     const step = this.steps.find(t => t.name === name);
-    if (step === undefined) {
+    if (Object.isUndefined(step)) {
       this.output.writeFailure(Resources.formatUsage(this.programName, this.steps.map(t => Resources.formatStepUsage(t.name, t.usage))));
       return Resources.failureExitCode;
     }

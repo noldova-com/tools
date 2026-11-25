@@ -6,6 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import "@noldova/context.core";
+
 import type { IStep } from "../interfaces/i-step.js";
 import { StepResult } from "../models/step-result.js";
 import type { TrackedFile } from "../models/tracked-file.js";
@@ -37,7 +39,7 @@ export class LineEndingsStep implements IStep {
     const textFiles = files.filter(t => t.isText);
     for (const file of textFiles) {
       const finding = await this.checkFileAsync(file);
-      if (finding !== null)
+      if (!Object.isNull(finding))
         findings.push(finding);
     }
 
@@ -63,7 +65,7 @@ export class LineEndingsStep implements IStep {
       return Resources.formatMixedLineEndings(file.filePath);
 
     const end = await this.git.readCheckoutFileEndAsync(file.filePath, Resources.fileEndByteCount);
-    if (end === null)
+    if (Object.isNull(end))
       return Resources.formatCheckoutFileMissing(file.filePath);
     if (end.at(-1) !== Resources.newlineByte)
       return Resources.formatFinalNewlineMissing(file.filePath);
