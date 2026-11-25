@@ -7,7 +7,7 @@
  */
 
 // The resources the test-run entry points read. coverage-entry-point.ts and test-times-entry-point.ts run beside the checkout's own
-// @noldova/context.core, whose Object extensions can be defined only once in a process, so they, testing-module-loader.ts and this file
+// @noldova/context.core, whose Object extensions can be defined only once in a process, so they and this file
 // import no @noldova/context package of the tool's own and write their type and absence checks out; Resources takes its shared values from here.
 export class TestingResources {
   public static readonly codeField: "code" = "code";
