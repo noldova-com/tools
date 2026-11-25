@@ -105,7 +105,11 @@ export class DependentRelock {
     const misses: string[] = [];
     const expectedScopes: ScopeExpectation[] = [];
     for (const scope of LockScope.read(manifestPaths, lockFilePaths)) {
-      const scopeMoves = scope.manifestPaths.flatMap(t => releasedMoves.get(t) ?? []);
+      const scopeMoves: PinMove[] = [];
+      releasedMoves.forEach((pinMoves, manifestPath) => {
+        if (scope.manifestPaths.includes(manifestPath))
+          scopeMoves.push(...pinMoves);
+      });
       const installed = new Set([...scopeMoves.map(t => t.packageName), ...scope.lockFilePaths.flatMap(t => DependentRelock.readLockedNames(path.join(directory, t)))]);
       const targets = update.peerPins.filter(t => t.appliesTo(installed));
       const pinned = scope.manifestPaths.flatMap(t => DependentRelock.movePins(path.join(directory, t), t, targets));
