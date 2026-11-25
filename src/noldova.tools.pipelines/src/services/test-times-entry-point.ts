@@ -10,38 +10,40 @@
 import fs from "node:fs";
 
 import type { ITestingModule } from "../interfaces/i-testing-module.js";
-import { Resources } from "../resources.js";
+import { TestingResources } from "../testing-resources.js";
 import { TestingModuleLoader } from "./testing-module-loader.js";
 
 // Reads the test times a run wrote through the checkout's @noldova/context.testing: "slowest <results file> <count>" prints the slowest tests,
 // and "judge <budget> <margin> <README> <results file>..." judges each test file's median time over the runs, exiting with timesOverExitCode when one is over and timesUnreadExitCode when a results file is missing or isn't test times.
+// Imports no @noldova/context package of the tool's own, since the checkout's @noldova/context.core is loaded beside it, so this file, coverage-entry-point.ts,
+// testing-module-loader.ts and testing-resources.ts write their type and absence checks out, the standard's exception for code loaded beside another copy of it.
 const [mode, ...values] = process.argv.slice(2);
 const testing = await TestingModuleLoader.loadAsync();
 if (testing === null)
-  process.exitCode = Resources.timesUnreadExitCode;
-else if (mode === Resources.slowestMode) {
+  process.exitCode = TestingResources.timesUnreadExitCode;
+else if (mode === TestingResources.slowestMode) {
   const runs = readRuns(testing, [String(values[0])]);
   if (runs === null)
-    process.exitCode = Resources.timesUnreadExitCode;
+    process.exitCode = TestingResources.timesUnreadExitCode;
   else {
     for (const line of testing.TestTimeRecord.formatSlowest(runs.flat(), Number(values[1])))
-      process.stdout.write(`${line}${Resources.lineSeparator}`);
+      process.stdout.write(`${line}${TestingResources.lineSeparator}`);
   }
 }
 else {
   const [budget, margin, readme, ...resultsFiles] = values;
   const readmePath = String(readme);
-  const listed = testing.TestTimingCheck.readListed(fs.existsSync(readmePath) ? fs.readFileSync(readmePath, Resources.textEncoding) : "");
+  const listed = testing.TestTimingCheck.readListed(fs.existsSync(readmePath) ? fs.readFileSync(readmePath, TestingResources.textEncoding) : "");
   const runs = readRuns(testing, resultsFiles);
   if (runs === null)
-    process.exitCode = Resources.timesUnreadExitCode;
+    process.exitCode = TestingResources.timesUnreadExitCode;
   else {
     const timings = new testing.TestTimingCheck(Number(budget), Number(margin), listed).judge(runs);
     for (const timing of timings.filter(t => t.isOver || t.isListed))
-      process.stdout.write(`${timing.format()}${Resources.lineSeparator}`);
+      process.stdout.write(`${timing.format()}${TestingResources.lineSeparator}`);
 
-    process.stdout.write(`${testing.TestTimingCheck.formatSummary(timings, runs.length)}${Resources.lineSeparator}`);
-    process.exitCode = timings.some(t => t.isOver) ? Resources.timesOverExitCode : Resources.successExitCode;
+    process.stdout.write(`${testing.TestTimingCheck.formatSummary(timings, runs.length)}${TestingResources.lineSeparator}`);
+    process.exitCode = timings.some(t => t.isOver) ? TestingResources.timesOverExitCode : TestingResources.successExitCode;
   }
 }
 
@@ -50,18 +52,18 @@ function readRuns(module: ITestingModule, resultsFiles: readonly string[]): (rea
   const runs: (readonly unknown[])[] = [];
   for (const resultsFile of resultsFiles) {
     if (!fs.existsSync(resultsFile)) {
-      process.stderr.write(`${Resources.formatTestResultsMissing(resultsFile)}${Resources.lineSeparator}`);
+      process.stderr.write(`${TestingResources.formatTestResultsMissing(resultsFile)}${TestingResources.lineSeparator}`);
       return null;
     }
 
     try {
-      runs.push(module.TestTimeRecord.parseAll(fs.readFileSync(resultsFile, Resources.textEncoding)));
+      runs.push(module.TestTimeRecord.parseAll(fs.readFileSync(resultsFile, TestingResources.textEncoding)));
     }
     catch (error: unknown) {
       if (!(error instanceof module.TestingException))
         throw error;
 
-      process.stderr.write(`${Resources.formatTestResultsInvalid(resultsFile, error.message)}${Resources.lineSeparator}`);
+      process.stderr.write(`${TestingResources.formatTestResultsInvalid(resultsFile, error.message)}${TestingResources.lineSeparator}`);
       return null;
     }
   }

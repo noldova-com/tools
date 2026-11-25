@@ -12,6 +12,7 @@ import path from "node:path";
 import { Assert, TestClass, TestData, TestMethod } from "@noldova/context.testing";
 import { Git, PinsStep, ProcessException, ProcessRunner, StepResult } from "@noldova/tools.pipelines";
 
+import { BranchHeadFixture } from "./branch-head.fixture.js";
 import { FakeUpdateHost, RecordingOutput } from "./fake-update-host.js";
 import { GitRepositoryFixture } from "./git-repository.fixture.js";
 
@@ -291,7 +292,7 @@ export class PinsStepTests {
     using pinned = PinsStepTests.createTarget(PinsStepTests.createPinned());
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/pinned", pinned);
-    host.branches.set("noldova-com/pinned", ["pipelines-tests@example.com", "Move the pins on source's workflows to v1.1.0"]);
+    host.branches.set("noldova-com/pinned", new BranchHeadFixture("pipelines-tests@example.com", "Move the pins on source's workflows to v1.1.0"));
 
     const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]);
 
@@ -307,7 +308,7 @@ export class PinsStepTests {
     using taken = PinsStepTests.createTarget(PinsStepTests.createPinned());
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/taken", taken);
-    host.branches.set("noldova-com/taken", [committer, subject]);
+    host.branches.set("noldova-com/taken", new BranchHeadFixture(committer, subject));
 
     const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]);
 

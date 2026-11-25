@@ -9,6 +9,11 @@
 import type { StdioNull, StdioOptions, StdioPipe } from "node:child_process";
 import type { BinaryToTextEncoding } from "node:crypto";
 
+import "@noldova/context.core";
+
+import { TarHeaderField } from "./models/tar-header-field.js";
+import { TestingResources } from "./testing-resources.js";
+
 export class Resources {
   public static readonly accessLevels: readonly string[] = ["public", "restricted"];
   public static readonly archiveLicensePath: string = "package/LICENSE";
@@ -54,7 +59,7 @@ export class Resources {
   public static readonly relockSucceededField: string = "isSuccessful";
   public static readonly relockVersionField: string = "version";
   public static readonly dependabotFilePaths: readonly string[] = [".github/dependabot.yml", ".github/dependabot.yaml"];
-  public static readonly failureExitCode: number = 1;
+  public static readonly failureExitCode: number = TestingResources.failureExitCode;
   public static readonly exactVersionPattern: RegExp = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
   public static readonly boundedRangePattern: RegExp = /^([~^<])((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
   public static readonly belowRangeOperator: string = "<";
@@ -99,7 +104,7 @@ export class Resources {
   public static readonly lineEndingsStepName: string = "line-endings";
   public static readonly lineEndingsStepUsage: string = "";
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
-  public static readonly lineSeparator: string = "\n";
+  public static readonly lineSeparator: string = TestingResources.lineSeparator;
   public static readonly lockFileName: string = "package-lock.json";
   public static readonly pinsFolderPrefix: string = "pipelines-pins-";
   public static readonly pinsStepName: string = "pins";
@@ -109,7 +114,7 @@ export class Resources {
   public static readonly mainReference: string = "refs/remotes/origin/main";
   public static readonly majorPartName: string = "major";
   public static readonly millisecondsPerSecond: number = 1000;
-  public static readonly manifestFileName: string = "package.json";
+  public static readonly manifestFileName: string = TestingResources.manifestFileName;
   public static readonly installFileNames: readonly string[] = [Resources.manifestFileName, Resources.lockFileName];
   public static readonly messagePartSeparator: string = "; ";
   public static readonly failedScriptOutputLines: number = 10;
@@ -142,8 +147,8 @@ export class Resources {
   public static readonly npmNotFoundCode: string = "E404";
   public static readonly npmNoticeLine: string = "npm notice";
   public static readonly npmNoticePrefix: string = "npm notice ";
-  public static readonly codeField: "code" = "code";
-  public static readonly moduleNotFoundCode: string = "MODULE_NOT_FOUND";
+  public static readonly codeField: "code" = TestingResources.codeField;
+  public static readonly moduleNotFoundCode: string = TestingResources.moduleNotFoundCode;
   public static readonly npmPreferOnlineValues: readonly string[] = ["--prefer-online"];
   public static readonly npmProgram: string = "npm";
   public static readonly npmPublishValues: readonly string[] = ["publish"];
@@ -181,7 +186,7 @@ export class Resources {
   public static readonly scopePattern: RegExp = /^@[a-z0-9][a-z0-9._~-]*$/;
   public static readonly sourceStepName: string = "source";
   public static readonly sourceStepUsage: string = "<version> <commit>";
-  public static readonly successExitCode: number = 0;
+  public static readonly successExitCode: number = TestingResources.successExitCode;
   public static readonly tagPrefix: string = "v";
   public static readonly tagStepName: string = "tag";
   public static readonly tagStepUsage: string = "<version> <commit>";
@@ -196,7 +201,7 @@ export class Resources {
   public static readonly unchangedStepName: string = "unchanged";
   public static readonly unchangedStepUsage: string = "";
   public static readonly updateIssueSummary: string = "A release moved packages this repository pins exactly";
-  public static readonly textEncoding: BufferEncoding = "utf8";
+  public static readonly textEncoding: BufferEncoding = TestingResources.textEncoding;
   public static readonly lockedDependencyFields: readonly string[] = ["dependencies", "devDependencies", "optionalDependencies"];
   public static readonly standInFolderSuffix: string = "-own";
   public static readonly standInVersion: string = "0.0.0";
@@ -225,17 +230,13 @@ export class Resources {
   public static readonly buildStepUsage: string = "[--version <version>] [<package>...], or --list-copies";
   public static readonly coverageFolder: string = "_build/coverage";
   public static readonly coverageEntryPointPath: string = "./coverage-entry-point.js";
-  public static readonly coverageProjectValueCount: number = 3;
-  public static readonly coverageProjectValuesStart: number = 2;
-  public static readonly coverageProjectsIncomplete: string = "The coverage report takes a name, a package folder and a source folder for each project.";
   public static readonly coverageIncomplete: string = "Coverage is incomplete.";
-  public static readonly coverageUnreadExitCode: number = 2;
   public static readonly coverageVariable: string = "NODE_V8_COVERAGE";
   public static readonly currentFolder: string = ".";
   public static readonly currentFolderPrefix: string = "./";
   public static readonly declarationFilePath: string = "src/api/index.d.ts";
   public static readonly emptyJsonObject: string = "{}";
-  public static readonly enabledValue: string = "1";
+  public static readonly enabledValue: string = TestingResources.enabledValue;
   public static readonly filteredCoverageSkipped: string = "The coverage gate is skipped for a filtered run.";
   public static readonly gitReadPrefixValues: readonly string[] = ["rev-parse", "--show-prefix"];
   public static readonly installedComparedFields: readonly string[] = ["version", "resolved", "integrity"];
@@ -283,19 +284,16 @@ export class Resources {
     "build.json sets no testTimeoutMilliseconds, the suite's hang limit: at least three times its slowest test on any target, with the measurement in README's Checks.";
   public static readonly testTimeoutVariable: string = "CONTEXT_TEST_TIMEOUT_MILLISECONDS";
   public static readonly testStepUsage: string = "[--skip-test-details] [--skip-coverage-details] [<filter>...]";
-  public static readonly testingMissing: string = "@noldova/context.testing is not installed; the repository's devDependencies name it.";
-  public static readonly testingPackageName: string = "@noldova/context.testing";
   public static readonly testsFolder: string = "_build/tests";
   public static readonly testsMissing: string = "No package has tests.";
   public static readonly testsPassed: string = "The tests passed, and coverage is complete.";
   public static readonly testResultsFile: string = "_build/test-results.json";
   public static readonly testResultsVariable: string = "CONTEXT_TEST_RESULTS_FILE";
   public static readonly testTimesEntryPointPath: string = "./test-times-entry-point.js";
-  public static readonly slowestMode: string = "slowest";
+  public static readonly slowestMode: string = TestingResources.slowestMode;
   public static readonly judgeMode: string = "judge";
   public static readonly slowestTestCount: number = 10;
-  public static readonly timesOverExitCode: number = 3;
-  public static readonly timesUnreadExitCode: number = 2;
+  public static readonly timesOverExitCode: number = TestingResources.timesOverExitCode;
   public static readonly timingStepName: string = "timing";
   public static readonly timingStepUsage: string = "";
   public static readonly timingFolder: string = "_build/timing";
@@ -438,7 +436,7 @@ export class Resources {
   }
 
   public static formatToolchainChecked(nodeVersion: string, npmVersion: string | null): string {
-    return npmVersion === null ? `Node.js ${nodeVersion} runs this step; npm is not checked.` : `Node.js ${nodeVersion} and npm ${npmVersion} run this step.`;
+    return Object.isNull(npmVersion) ? `Node.js ${nodeVersion} runs this step; npm is not checked.` : `Node.js ${nodeVersion} and npm ${npmVersion} run this step.`;
   }
 
   public static formatNpmVersionFailed(exitCode: number | null, errorOutput: string): string {
@@ -853,18 +851,18 @@ export class Resources {
     return ["/d", "/s", "/c", `npm.cmd ${Resources.npmScriptValues.join(Resources.valueSeparator)} ${script}`];
   }
 
-  public static formatTarHeaderFields(entryName: string, size: number): readonly (readonly [number, string])[] {
+  public static formatTarHeaderFields(entryName: string, size: number): readonly TarHeaderField[] {
     return [
-      [0, entryName],
-      [100, "0000644\0"],
-      [108, "0000000\0"],
-      [116, "0000000\0"],
-      [124, `${size.toString(8).padStart(11, "0")}\0`],
-      [136, "00000000000\0"],
-      [148, "        "],
-      [156, "0"],
-      [257, "ustar\0"],
-      [263, "00"]
+      new TarHeaderField(0, entryName),
+      new TarHeaderField(100, "0000644\0"),
+      new TarHeaderField(108, "0000000\0"),
+      new TarHeaderField(116, "0000000\0"),
+      new TarHeaderField(124, `${size.toString(8).padStart(11, "0")}\0`),
+      new TarHeaderField(136, "00000000000\0"),
+      new TarHeaderField(148, "        "),
+      new TarHeaderField(156, "0"),
+      new TarHeaderField(257, "ustar\0"),
+      new TarHeaderField(263, "00")
     ];
   }
 
@@ -1018,7 +1016,7 @@ export class Resources {
   }
 
   public static formatPruneNotNewest(packageName: string, version: string, newest: string | null): string {
-    return newest === null
+    return Object.isNull(newest)
       ? `${packageName} has no release version on the registry, not even ${version}, so nothing is deleted.`
       : `${packageName}'s newest release version on the registry is ${newest}, not ${version}, so nothing is deleted.`;
   }
@@ -1186,13 +1184,6 @@ export class Resources {
     return `The test times were not read: their report exited with code ${exitCode}.`;
   }
 
-  public static formatTestResultsMissing(filePath: string): string {
-    return `${filePath} holds no test times: the test run wrote none.`;
-  }
-
-  public static formatTestResultsInvalid(filePath: string, reason: string): string {
-    return `${filePath} holds no test times: ${reason}`;
-  }
 
   public static formatTimingRun(run: number): string {
     return `Timing run ${run} of ${Resources.timingRuns}...`;
