@@ -1067,8 +1067,7 @@ export class DependentsStepTests {
     const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
 
     Assert.isTrue(result.isSuccessful, result.message);
-    const lines = result.message.split("
-");
+    const lines = result.message.split("\n");
     Assert.areEqual("noldova-com/newer: pipelines/update-source proposes 0.0.5, newer than 0.0.4, so it is left as it is.", lines[1]);
     Assert.areEqual("noldova-com/works: moved 3 pins in https://example.test/noldova-com/works/pull/1", lines[2]);
     Assert.isFalse(host.pushed.has("noldova-com/newer"));

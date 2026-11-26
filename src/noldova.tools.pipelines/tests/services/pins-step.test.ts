@@ -316,8 +316,7 @@ export class PinsStepTests {
     const result = await PinsStepTests.createStep(source, host).runAsync(["1.2.0", source.readHead()]);
 
     Assert.isTrue(result.isSuccessful, result.message);
-    const lines = result.message.split("
-");
+    const lines = result.message.split("\n");
     Assert.areEqual("noldova-com/newer: pipelines/pins-source proposes v1.3.0, newer than v1.2.0, so it is left as it is.", lines[1]);
     Assert.isTrue(lines[2]?.startsWith("noldova-com/works: moved ") === true, lines[2]);
     Assert.isFalse(host.pushed.has("noldova-com/newer"));
