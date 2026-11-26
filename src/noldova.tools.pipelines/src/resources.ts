@@ -890,6 +890,10 @@ export class Resources {
     return `Move the pins of ${source}'s packages to `;
   }
 
+  public static formatRepositoryProposalNewer(repository: string, branch: string, proposed: string, version: string): string {
+    return `${repository}: ${branch} proposes ${proposed}, newer than ${version}, so it is left as it is.`;
+  }
+
   public static formatBranchNotOwn(branch: string, commit: string): string {
     return `${branch} is at ${commit}, a commit this step didn't make, so it is left as it is; merge or close its pull request, or move its changes elsewhere.`;
   }
