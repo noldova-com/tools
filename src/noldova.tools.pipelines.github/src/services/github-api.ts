@@ -31,20 +31,11 @@ export class GitHubApi {
   }
 
   public async requestAsync(method: string, resource: string, body?: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
-    for (const retryMilliseconds of Resources.apiRetryMilliseconds) {
-      const answer = await this.sendAsync(method, resource, body);
-      const waitMilliseconds = answer instanceof StepResult ? retryMilliseconds : answer.readRetryMilliseconds(retryMilliseconds);
-      if (waitMilliseconds === null)
-        return answer;
-
-      await this.waitAsync(waitMilliseconds);
-    }
-
-    return await this.sendAsync(method, resource, body);
+    return await this.sendWhileAsync(method, resource, body, (answer, retryMilliseconds) => answer instanceof StepResult ? retryMilliseconds : answer.readRetryMilliseconds(retryMilliseconds));
   }
 
-  public async sendOnceAsync(method: string, resource: string, body: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
-    return await this.sendAsync(method, resource, body);
+  public async createAsync(resource: string, body: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
+    return await this.sendWhileAsync(Resources.createMethod, resource, body, answer => answer instanceof StepResult ? null : answer.readRetryAfterMilliseconds());
   }
 
   // Downloads what a resource redirects to, such as an artifact's archive, sending the token only to the API, never to the
@@ -76,6 +67,20 @@ export class GitHubApi {
 
       return GitHubApi.failUnanswered(Resources.readMethod, resource, error);
     }
+  }
+
+  private async sendWhileAsync(method: string, resource: string, body: Readonly<Record<string, unknown>> | undefined,
+    readWait: (answer: GitHubAnswer | StepResult, retryMilliseconds: number) => number | null): Promise<GitHubAnswer | StepResult> {
+    for (const retryMilliseconds of Resources.apiRetryMilliseconds) {
+      const answer = await this.sendAsync(method, resource, body);
+      const waitMilliseconds = readWait(answer, retryMilliseconds);
+      if (waitMilliseconds === null)
+        return answer;
+
+      await this.waitAsync(waitMilliseconds);
+    }
+
+    return await this.sendAsync(method, resource, body);
   }
 
   private async sendAsync(method: string, resource: string, body?: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {

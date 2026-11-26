@@ -58,10 +58,15 @@ export class GitHubAnswer {
   }
 
   public readRetryMilliseconds(unavailableMilliseconds: number): number | null {
-    if (this.status < Resources.firstFailureStatus)
-      return null;
-    if (!Resources.retryAfterPattern.test(this.retryAfter))
+    if (this.status >= Resources.firstFailureStatus && !Resources.retryAfterPattern.test(this.retryAfter))
       return Resources.unavailableStatuses.includes(this.status) ? unavailableMilliseconds : null;
+
+    return this.readRetryAfterMilliseconds();
+  }
+
+  public readRetryAfterMilliseconds(): number | null {
+    if (this.status < Resources.firstFailureStatus || !Resources.retryAfterPattern.test(this.retryAfter))
+      return null;
 
     const seconds = Number(this.retryAfter);
 

@@ -175,6 +175,10 @@ export class DependentsStep implements IStep {
     if (!Object.isNull(replaced) && !await DependentsStep.isOwnCommitAsync(git, replaced, update.source))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatBranchNotOwn(branch, replaced)));
 
+    const newer = Object.isNull(replaced) ? null : await DependentsStep.readNewerProposalAsync(git, replaced, update);
+    if (!Object.isNull(newer))
+      return StepResult.succeeded(Resources.formatRepositoryProposalNewer(repository, branch, newer, update.version));
+
     const push = await this.updateHost.pushAsync(repository, directory, branch, replaced);
     if (!Object.isNull(push))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
@@ -309,5 +313,11 @@ export class DependentsStep implements IStep {
   private static async isOwnCommitAsync(git: Git, commit: string, source: string): Promise<boolean> {
     return await git.readCommitterAsync(commit) === await git.readCommitterAsync(Resources.gitHeadRevision)
       && (await git.readSubjectAsync(commit)).startsWith(Resources.formatUpdateTitlePrefix(source));
+  }
+
+  private static async readNewerProposalAsync(git: Git, commit: string, update: DependentsUpdate): Promise<string | null> {
+    const proposed = (await git.readSubjectAsync(commit)).slice(Resources.formatUpdateTitlePrefix(update.source).length);
+
+    return Object.isNull(Version.validate(proposed)) && Version.parse(proposed).compareTo(Version.parse(update.version)) > 0 ? proposed : null;
   }
 }

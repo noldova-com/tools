@@ -113,7 +113,7 @@ export class GitHubUpdates implements IUpdateHost {
       return target;
 
     const inputs = { [Resources.relockCommitInput]: commit, [Resources.relockRequestInput]: request };
-    const answer = await this.createApi().sendOnceAsync(Resources.createMethod, Resources.formatRelockDispatchResource(repository),
+    const answer = await this.createApi().createAsync(Resources.formatRelockDispatchResource(repository),
       { [Resources.refField]: target.readString(Resources.defaultBranchField), [Resources.inputsField]: inputs, [Resources.returnRunDetailsField]: true });
     if (answer instanceof StepResult)
       return answer;
@@ -233,7 +233,7 @@ export class GitHubUpdates implements IUpdateHost {
       return issue;
 
     const base = target.readBody().readString(Resources.defaultBranchField);
-    const pull = await this.createApi().sendOnceAsync(Resources.createMethod, Resources.formatPullsResource(repository), { [Resources.titleField]: title, [Resources.headField]: branch, [Resources.baseField]: base, [Resources.bodyField]: Resources.formatProposalBody(body, issue) });
+    const pull = await this.createApi().createAsync(Resources.formatPullsResource(repository), { [Resources.titleField]: title, [Resources.headField]: branch, [Resources.baseField]: base, [Resources.bodyField]: Resources.formatProposalBody(body, issue) });
     if (pull instanceof StepResult)
       return pull;
     if (pull.status === Resources.createdStatus)
@@ -265,7 +265,7 @@ export class GitHubUpdates implements IUpdateHost {
       return await this.renameIssueAsync(repository, issue, title, summary, branch) ?? issue;
     }
 
-    const created = await this.createApi().sendOnceAsync(Resources.createMethod, Resources.formatIssuesResource(repository), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
+    const created = await this.createApi().createAsync(Resources.formatIssuesResource(repository), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
     if (created instanceof StepResult)
       return created;
 
