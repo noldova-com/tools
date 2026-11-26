@@ -128,6 +128,34 @@ export class GitHubUpdatesRelockTests {
     Assert.areEqual(`GitHub answered ${method} ${resource?.slice(1)} with 403: Refused`, GitHubUpdatesRelockTests.readFailure(result));
   }
 
+  @TestMethod
+  public async sendsADispatchAgainAfterARateLimitsRetryAfterAsync(): Promise<void> {
+    const waits: number[] = [];
+    await using api = await GitHubApiFixture.startAsync({
+      ...GitHubUpdatesRelockTests.createAnswers(),
+      [GitHubUpdatesRelockTests.DISPATCH]: [GitHubApiAnswer.json(429, { message: "Slow down" }, "2"), GitHubApiAnswer.json(200, { workflow_run_id: 77, html_url: GitHubUpdatesRelockTests.RUN_URL })]
+    });
+
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api, undefined, waits));
+
+    Assert.areEqual(GitHubUpdatesRelockTests.RESULT, result);
+    Assert.areEqual(2, api.requests.filter(t => `${t.method} ${t.url}` === GitHubUpdatesRelockTests.DISPATCH).length);
+    Assert.areEqual(2000, waits[0]);
+  }
+
+  @TestData(false)
+  @TestData(true)
+  @TestMethod
+  public async sendsADispatchWhoseAnswerWasLostOnlyOnceAsync(isReset: boolean): Promise<void> {
+    const lost = isReset ? GitHubApiAnswer.RESET : GitHubApiAnswer.HELD;
+    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesRelockTests.createAnswers(), [GitHubUpdatesRelockTests.DISPATCH]: [lost, GitHubApiAnswer.json(200, { workflow_run_id: 77, html_url: GitHubUpdatesRelockTests.RUN_URL })] });
+
+    const result = await GitHubUpdatesRelockTests.relockAsync(GitHubUpdatesRelockTests.createUpdates(api));
+
+    Assert.isTrue(GitHubUpdatesRelockTests.readFailure(result).startsWith(`GitHub gave no answer to ${GitHubUpdatesRelockTests.DISPATCH.replace(" /", " ")}: `));
+    Assert.areEqual(1, api.requests.filter(t => `${t.method} ${t.url}` === GitHubUpdatesRelockTests.DISPATCH).length);
+  }
+
   @TestData("workflow")
   @TestData("target")
   @TestMethod
