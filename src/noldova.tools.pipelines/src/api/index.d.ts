@@ -2788,7 +2788,9 @@ export declare class ReproducibleStep implements IStep {
  * it is and names them, without failing it. When the branch
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
- * so nobody's commits are lost. A repository that pins none of them is left
+ * so nobody's commits are lost; a commit of its own whose title names a newer
+ * version is left as it is and reported, so a rerun of an older release keeps
+ * the newer proposal. A repository that pins none of them is left
  * as it is, and so is one with no commits, which it reports as pinning none
  * of them without asking whether it relocks itself. It first checks out every repository and asks
  * {@link IUpdateHost.startRelockAsync} whether each relocks itself, starting
@@ -3047,7 +3049,9 @@ export declare class RelockStep implements IStep {
  * and proposes it, with the moved and the left pins and the release's notes
  * in its description. When the branch exists, it replaces it only when the
  * branch is at a commit of its own, made by the same committer with its
- * title, and otherwise fails that repository, so nobody's commits are lost.
+ * title, and otherwise fails that repository, so nobody's commits are lost;
+ * a commit of its own whose title names a newer tag is left as it is and
+ * reported, so a rerun of an older release keeps the newer proposal.
  * A repository with nothing to move is left as it is.
  */
 export declare class PinsStep implements IStep {
