@@ -416,6 +416,7 @@ export class GitHubUpdatesTests {
     const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
 
     Assert.areEqual("GitHub answered POST repos/noldova-com/target/pulls with 422: Validation Failed", GitHubUpdatesTests.readFailure(result));
+    Assert.areEqual(GitHubUpdatesTests.OPEN_PULLS, api.requests.map(t => `${t.method} ${t.url}`).at(-1));
   }
 
   @TestData(false)
