@@ -43,6 +43,10 @@ export class GitHubApi {
     return await this.sendAsync(method, resource, body);
   }
 
+  public async sendOnceAsync(method: string, resource: string, body: Readonly<Record<string, unknown>>): Promise<GitHubAnswer | StepResult> {
+    return await this.sendAsync(method, resource, body);
+  }
+
   // Downloads what a resource redirects to, such as an artifact's archive, sending the token only to the API, never to the
   // address the redirect names.
   public async downloadAsync(resource: string): Promise<Buffer | StepResult> {

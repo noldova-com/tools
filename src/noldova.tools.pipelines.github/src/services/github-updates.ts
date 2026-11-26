@@ -205,11 +205,9 @@ export class GitHubUpdates implements IUpdateHost {
     if (existing !== undefined) {
       const issue = Resources.linkedIssuePattern.exec(existing.readNullableString(Resources.bodyField) ?? "")?.[1];
       if (issue !== undefined) {
-        const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
-        if (renamed instanceof StepResult)
+        const renamed = await this.renameIssueAsync(repository, issue, title, summary, branch);
+        if (renamed !== null)
           return renamed;
-        if (renamed.status !== Resources.foundStatus)
-          return renamed.toFailure();
       }
 
       const number = String(existing.readInteger(Resources.numberField));
@@ -226,19 +224,56 @@ export class GitHubUpdates implements IUpdateHost {
     if (target.status !== Resources.foundStatus)
       return target.toFailure();
 
-    const issue = await this.requestAsync(Resources.createMethod, Resources.formatIssuesResource(repository), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
+    const issue = await this.openIssueAsync(repository, branch, title, summary);
     if (issue instanceof StepResult)
       return issue;
-    if (issue.status !== Resources.createdStatus)
-      return issue.toFailure();
 
-    const number = String(issue.readBody().readInteger(Resources.numberField));
     const base = target.readBody().readString(Resources.defaultBranchField);
-    const pull = await this.requestAsync(Resources.createMethod, Resources.formatPullsResource(repository), { [Resources.titleField]: title, [Resources.headField]: branch, [Resources.baseField]: base, [Resources.bodyField]: Resources.formatProposalBody(body, number) });
+    const pull = await this.createApi().sendOnceAsync(Resources.createMethod, Resources.formatPullsResource(repository), { [Resources.titleField]: title, [Resources.headField]: branch, [Resources.baseField]: base, [Resources.bodyField]: Resources.formatProposalBody(body, issue) });
     if (pull instanceof StepResult)
       return pull;
+    if (pull.status === Resources.createdStatus)
+      return pull.readBody().readString(Resources.htmlUrlField);
+    if (pull.status !== Resources.unprocessableStatus)
+      return pull.toFailure();
 
-    return pull.status === Resources.createdStatus ? pull.readBody().readString(Resources.htmlUrlField) : pull.toFailure();
+    const reread = await this.requestAsync(Resources.readMethod, Resources.formatOpenPullsResource(repository, owner, branch));
+    if (reread instanceof StepResult)
+      return reread;
+    if (reread.status !== Resources.foundStatus)
+      return reread.toFailure();
+
+    return reread.readItems()[0]?.readString(Resources.htmlUrlField) ?? pull.toFailure();
+  }
+
+  private async openIssueAsync(repository: string, branch: string, title: string, summary: string): Promise<string | StepResult> {
+    const open = await this.requestAsync(Resources.readMethod, Resources.formatOpenIssuesResource(repository));
+    if (open instanceof StepResult)
+      return open;
+    if (open.status !== Resources.foundStatus)
+      return open.toFailure();
+
+    const ending = Resources.formatIssueBodyEnding(branch);
+    const found = open.readItems().find(t => (t.readNullableString(Resources.bodyField) ?? "").endsWith(ending));
+    if (found !== undefined) {
+      const issue = String(found.readInteger(Resources.numberField));
+
+      return await this.renameIssueAsync(repository, issue, title, summary, branch) ?? issue;
+    }
+
+    const created = await this.createApi().sendOnceAsync(Resources.createMethod, Resources.formatIssuesResource(repository), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
+    if (created instanceof StepResult)
+      return created;
+
+    return created.status === Resources.createdStatus ? String(created.readBody().readInteger(Resources.numberField)) : created.toFailure();
+  }
+
+  private async renameIssueAsync(repository: string, issue: string, title: string, summary: string, branch: string): Promise<StepResult | null> {
+    const renamed = await this.requestAsync(Resources.updateMethod, Resources.formatIssueResource(repository, issue), { [Resources.titleField]: title, [Resources.bodyField]: Resources.formatIssueBody(summary, branch) });
+    if (renamed instanceof StepResult)
+      return renamed;
+
+    return renamed.status === Resources.foundStatus ? null : renamed.toFailure();
   }
 
   // Reads the run until it completes, waiting between reads from the one budget every run of this host shares, since the

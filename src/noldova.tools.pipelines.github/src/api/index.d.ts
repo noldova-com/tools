@@ -488,7 +488,11 @@ export declare class GitHubUpdates implements IUpdateHost {
    * the branch into the default branch whose description ends with
    * `Closes #<issue>`, or, when a pull request from the branch is open, gives
    * it and the issue its description names the title, the issue the summary,
-   * and the pull request the description.
+   * and the pull request the description. An open issue among the 100 newest
+   * whose description ends by naming the branch is reused, with the title and
+   * the summary, instead of a new one. Each create is sent once; a pull
+   * request GitHub refuses with 422 is read as found when one is then open
+   * from the branch.
    *
    * @param repository The repository's full name.
    * @param branch The pushed branch.
