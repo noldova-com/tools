@@ -490,7 +490,8 @@ export declare class GitHubUpdates implements IUpdateHost {
    * it and the issue its description names the title, the issue the summary,
    * and the pull request the description. An open issue among the 100 newest
    * whose description ends by naming the branch is reused, with the title and
-   * the summary, instead of a new one. Each create is sent once; a pull
+   * the summary, instead of a new one. Each create is sent again only after
+   * a rate limit's `Retry-After`, never after a lost answer; a pull
    * request GitHub refuses with 422 is read as found when one is then open
    * from the branch.
    *

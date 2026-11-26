@@ -393,6 +393,19 @@ export class GitHubUpdatesTests {
     Assert.areEqual(1, api.requests.filter(t => `${t.method} ${t.url}` === request).length);
   }
 
+  @TestData("POST /repos/noldova-com/target/issues")
+  @TestData("POST /repos/noldova-com/target/pulls")
+  @TestMethod
+  public async sendsACreateAgainAfterARateLimitsRetryAfterAsync(request: string): Promise<void> {
+    const created = GitHubUpdatesTests.createNewProposalAnswers()[request] ?? GitHubApiAnswer.HELD;
+    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesTests.createNewProposalAnswers(), [request]: [GitHubApiAnswer.json(403, { message: "Slow down" }, "1"), created] });
+
+    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
+    Assert.areEqual(2, api.requests.filter(t => `${t.method} ${t.url}` === request).length);
+  }
+
   @TestMethod
   public async readsAPullRequestThatAlreadyExistsAsFoundAsync(): Promise<void> {
     await using api = await GitHubApiFixture.startAsync({
