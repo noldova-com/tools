@@ -1037,18 +1037,41 @@ export class DependentsStepTests {
     Assert.areEqual("noldova-com/pinned", host.relockRequests.map(t => t.split(" ")[0]).join("\n"));
   }
 
+  @TestData("0.0.3")
+  @TestData("0.0.4")
+  @TestData("next")
   @TestMethod
-  public async replacesABranchAtItsOwnEarlierCommitWhileItIsThereAsync(): Promise<void> {
+  public async replacesABranchAtItsOwnEarlierCommitWhileItIsThereAsync(proposed: string): Promise<void> {
     using source = DependentsStepTests.createSource();
     using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
     const host = new FakeUpdateHost();
     host.repositories.set("noldova-com/pinned", pinned);
-    host.branches.set("noldova-com/pinned", new BranchHeadFixture("pipelines-tests@example.com", "Move the pins of source's packages to 0.0.3"));
+    host.branches.set("noldova-com/pinned", new BranchHeadFixture("pipelines-tests@example.com", `Move the pins of source's packages to ${proposed}`));
 
     const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
 
     Assert.isTrue(result.isSuccessful, result.message);
     Assert.isTrue(/^[0-9a-f]{40}$/.test(host.pushed.get("noldova-com/pinned")?.["replaced"] ?? ""));
+  }
+
+  @TestMethod
+  public async leavesItsOwnBranchThatProposesANewerVersionAndGoesOnAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using newer = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    using works = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/newer", newer);
+    host.repositories.set("noldova-com/works", works);
+    host.branches.set("noldova-com/newer", new BranchHeadFixture("pipelines-tests@example.com", "Move the pins of source's packages to 0.0.5"));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    const lines = result.message.split("
+");
+    Assert.areEqual("noldova-com/newer: pipelines/update-source proposes 0.0.5, newer than 0.0.4, so it is left as it is.", lines[1]);
+    Assert.areEqual("noldova-com/works: moved 3 pins in https://example.test/noldova-com/works/pull/1", lines[2]);
+    Assert.isFalse(host.pushed.has("noldova-com/newer"));
   }
 
   @TestData("someone@example.com", "Move the pins of source's packages to 0.0.3")

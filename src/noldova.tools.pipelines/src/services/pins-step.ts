@@ -153,6 +153,10 @@ export class PinsStep implements IStep {
     if (!Object.isNull(replaced) && !await PinsStep.isOwnCommitAsync(git, replaced, update.source))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, Resources.formatBranchNotOwn(branch, replaced)));
 
+    const newer = Object.isNull(replaced) ? null : await PinsStep.readNewerProposalAsync(git, replaced, update);
+    if (!Object.isNull(newer))
+      return StepResult.succeeded(Resources.formatRepositoryProposalNewer(repository, branch, newer, update.tag));
+
     const push = await this.updateHost.pushAsync(repository, directory, branch, replaced);
     if (!Object.isNull(push))
       return StepResult.failed(Resources.formatRepositoryFailed(repository, push.message));
@@ -236,5 +240,12 @@ export class PinsStep implements IStep {
   private static async isOwnCommitAsync(git: Git, commit: string, source: string): Promise<boolean> {
     return await git.readCommitterAsync(commit) === await git.readCommitterAsync(Resources.gitHeadRevision)
       && (await git.readSubjectAsync(commit)).startsWith(Resources.formatPinsTitlePrefix(source));
+  }
+
+  private static async readNewerProposalAsync(git: Git, commit: string, update: PinsUpdate): Promise<string | null> {
+    const proposed = (await git.readSubjectAsync(commit)).slice(Resources.formatPinsTitlePrefix(update.source).length);
+    const version = PinsStep.readTagVersion(proposed);
+
+    return !Object.isNull(version) && version.compareTo(update.version) > 0 ? proposed : null;
   }
 }
