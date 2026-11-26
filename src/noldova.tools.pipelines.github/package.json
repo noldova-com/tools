@@ -22,9 +22,9 @@
     "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
-    "@noldova/context.core": "0.0.14",
-    "@noldova/context.exceptions": "0.0.14",
-    "@noldova/context.json": "0.0.14",
+    "@noldova/context.core": "0.0.15",
+    "@noldova/context.exceptions": "0.0.15",
+    "@noldova/context.json": "0.0.15",
     "@noldova/tools.pipelines": "__VERSION__"
   }
 }
