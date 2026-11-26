@@ -74,7 +74,6 @@ export class Resources {
   public static readonly gitEntrySeparator: string = "\t";
   public static readonly gitFileSeparator: string = "\0";
   public static readonly gitFileType: string = "blob";
-  public static readonly gitHead: string = "HEAD";
   public static readonly gitHeadField: string = "gitHead";
   public static readonly gitHeadRevision: string = "HEAD^{commit}";
   public static readonly gitIsAncestorValues: readonly string[] = ["merge-base", "--is-ancestor", "--end-of-options"];
