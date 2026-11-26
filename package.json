@@ -14,10 +14,10 @@
     "pipelines": "node -e \"if (!require('fs').existsSync('.pipelines/node_modules/@noldova/tools.pipelines.github')) { console.error('.pipelines holds no build tool yet; npm run build installs it.'); process.exit(1); }\" && node .pipelines/node_modules/@noldova/tools.pipelines.github/bin/pipelines.js"
   },
   "devDependencies": {
-    "@noldova/context.core": "0.0.12",
-    "@noldova/context.exceptions": "0.0.12",
-    "@noldova/context.json": "0.0.12",
-    "@noldova/context.testing": "0.0.12",
+    "@noldova/context.core": "0.0.13",
+    "@noldova/context.exceptions": "0.0.13",
+    "@noldova/context.json": "0.0.13",
+    "@noldova/context.testing": "0.0.13",
     "@types/node": "26.6.6",
     "typescript": "7.0.2"
   }
