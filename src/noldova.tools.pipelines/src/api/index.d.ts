@@ -2789,7 +2789,8 @@ export declare class ReproducibleStep implements IStep {
  * exists, it replaces it only when the branch is at a commit of its own, made
  * by the same committer with its title, and otherwise fails that repository,
  * so nobody's commits are lost. A repository that pins none of them is left
- * as it is. It first checks out every repository and asks
+ * as it is, and so is one with no commits, which it reports as pinning none
+ * of them without asking whether it relocks itself. It first checks out every repository and asks
  * {@link IUpdateHost.startRelockAsync} whether each relocks itself, starting
  * every such relock, and then finishes the repositories in order; for one
  * that relocks itself, it reads with {@link IUpdateHost.readRelockAsync} the

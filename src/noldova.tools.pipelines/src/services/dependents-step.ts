@@ -147,6 +147,9 @@ export class DependentsStep implements IStep {
       return StepResult.failed(Resources.formatRepositoryFailed(repository, checkout.message));
 
     const git = new Git(this.processRunner, directory);
+    if (!await git.hasCommitAsync(Resources.gitCheckoutRevision))
+      return StepResult.succeeded(Resources.formatRepositoryUnpinned(repository, update.version));
+
     const head = await git.readHeadAsync();
     const run = await this.updateHost.startRelockAsync(repository, head, update.formatRequest());
     if (run instanceof StepResult)

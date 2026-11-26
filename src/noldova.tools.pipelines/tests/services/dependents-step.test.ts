@@ -1016,6 +1016,28 @@ export class DependentsStepTests {
   }
 
   @TestMethod
+  public async reportsARepositoryWithNoCommitsAsPinningNoneAndGoesOnAsync(): Promise<void> {
+    using source = DependentsStepTests.createSource();
+    using empty = GitRepositoryFixture.create();
+    using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
+    const host = new FakeUpdateHost();
+    host.repositories.set("noldova-com/empty", empty);
+    host.repositories.set("noldova-com/pinned", pinned);
+    host.relocks.set("noldova-com/empty", RelockedFiles.format(StepResult.failed("noldova-com/empty: relocked.")));
+
+    const result = await DependentsStepTests.createStep(source, host, new LockingNpm()).runAsync(["0.0.4", source.readHead()]);
+
+    Assert.isTrue(result.isSuccessful, result.message);
+    Assert.areEqual(
+      [
+        "noldova-com/empty: pins none of them below 0.0.4.",
+        "noldova-com/pinned: moved 3 pins in https://example.test/noldova-com/pinned/pull/1"
+      ].join("\n"),
+      result.message.split("\n").slice(1).join("\n"));
+    Assert.areEqual("noldova-com/pinned", host.relockRequests.map(t => t.split(" ")[0]).join("\n"));
+  }
+
+  @TestMethod
   public async replacesABranchAtItsOwnEarlierCommitWhileItIsThereAsync(): Promise<void> {
     using source = DependentsStepTests.createSource();
     using pinned = DependentsStepTests.createTarget(DependentsStepTests.PINNED);
