@@ -113,10 +113,14 @@ export class GitHubUpdates implements IUpdateHost {
       return target;
 
     const inputs = { [Resources.relockCommitInput]: commit, [Resources.relockRequestInput]: request };
-    const dispatch = await this.readFoundAsync(Resources.createMethod, Resources.formatRelockDispatchResource(repository),
+    const answer = await this.createApi().sendOnceAsync(Resources.createMethod, Resources.formatRelockDispatchResource(repository),
       { [Resources.refField]: target.readString(Resources.defaultBranchField), [Resources.inputsField]: inputs, [Resources.returnRunDetailsField]: true });
-    if (dispatch instanceof StepResult)
-      return dispatch;
+    if (answer instanceof StepResult)
+      return answer;
+    if (answer.status !== Resources.foundStatus)
+      return answer.toFailure();
+
+    const dispatch = answer.readBody();
 
     this.output?.writeProgress(Resources.formatRelockStarted(repository, dispatch.readString(Resources.htmlUrlField)));
 
