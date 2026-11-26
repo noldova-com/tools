@@ -63,9 +63,11 @@ export class GitHubUpdatesTests {
   private static readonly PULLS_OF_COMMIT: string = `GET /repos/noldova-com/tools/commits/${GitHubUpdatesTests.COMMIT}/pulls`;
   private static readonly OPEN_PULLS: string = "GET /repos/noldova-com/target/pulls?state=open&head=noldova-com%3Apipelines%2Fupdate-tools";
   private static readonly TARGET: string = "GET /repos/noldova-com/target";
+  private static readonly OPEN_ISSUES: string = "GET /repos/noldova-com/target/issues?state=open&sort=created&direction=desc&per_page=100";
   private static readonly CREATE_ISSUE: string = "POST /repos/noldova-com/target/issues";
   private static readonly CREATE_PULL: string = "POST /repos/noldova-com/target/pulls";
   private static readonly RENAME_ISSUE: string = "PATCH /repos/noldova-com/target/issues/9";
+  private static readonly RENAME_OPEN_ISSUE: string = "PATCH /repos/noldova-com/target/issues/7";
   private static readonly UPDATE_PULL: string = "PATCH /repos/noldova-com/target/pulls/3";
   private static readonly PULL_URL: string = "https://github.example/noldova-com/target/pull/3";
 
@@ -342,14 +344,122 @@ export class GitHubUpdatesTests {
 
     Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
     Assert.areEqual(
-      [GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.TARGET, GitHubUpdatesTests.CREATE_ISSUE, GitHubUpdatesTests.CREATE_PULL].join("\n"),
+      [GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.TARGET, GitHubUpdatesTests.OPEN_ISSUES, GitHubUpdatesTests.CREATE_ISSUE, GitHubUpdatesTests.CREATE_PULL].join("\n"),
       api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
     Assert.areEqual(
       JSON.stringify({ title: "Move the pins", body: "source tagged v1.2.0, a new version of the shared workflows this repository pins; the pull request from `pipelines/update-tools` moves the pins." }),
-      api.requests[2]?.body);
+      api.requests[3]?.body);
     Assert.areEqual(
       JSON.stringify({ title: "Move the pins", head: GitHubUpdatesTests.BRANCH, base: "develop", body: "Moves the pins.\n\n## Linked issue\n\nCloses #9" }),
+      api.requests[4]?.body);
+  }
+
+  @TestMethod
+  public async reusesTheOpenIssueOfTheBranchAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      ...GitHubUpdatesTests.createNewProposalAnswers(),
+      [GitHubUpdatesTests.OPEN_ISSUES]: GitHubApiAnswer.json(200, [
+        { number: 8, body: null },
+        { number: 6, body: "source tagged v1.1.0; the pull request from `pipelines/update-other` moves the pins." },
+        { number: 7, body: "source tagged v1.1.0; the pull request from `pipelines/update-tools` moves the pins." }
+      ]),
+      [GitHubUpdatesTests.RENAME_OPEN_ISSUE]: GitHubApiAnswer.json(200, { number: 7 })
+    });
+
+    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
+    Assert.areEqual(
+      [GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.TARGET, GitHubUpdatesTests.OPEN_ISSUES, GitHubUpdatesTests.RENAME_OPEN_ISSUE, GitHubUpdatesTests.CREATE_PULL].join("\n"),
+      api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
+    Assert.areEqual(
+      JSON.stringify({ title: "Move the pins", body: "source tagged v1.2.0, a new version of the shared workflows this repository pins; the pull request from `pipelines/update-tools` moves the pins." }),
       api.requests[3]?.body);
+    Assert.areEqual(
+      JSON.stringify({ title: "Move the pins", head: GitHubUpdatesTests.BRANCH, base: "develop", body: "Moves the pins.\n\n## Linked issue\n\nCloses #7" }),
+      api.requests[4]?.body);
+  }
+
+  @TestData("POST /repos/noldova-com/target/issues")
+  @TestData("POST /repos/noldova-com/target/pulls")
+  @TestMethod
+  public async sendsACreateWhoseAnswerWasLostOnlyOnceAsync(request: string): Promise<void> {
+    const created = GitHubUpdatesTests.createNewProposalAnswers()[request] ?? GitHubApiAnswer.HELD;
+    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesTests.createNewProposalAnswers(), [request]: [GitHubApiAnswer.HELD, created] });
+
+    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual(GitHubUpdatesTests.formatFailure(request, true), GitHubUpdatesTests.readFailure(result));
+    Assert.areEqual(1, api.requests.filter(t => `${t.method} ${t.url}` === request).length);
+  }
+
+  @TestData("POST /repos/noldova-com/target/issues")
+  @TestData("POST /repos/noldova-com/target/pulls")
+  @TestMethod
+  public async sendsACreateAgainAfterARateLimitsRetryAfterAsync(request: string): Promise<void> {
+    const created = GitHubUpdatesTests.createNewProposalAnswers()[request] ?? GitHubApiAnswer.HELD;
+    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesTests.createNewProposalAnswers(), [request]: [GitHubApiAnswer.json(403, { message: "Slow down" }, "1"), created] });
+
+    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
+    Assert.areEqual(2, api.requests.filter(t => `${t.method} ${t.url}` === request).length);
+  }
+
+  @TestMethod
+  public async readsAPullRequestThatAlreadyExistsAsFoundAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      ...GitHubUpdatesTests.createNewProposalAnswers(),
+      [GitHubUpdatesTests.OPEN_PULLS]: [GitHubApiAnswer.json(200, []), GitHubApiAnswer.json(200, [{ number: 3, html_url: GitHubUpdatesTests.PULL_URL }])],
+      [GitHubUpdatesTests.CREATE_PULL]: GitHubUpdatesTests.createAlreadyExists()
+    });
+
+    const url = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual(GitHubUpdatesTests.PULL_URL, url);
+    Assert.areEqual(
+      [GitHubUpdatesTests.OPEN_PULLS, GitHubUpdatesTests.TARGET, GitHubUpdatesTests.OPEN_ISSUES, GitHubUpdatesTests.CREATE_ISSUE, GitHubUpdatesTests.CREATE_PULL, GitHubUpdatesTests.OPEN_PULLS].join("\n"),
+      api.requests.map(t => `${t.method} ${t.url}`).join("\n"));
+  }
+
+  @TestMethod
+  public async failsWithTheRefusedCreateWhenNoPullRequestIsOpenAfterItAsync(): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({ ...GitHubUpdatesTests.createNewProposalAnswers(), [GitHubUpdatesTests.CREATE_PULL]: GitHubUpdatesTests.createAlreadyExists() });
+
+    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual("GitHub answered POST repos/noldova-com/target/pulls with 422: Validation Failed", GitHubUpdatesTests.readFailure(result));
+    Assert.areEqual(GitHubUpdatesTests.OPEN_PULLS, api.requests.map(t => `${t.method} ${t.url}`).at(-1));
+  }
+
+  @TestData(false)
+  @TestData(true)
+  @TestMethod
+  public async failsWithTheRereadOfTheOpenPullRequestsAsync(isHeld: boolean): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      ...GitHubUpdatesTests.createNewProposalAnswers(),
+      [GitHubUpdatesTests.OPEN_PULLS]: [GitHubApiAnswer.json(200, []), GitHubUpdatesTests.createFailure(isHeld)],
+      [GitHubUpdatesTests.CREATE_PULL]: GitHubUpdatesTests.createAlreadyExists()
+    });
+
+    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual(GitHubUpdatesTests.formatFailure(GitHubUpdatesTests.OPEN_PULLS, isHeld), GitHubUpdatesTests.readFailure(result));
+  }
+
+  @TestData(false)
+  @TestData(true)
+  @TestMethod
+  public async failsWithTheRenameOfTheReusedIssueAsync(isHeld: boolean): Promise<void> {
+    await using api = await GitHubApiFixture.startAsync({
+      ...GitHubUpdatesTests.createNewProposalAnswers(),
+      [GitHubUpdatesTests.OPEN_ISSUES]: GitHubApiAnswer.json(200, [{ number: 7, body: "Old; the pull request from `pipelines/update-tools` moves the pins." }]),
+      [GitHubUpdatesTests.RENAME_OPEN_ISSUE]: GitHubUpdatesTests.createFailure(isHeld)
+    });
+
+    const result = await GitHubUpdatesTests.createUpdates(api).proposeAsync(GitHubUpdatesTests.REPOSITORY, GitHubUpdatesTests.BRANCH, "Move the pins", "Moves the pins.", "source tagged v1.2.0, a new version of the shared workflows this repository pins");
+
+    Assert.areEqual(GitHubUpdatesTests.formatFailure(GitHubUpdatesTests.RENAME_OPEN_ISSUE, isHeld), GitHubUpdatesTests.readFailure(result));
   }
 
   @TestMethod
@@ -383,6 +493,8 @@ export class GitHubUpdatesTests {
   @TestData("GET /repos/noldova-com/target/pulls?state=open&head=noldova-com%3Apipelines%2Fupdate-tools", true)
   @TestData("GET /repos/noldova-com/target", false)
   @TestData("GET /repos/noldova-com/target", true)
+  @TestData("GET /repos/noldova-com/target/issues?state=open&sort=created&direction=desc&per_page=100", false)
+  @TestData("GET /repos/noldova-com/target/issues?state=open&sort=created&direction=desc&per_page=100", true)
   @TestData("POST /repos/noldova-com/target/issues", false)
   @TestData("POST /repos/noldova-com/target/issues", true)
   @TestData("POST /repos/noldova-com/target/pulls", false)
@@ -423,6 +535,7 @@ export class GitHubUpdatesTests {
     return {
       [GitHubUpdatesTests.OPEN_PULLS]: GitHubApiAnswer.json(200, []),
       [GitHubUpdatesTests.TARGET]: GitHubApiAnswer.json(200, { default_branch: "develop" }),
+      [GitHubUpdatesTests.OPEN_ISSUES]: GitHubApiAnswer.json(200, []),
       [GitHubUpdatesTests.CREATE_ISSUE]: GitHubApiAnswer.json(201, { number: 9 }),
       [GitHubUpdatesTests.CREATE_PULL]: GitHubApiAnswer.json(201, { html_url: GitHubUpdatesTests.PULL_URL })
     };
@@ -434,6 +547,10 @@ export class GitHubUpdatesTests {
       [GitHubUpdatesTests.RENAME_ISSUE]: GitHubApiAnswer.json(200, { number: 9 }),
       [GitHubUpdatesTests.UPDATE_PULL]: GitHubApiAnswer.json(200, { html_url: GitHubUpdatesTests.PULL_URL })
     };
+  }
+
+  private static createAlreadyExists(): GitHubApiAnswer {
+    return GitHubApiAnswer.json(422, { message: "Validation Failed", errors: [{ message: "A pull request already exists for noldova-com:pipelines/update-tools." }] });
   }
 
   private static createFailure(isHeld: boolean): GitHubApiAnswer {

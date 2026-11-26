@@ -33,6 +33,7 @@ export class Resources {
   public static readonly headField: string = "head";
   public static readonly headingPattern: RegExp = /^#{1,6}\s/;
   public static readonly htmlUrlField: string = "html_url";
+  public static readonly issuesPageSize: number = 100;
   public static readonly lineBreakPattern: RegExp = /\r?\n/;
   public static readonly linkedIssuePattern: RegExp = /^Closes #([0-9]+)$/m;
   public static readonly mergeCommitField: string = "merge_commit_sha";
@@ -187,6 +188,10 @@ export class Resources {
     return Resources.formatResource(repository, "issues");
   }
 
+  public static formatOpenIssuesResource(repository: string): string {
+    return Resources.formatResource(repository, `issues?state=open&sort=created&direction=desc&per_page=${Resources.issuesPageSize}`);
+  }
+
   public static formatIssueResource(repository: string, number: string): string {
     return Resources.formatResource(repository, `issues/${number}`);
   }
@@ -260,7 +265,11 @@ export class Resources {
   }
 
   public static formatIssueBody(summary: string, branch: string): string {
-    return `${summary}; the pull request from \`${branch}\` moves the pins.`;
+    return `${summary}${Resources.formatIssueBodyEnding(branch)}`;
+  }
+
+  public static formatIssueBodyEnding(branch: string): string {
+    return `; the pull request from \`${branch}\` moves the pins.`;
   }
 
   public static formatProposalBody(body: string, issue: string | undefined): string {
